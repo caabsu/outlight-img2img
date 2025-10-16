@@ -4,11 +4,11 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// ---------- ENV ----------
+/* ========================= ENV ========================= */
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Gemini (Nano Banana) — use stable, non-preview image endpoint
+// Gemini (Google AI Studio) — image endpoint
 const NB_API_URL =
   process.env.NANO_BANANA_API_URL ||
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
@@ -19,23 +19,30 @@ const NB_AUTH_HEADER = process.env.NANO_BANANA_AUTH_HEADER || "x-goog-api-key";
 const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY;
 
-// ---------- TYPES ----------
+/* ========================= TYPES ========================= */
 type PostBody = {
-  modelId: string;                 // "nanobanana-v1" | startsWith("seedream")
+  modelId: string; // "nanobanana-v1" or startsWith("seedream")
   productId: string | null;
   customUrl: string | null;
   prompt: string;
   options?: {
-    image_size?: string;           // seedream-only
-    image_resolution?: string;
-    max_images?: number;
-    seed?: number | null;
+    image_size?: string;       // seedream-only
+    image_resolution?: string; // seedream-only
+    max_images?: number;       // seedream-only
+    seed?: number | null;      // seedream-only
   };
 };
 
-// ---------- HELPERS ----------
+/* ========================= HELPERS ========================= */
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
-  const res = await fetch(url, { redirect: "follow" });
+  const res = await fetch(url, {
+    redirect: "follow",
+    headers: {
+      // helps some CDNs
+      "User-Agent": "Outlight/1.0 (+image-fetch)",
+      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    },
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Failed to fetch image: ${res.status} ${res.statusText} — ${text.slice(0, 200)}`);
@@ -67,8 +74,13 @@ async function getReferenceUrl(productId: string | null, customUrl: string | nul
   return data.image_url as string;
 }
 
-// Robust extraction of image from Gemini response
-function extractGeminiImage(json: any): { dataUrl?: string; url?: string; reason?: string } {
+/** Extract an image from Gemini responses across shapes */
+function extractGeminiImage(json: any): {
+  dataUrl?: string;
+  url?: string;
+  reason?: string;
+  debug?: any;
+} {
   const finishReason = json?.candidates?.[0]?.finishReason || json?.promptFeedback?.blockReason || "";
   const safety = json?.promptFeedback?.safetyRatings || [];
   const candidates = json?.candidates || [];
@@ -78,25 +90,23 @@ function extractGeminiImage(json: any): { dataUrl?: string; url?: string; reason
 
   const parts = candidates[0]?.content?.parts || [];
 
-  // helpers to read both response shapes
+  // helpers for different shapes
   const getInlineData = (p: any) => p?.inline_data?.data ?? p?.inlineData?.data;
-  const getInlineMime = (p: any) =>
-    p?.inline_data?.mime_type ?? p?.inlineData?.mime_type ?? p?.inlineData?.mimeType ?? "image/png";
+  const getInlineMime =
+    (p: any) => p?.inline_data?.mime_type ?? p?.inlineData?.mime_type ?? p?.inlineData?.mimeType ?? "image/png";
   const getFileUri = (p: any) => p?.file_data?.file_uri ?? p?.fileData?.file_uri ?? p?.fileData?.fileUri;
 
-  // 1) inline image (base64)
+  // 1) inline base64
   for (const p of parts) {
     const d = getInlineData(p);
     if (d) return { dataUrl: `data:${getInlineMime(p)};base64,${d}` };
   }
-
-  // 2) hosted file url
+  // 2) hosted file uri
   for (const p of parts) {
     const uri = getFileUri(p);
     if (uri) return { url: uri };
   }
-
-  // 3) media[]
+  // 3) media array
   for (const p of parts) {
     const media = p?.media;
     if (Array.isArray(media)) {
@@ -108,7 +118,6 @@ function extractGeminiImage(json: any): { dataUrl?: string; url?: string; reason
       }
     }
   }
-
   // 4) data_uri
   for (const p of parts) {
     const du = p?.data_uri || p?.dataUri;
@@ -117,28 +126,46 @@ function extractGeminiImage(json: any): { dataUrl?: string; url?: string; reason
 
   const anyText = parts.map((p: any) => p?.text).filter(Boolean).slice(0, 1)[0];
   const safeSummary = safety.length ? ` safety=${JSON.stringify(safety)}` : "";
-  const reason = `No image parts found. finishReason=${finishReason || "n/a"}${safeSummary}${
-    anyText ? ` text="${anyText.slice(0, 120)}..."` : ""
-  }`;
-  return { reason };
+  const reason = `No image parts found. finishReason=${finishReason || "n/a"}${
+    safeSummary
+  }${anyText ? ` text="${anyText.slice(0, 140)}..."` : ""}`;
+
+  return {
+    reason,
+    debug: {
+      parts,
+      finishReason: json?.candidates?.[0]?.finishReason,
+      promptFeedback: json?.promptFeedback,
+    },
+  };
 }
 
-// Call Gemini with IMAGE FIRST then TEXT — single turn
-async function callGeminiImageEdit({ mime, base64, text }: { mime: string; base64: string; text: string }) {
+/** Single-turn image edit: IMAGE first, then TEXT (works with v1beta REST) */
+async function callGeminiImageEdit({
+  mime,
+  base64,
+  text,
+}: {
+  mime: string;
+  base64: string;
+  text: string;
+}) {
   const payload = {
     contents: [
       {
         role: "user",
         parts: [
           { inline_data: { mime_type: mime, data: base64 } },
-          { text: `Edit ONLY the attached image using these instructions. 
-Return exactly ONE image (no text). Instructions:\n${text}` },
+          {
+            text:
+              `Edit ONLY the attached image using these instructions.\n` +
+              `Return an IMAGE (not text). Instructions:\n${text}`,
+          },
         ],
       },
     ],
-    // No response_mime_type (text-only types are allowed; images would come via inline_data/file_data)
-    // No tools; v1beta REST doesn't accept image_editing tool.
-    // No safetySettings — defaults suffice; earlier errors came from mismatched category names.
+    // DO NOT set response_mime_type (text-only values are accepted; images come via inline_data/file_data)
+    // DO NOT send "tools" (image_editing) — not supported on v1beta REST for this model
     generationConfig: { temperature: 0.6 },
   };
 
@@ -151,18 +178,19 @@ Return exactly ONE image (no text). Instructions:\n${text}` },
   return { nbRes, nbJson };
 }
 
-// ---------- ROUTE ----------
+/* ========================= ROUTE ========================= */
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PostBody;
     const { modelId, productId, customUrl, prompt, options } = body;
+
     if (!prompt || !modelId) {
       return NextResponse.json({ error: "Missing modelId or prompt" }, { status: 400 });
     }
 
     const referenceUrl = await getReferenceUrl(productId, customUrl);
 
-    // -------- Seedream (KIE) --------
+    /* -------- Seedream (KIE) -------- */
     if (modelId.startsWith("seedream")) {
       if (!KIE_KEY) return NextResponse.json({ error: "Seedream API key missing" }, { status: 500 });
 
@@ -179,7 +207,7 @@ export async function POST(req: Request) {
         },
       };
 
-      // create task
+      // 1) create task
       const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
@@ -193,7 +221,7 @@ export async function POST(req: Request) {
       const taskId: string | undefined = createJson?.data?.taskId;
       if (!taskId) return NextResponse.json({ error: "Seedream taskId missing" }, { status: 502 });
 
-      // poll
+      // 2) poll recordInfo
       const started = Date.now();
       const MAX_MS = 180_000;
       let resultUrl: string | null = null;
@@ -209,6 +237,7 @@ export async function POST(req: Request) {
           const msg = qJson?.message || qJson?.msg || "Seedream query failed";
           return NextResponse.json({ error: msg }, { status: 502 });
         }
+
         lastState = qJson?.data?.state as string;
         if (lastState === "success") {
           try {
@@ -233,16 +262,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ imageDataUrl: resultUrl });
     }
 
-    // -------- Gemini (Nano Banana) --------
+    /* -------- Gemini (Google AI Studio) -------- */
     if (!NB_API_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
-    // load the reference image
+    // 1) load reference image
     const { mime, base64 } = await fetchImageAsBase64(referenceUrl);
     if (!mime.startsWith("image/")) {
       return NextResponse.json({ error: `Reference URL is not an image (mime=${mime})` }, { status: 400 });
     }
 
-    // single-turn, IMAGE FIRST then TEXT
+    // 2) single-turn (IMAGE first, then TEXT)
     const { nbRes, nbJson } = await callGeminiImageEdit({ mime, base64, text: prompt });
 
     if (!nbRes.ok) {
@@ -250,14 +279,15 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: msg }, { status: nbRes.status || 502 });
     }
 
+    // 3) extract image
     const out = extractGeminiImage(nbJson);
     if (out.dataUrl) return NextResponse.json({ imageDataUrl: out.dataUrl });
     if (out.url) return NextResponse.json({ imageDataUrl: out.url });
 
-    // still no image — return compact debug so we can see exactly what came back
+    // Return concise debug to help diagnose (safe in prod too; it's compact)
     return NextResponse.json(
       {
-        error: "Gemini returned no image data",
+        error: out.reason || "Gemini returned no image data",
         debug: out.debug ?? null,
       },
       { status: 502 }
