@@ -22,7 +22,6 @@ type LibraryItem = {
 function safeName(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
-
 function downloadDataUrl(dataUrl: string, filename: string) {
   const a = document.createElement("a");
   a.href = dataUrl;
@@ -30,6 +29,40 @@ function downloadDataUrl(dataUrl: string, filename: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+/** Simple concurrency pool (runs worker in parallel up to `limit`) */
+function createPool<T, R>(
+  items: T[],
+  limit: number,
+  worker: (item: T, idx: number) => Promise<R>
+): Promise<R[]> {
+  let i = 0;
+  const results: Array<Promise<R>> = new Array(items.length);
+  let active = 0;
+
+  return new Promise<R[]>((resolve, reject) => {
+    const next = () => {
+      if (i >= items.length && active === 0) {
+        Promise.all(results).then(resolve).catch(reject);
+        return;
+      }
+      while (active < limit && i < items.length) {
+        const idx = i++;
+        active++;
+        results[idx] = worker(items[idx], idx)
+          .catch((e) => {
+            // bubble the error with index context
+            throw { idx, error: e };
+          })
+          .finally(() => {
+            active--;
+            next();
+          });
+      }
+    };
+    next();
+  });
 }
 
 export default function Home() {
@@ -62,14 +95,27 @@ export default function Home() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [serverDebug, setServerDebug] = useState<any>(null); // show server-side debug details
+  const [serverDebug, setServerDebug] = useState<any>(null);
   const [progress, setProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+
+  // Concurrency control (1–3)
+  const [concurrency, setConcurrency] = useState<number>(2);
 
   // Prompt Library
   const [libOpen, setLibOpen] = useState(false);
   const [libSearch, setLibSearch] = useState("");
   const [libItems, setLibItems] = useState<LibraryItem[]>([]);
   const [libLoading, setLibLoading] = useState(false);
+
+  // Product manager UI state
+  const [prodOpen, setProdOpen] = useState(false);
+  const [prodSaving, setProdSaving] = useState(false);
+  const [prodError, setProdError] = useState<string | null>(null);
+  const [prodForm, setProdForm] = useState<{ id?: string; name: string; slug: string; image_url: string }>({
+    name: "",
+    slug: "",
+    image_url: "",
+  });
 
   const controllerRef = useRef<AbortController | null>(null);
 
@@ -78,17 +124,91 @@ export default function Home() {
   const referenceUrl = selectedId === "custom" ? customUrl : selected?.image_url;
 
   // Load products once
+  async function loadProducts() {
+    try {
+      const res = await fetch("/api/products");
+      const json = await res.json();
+      setProducts(json.products || []);
+    } catch {
+      // ignore
+    }
+  }
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/api/products");
-        const json = await res.json();
-        setProducts(json.products || []);
-      } catch {
-        // ignore for MVP
-      }
-    })();
+    loadProducts();
   }, []);
+
+  function openProductManager() {
+    setProdError(null);
+    setProdForm({ name: "", slug: "", image_url: "" });
+    setProdOpen(true);
+  }
+  function editProduct(p: Product) {
+    setProdError(null);
+    setProdForm({ id: p.id, name: p.name, slug: p.slug, image_url: p.image_url });
+    setProdOpen(true);
+  }
+  async function saveProduct() {
+    try {
+      setProdError(null);
+      setProdSaving(true);
+
+      const body = {
+        name: prodForm.name.trim(),
+        slug: prodForm.slug.trim() || safeName(prodForm.name.trim()),
+        image_url: prodForm.image_url.trim(),
+      };
+
+      if (!body.name || !body.slug || !body.image_url) {
+        setProdError("Name, slug, and image URL are required.");
+        setProdSaving(false);
+        return;
+      }
+
+      if (prodForm.id) {
+        // update
+        const res = await fetch(`/api/products/${prodForm.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        const json = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(json.error || "Failed to update product");
+      } else {
+        // create
+        const res = await fetch(`/api/products`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const text = await res.text();
+        const json = text ? JSON.parse(text) : {};
+        if (!res.ok) throw new Error(json.error || "Failed to create product");
+        if (json.product?.id) setSelectedId(json.product.id);
+      }
+
+      await loadProducts();
+      setProdOpen(false);
+    } catch (e: any) {
+      setProdError(e?.message || "Save failed");
+    } finally {
+      setProdSaving(false);
+    }
+  }
+  async function deleteProduct(id: string) {
+    if (!id) return;
+    if (!confirm("Delete this product?")) return;
+    try {
+      const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+      const text = await res.text();
+      const json = text ? JSON.parse(text) : {};
+      if (!res.ok) throw new Error(json.error || "Failed to delete product");
+      if (selectedId === id) setSelectedId("custom");
+      await loadProducts();
+    } catch (e: any) {
+      alert(e?.message || "Delete failed");
+    }
+  }
 
   // Helpers
   function toggleSelect(i: number) {
@@ -97,7 +217,6 @@ export default function Home() {
     else copy.add(i);
     setSelectedIdx(copy);
   }
-
   function downloadSelected() {
     if (selectedIdx.size === 0) return;
     const baseProduct = safeName(productName || "product");
@@ -109,8 +228,11 @@ export default function Home() {
     });
   }
 
+  // ----- PARALLEL GENERATION (concurrency 1–3) -----
   async function onGenerate() {
     if (!referenceUrl || promptLines.length === 0) return;
+
+    const CONCURRENCY = Math.max(1, Math.min(3, Number(concurrency) || 1));
 
     setLoading(true);
     setError(null);
@@ -123,9 +245,13 @@ export default function Home() {
     const ac = new AbortController();
     controllerRef.current = ac;
 
+    // Pre-size array so results appear in stable order
+    const tempResults: GenImage[] = new Array(promptLines.length);
+
     try {
-      for (let lineIdx = 0; lineIdx < promptLines.length; lineIdx++) {
-        const onePrompt = promptLines[lineIdx];
+      await createPool(promptLines, CONCURRENCY, async (onePrompt, lineIdx) => {
+        // tiny jitter reduces bursty rate spikes
+        await new Promise((r) => setTimeout(r, Math.random() * 120));
 
         const res = await fetch("/api/generate", {
           method: "POST",
@@ -135,39 +261,53 @@ export default function Home() {
             productId: selectedId !== "custom" ? selectedId : null,
             customUrl: selectedId === "custom" ? customUrl : null,
             prompt: onePrompt,
-            options: modelDef.provider === "seedream"
-              ? {
-                  image_size: sdSize,
-                  image_resolution: sdRes,
-                  max_images: sdMax,
-                  seed: sdSeed === "" ? null : sdSeed,
-                }
-              : undefined,
+            options:
+              modelDef.provider === "seedream"
+                ? {
+                    image_size: sdSize,
+                    image_resolution: sdRes,
+                    max_images: sdMax,
+                    seed: sdSeed === "" ? null : sdSeed,
+                  }
+                : undefined,
           }),
           signal: ac.signal,
         });
 
-        const json = await res.json();
+        const json = await (async () => {
+          try {
+            return await res.json();
+          } catch {
+            return { error: "Invalid JSON" };
+          }
+        })();
+
         if (!res.ok) {
-          setServerDebug(json.debug ?? null);
+          setServerDebug((prev) => prev ?? json.debug ?? null);
           throw new Error(json.error || `Generation failed for line ${lineIdx + 1}`);
         } else {
           setServerDebug(null);
         }
 
+        const imageDataUrl = json.imageDataUrl as string;
         const newImg: GenImage = {
           id: crypto.randomUUID(),
           prompt: onePrompt,
-          imageDataUrl: json.imageDataUrl, // URL or data URL
+          imageDataUrl,
         };
+
+        tempResults[lineIdx] = newImg;
+
+        // progressive render — keeps order
         setImages((prev) => {
-          const next = [...prev, newImg];
-          if (next.length === 1) setActiveIdx(0);
-          return next;
+          const merged = [...tempResults].filter(Boolean) as GenImage[];
+          if (merged.length === 1) setActiveIdx(0);
+          return merged;
         });
 
         setProgress((p) => ({ done: p.done + 1, total: p.total }));
-      }
+        return newImg;
+      });
     } catch (e: any) {
       if (e?.name === "AbortError") setError("Generation cancelled.");
       else setError(e?.message || "Something went wrong.");
@@ -181,6 +321,7 @@ export default function Home() {
     controllerRef.current?.abort();
   }
 
+  // Prompt library
   async function openLibrary() {
     setLibOpen(true);
     setLibLoading(true);
@@ -196,7 +337,6 @@ export default function Home() {
       setLibLoading(false);
     }
   }
-
   async function saveSinglePrompt(p: string) {
     const res = await fetch("/api/prompts", {
       method: "POST",
@@ -212,7 +352,6 @@ export default function Home() {
     if (!res.ok) alert(`Save failed: ${json.error || "unknown error"}`);
     else alert("Prompt saved.");
   }
-
   async function copyPromptToClipboard(p: string) {
     try {
       await navigator.clipboard.writeText(p);
@@ -220,7 +359,6 @@ export default function Home() {
       alert("Could not copy to clipboard.");
     }
   }
-
   function downloadPromptTxt(p: string, id: string) {
     const baseProduct = safeName(productName || "product");
     const baseModel = safeName(modelNameDisplay);
@@ -235,7 +373,6 @@ export default function Home() {
     a.remove();
     URL.revokeObjectURL(url);
   }
-
   async function deletePrompt(id: string) {
     if (!id) return;
     const ok = confirm("Delete this prompt?");
@@ -284,7 +421,17 @@ export default function Home() {
 
             {/* Product */}
             <div>
-              <label className="text-sm text-neutral-300">Product</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-neutral-300">Product</label>
+                <button
+                  type="button"
+                  className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+                  onClick={openProductManager}
+                  title="Add / Edit products"
+                >
+                  Manage
+                </button>
+              </div>
               <select
                 className="mt-1 w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
                 value={selectedId}
@@ -377,7 +524,7 @@ export default function Home() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN — prompt + results (main image stays directly below prompt) */}
+          {/* RIGHT COLUMN — prompt + results */}
           <div className="md:col-span-2 space-y-6">
             {/* Prompt area */}
             <div className="space-y-3">
@@ -389,7 +536,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 value={promptsText}
                 onChange={(e) => setPromptsText(e.target.value)}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
                   onClick={onGenerate}
@@ -423,6 +570,22 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   Prompt Library
                 </button>
 
+                {/* Concurrency control */}
+                <label className="ml-auto text-xs text-neutral-400 flex items-center gap-2">
+                  Parallel:
+                  <input
+                    type="number"
+                    min={1}
+                    max={3}
+                    className="w-16 rounded bg-neutral-900 border border-neutral-800 p-1"
+                    value={concurrency}
+                    onChange={(e) =>
+                      setConcurrency(Math.max(1, Math.min(3, Number(e.target.value || 1))))
+                    }
+                    title="How many prompts to run at once (1–3)"
+                  />
+                </label>
+
                 {error && <span className="text-sm text-red-400">{error}</span>}
               </div>
 
@@ -437,7 +600,10 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
 
               {progress.total > 0 && (
                 <div className="h-1 w-full bg-neutral-800 rounded">
-                  <div className="h-1 bg-white/70 rounded" style={{ width: `${pct}%`, transition: "width .2s ease" }} />
+                  <div
+                    className="h-1 bg-white/70 rounded"
+                    style={{ width: `${pct}%`, transition: "width .2s ease" }}
+                  />
                 </div>
               )}
             </div>
@@ -609,6 +775,113 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                       title="Delete this saved prompt"
                     >
                       Delete
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Product Manager Panel */}
+      {prodOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex">
+          <div className="ml-auto h-full w-full max-w-xl bg-neutral-950 border-l border-neutral-800 p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">{prodForm.id ? "Edit Product" : "Add Product"}</h2>
+              <button
+                className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-1"
+                onClick={() => setProdOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-neutral-300">Name</label>
+                <input
+                  className="mt-1 w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
+                  value={prodForm.name}
+                  onChange={(e) => setProdForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="Awesome Lamp"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm text-neutral-300">Slug</label>
+                <input
+                  className="mt-1 w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
+                  value={prodForm.slug}
+                  onChange={(e) => setProdForm((f) => ({ ...f, slug: e.target.value }))}
+                  placeholder="awesome-lamp"
+                />
+                <p className="mt-1 text-[11px] text-neutral-500">Leave blank to auto-generate from name.</p>
+              </div>
+
+              <div>
+                <label className="text-sm text-neutral-300">Image URL</label>
+                <input
+                  className="mt-1 w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
+                  value={prodForm.image_url}
+                  onChange={(e) => setProdForm((f) => ({ ...f, image_url: e.target.value }))}
+                  placeholder="https://.../image.jpg"
+                />
+              </div>
+
+              {prodError && <div className="text-sm text-red-400">{prodError}</div>}
+
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
+                  onClick={saveProduct}
+                  disabled={prodSaving}
+                >
+                  {prodSaving ? "Saving…" : (prodForm.id ? "Update Product" : "Add Product")}
+                </button>
+
+                {prodForm.id && (
+                  <button
+                    className="rounded-md bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-red-300 px-3 py-2"
+                    onClick={() => prodForm.id && deleteProduct(prodForm.id!)}
+                    disabled={prodSaving}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <hr className="my-4 border-neutral-800" />
+
+            <div className="flex-1 overflow-auto space-y-2">
+              <div className="text-xs text-neutral-500 mb-2">All products</div>
+              {products.length === 0 && (
+                <div className="text-sm text-neutral-500">No products yet.</div>
+              )}
+              {products.map((p) => (
+                <div
+                  key={p.id}
+                  className="rounded-md border border-neutral-800 p-2 hover:bg-white/5 flex items-center justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-neutral-100 truncate">{p.name}</div>
+                    <div className="text-xs text-neutral-500 truncate">{p.slug}</div>
+                    <div className="text-[11px] text-neutral-500 truncate">{p.image_url}</div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-sm"
+                      onClick={() => editProduct(p)}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-sm"
+                      onClick={() => { setSelectedId(p.id); setProdOpen(false); }}
+                    >
+                      Use
                     </button>
                   </div>
                 </div>
