@@ -283,7 +283,7 @@ export default function Home() {
         })();
 
         if (!res.ok) {
-          setServerDebug((prev) => prev ?? json.debug ?? null);
+          setServerDebug(json.debug ?? null);
           throw new Error(json.error || `Generation failed for line ${lineIdx + 1}`);
         } else {
           setServerDebug(null);
