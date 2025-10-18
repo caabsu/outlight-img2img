@@ -50,7 +50,7 @@ type Run = {
   activeIdx: number;
   selectedIdx: Set<number>;
   progress: { done: number; total: number };
-  speed: 1 | 2 | 3;
+  speed: RunSpeed;
 
   controller: AbortController | null;
 };
@@ -59,13 +59,89 @@ type Run = {
 type VideoItem = { id: string; prompt: string; url: string };
 
 type VideoProvider = "kling" | "veo" | "sora";
-type KlingModel = "kling/v2-5-turbo-image-to-video-pro" | "kling/v2-5-turbo-text-to-video-pro";
-type VeoModel = "veo3" | "veo3_fast"; // via /api/v1/veo/generate
-type SoraModel = "sora-2-pro-storyboard"; // via KIE /jobs/createTask
+type VideoModelKind = "image-to-video" | "text-to-video" | "veo" | "storyboard";
 
-type VideoModelId = KlingModel | VeoModel | SoraModel;
+type VideoModelOption = {
+  id: string;
+  provider: VideoProvider;
+  label: string;
+  kind: VideoModelKind;
+  requiresImage?: boolean;
+};
+
+const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> = [
+  {
+    label: "Kling (KIE)",
+    options: [
+      {
+        id: "kling/v2-5-turbo-image-to-video-pro",
+        provider: "kling",
+        label: "Kling 2.5 Turbo — Image → Video (Pro)",
+        kind: "image-to-video",
+        requiresImage: true,
+      },
+      {
+        id: "kling/v2-5-turbo-text-to-video-pro",
+        provider: "kling",
+        label: "Kling 2.5 Turbo — Text → Video (Pro)",
+        kind: "text-to-video",
+      },
+      {
+        id: "kling/v2-1-image-to-video",
+        provider: "kling",
+        label: "Kling 2.1 — Image → Video",
+        kind: "image-to-video",
+        requiresImage: true,
+      },
+      {
+        id: "kling/v2-1-text-to-video",
+        provider: "kling",
+        label: "Kling 2.1 — Text → Video",
+        kind: "text-to-video",
+      },
+    ],
+  },
+  {
+    label: "Veo (Google DeepMind)",
+    options: [
+      {
+        id: "veo3_fast",
+        provider: "veo",
+        label: "Veo 3.1 Fast",
+        kind: "veo",
+      },
+      {
+        id: "veo3",
+        provider: "veo",
+        label: "Veo 3.1 Quality",
+        kind: "veo",
+      },
+    ],
+  },
+  {
+    label: "Sora (OpenAI)",
+    options: [
+      {
+        id: "sora-2-pro-storyboard",
+        provider: "sora",
+        label: "Sora 2 Pro — Storyboard",
+        kind: "storyboard",
+      },
+    ],
+  },
+];
+
+type VideoModelId = VideoModelOption["id"];
+
+const VIDEO_MODEL_OPTIONS: VideoModelOption[] = VIDEO_MODEL_GROUPS.flatMap((group) => group.options);
+const VEO_MODEL_OPTIONS = VIDEO_MODEL_OPTIONS.filter((opt) => opt.provider === "veo");
 
 type VideoTab = "image" | "video";
+
+const RUN_SPEED_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+type RunSpeed = (typeof RUN_SPEED_OPTIONS)[number];
+const MAX_CONCURRENT_REQUESTS = RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1];
+const MAX_CONCURRENT_RUNS = 10;
 
 /* =========================================================
    Utils
@@ -157,7 +233,7 @@ export default function ContentGeneratorPage() {
   const [sdSeed, setSdSeed] = useState<number | "">("");
 
   // Speed (parallelism per run)
-  const [speed, setSpeed] = useState<1 | 2 | 3>(1);
+  const [speed, setSpeed] = useState<RunSpeed>(1);
 
   // Prompts (image)
   const [promptsText, setPromptsText] = useState<string>("");
@@ -189,7 +265,8 @@ export default function ContentGeneratorPage() {
 
   const selected = useMemo(() => products.find((p) => p.id === selectedId), [products, selectedId]);
   const productName = selected ? selected.name : "Custom";
-  const referenceUrl = selectedId === "custom" ? customUrl : (selected?.image_url as string | undefined);
+  const referenceUrl =
+    selectedId === "custom" ? customUrl.trim() : (selected?.image_url as string | undefined) ?? "";
 
   // Load products
   async function loadProducts() {
@@ -330,6 +407,17 @@ export default function ContentGeneratorPage() {
       })
     );
   }
+  function stepActiveImage(runId: string, delta: number) {
+    setRuns((prevRuns) =>
+      prevRuns.map((r) => {
+        if (r.id !== runId) return r;
+        if (r.images.length === 0) return r;
+        const nextIdx = Math.min(r.images.length - 1, Math.max(0, r.activeIdx + delta));
+        if (nextIdx === r.activeIdx) return r;
+        return { ...r, activeIdx: nextIdx };
+      })
+    );
+  }
   function deleteRun(runId: string) {
     setRuns((prev) => {
       const next = prev.filter((r) => r.id !== runId);
@@ -391,9 +479,9 @@ export default function ContentGeneratorPage() {
     const ref = referenceUrl || "";
     if (!ref || promptLines.length === 0) return;
 
-    // drop oldest if already 3
+    // drop oldest if already at limit
     setRuns((prev) => {
-      if (prev.length < 3) return prev;
+      if (prev.length < MAX_CONCURRENT_RUNS) return prev;
       const sorted = [...prev].sort((a, b) => a.startedAt - b.startedAt);
       const oldest = sorted[0];
       oldest.controller?.abort();
@@ -513,7 +601,7 @@ export default function ContentGeneratorPage() {
       }
     };
 
-    const parallel = Math.max(1, Math.min(3, run.speed));
+    const parallel = Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, run.speed));
     const workers: Promise<void>[] = [];
     for (let i = 0; i < parallel; i++) workers.push(worker());
     await Promise.all(workers).catch(() => {});
@@ -538,7 +626,11 @@ export default function ContentGeneratorPage() {
   ===================================================== */
 
   // Video model selection
-  const [videoModel, setVideoModel] = useState<VideoModelId>("kling/v2-5-turbo-image-to-video-pro");
+  const [videoModel, setVideoModel] = useState<VideoModelId>(VIDEO_MODEL_OPTIONS[0].id);
+  const videoModelDef = useMemo(
+    () => VIDEO_MODEL_OPTIONS.find((opt) => opt.id === videoModel) ?? VIDEO_MODEL_OPTIONS[0],
+    [videoModel]
+  );
   const [videoPrompts, setVideoPrompts] = useState("");
   const videoPromptLines = useMemo(
     () => videoPrompts.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
@@ -553,6 +645,16 @@ export default function ContentGeneratorPage() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const videoCtlRef = useRef<AbortController | null>(null);
 
+  const currentRefUrl = (
+    selectedId === "custom" ? customUrl : selected?.image_url || ""
+  ).trim();
+
+  const isKling = videoModelDef.provider === "kling";
+  const isKlingText = isKling && videoModelDef.kind === "text-to-video";
+  const isKlingImage = isKling && videoModelDef.kind === "image-to-video";
+  const isVeo = videoModelDef.provider === "veo";
+  const isSora = videoModelDef.provider === "sora";
+
   // Kling options
   const [klingDuration, setKlingDuration] = useState<"5" | "10">("5");
   const [klingAspect, setKlingAspect] = useState<"16:9" | "9:16" | "1:1">("16:9"); // text-to-video only
@@ -561,7 +663,6 @@ export default function ContentGeneratorPage() {
 
   // Veo options
   type VeoRatio = "16:9" | "9:16" | "Auto";
-  const [veoModelChoice, setVeoModelChoice] = useState<VeoModel>("veo3_fast");
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
   type VeoGenType = "TEXT_2_VIDEO" | "FIRST_AND_LAST_FRAMES_2_VIDEO" | "REFERENCE_2_VIDEO";
   const [veoGenType, setVeoGenType] = useState<VeoGenType>("TEXT_2_VIDEO");
@@ -578,15 +679,16 @@ export default function ContentGeneratorPage() {
   );
   const [soraImageUrl, setSoraImageUrl] = useState<string>("");
 
+  const trimmedSoraImageUrl = soraImageUrl.trim();
+  const resolvedVideoReferenceUrl = isSora ? trimmedSoraImageUrl || currentRefUrl : currentRefUrl;
+  const videoPreviewUrl = resolvedVideoReferenceUrl;
+  const showReferencePicker = isKling || isVeo || isSora;
+
   // Derived: should video model require a reference image?
   const videoNeedsImage =
-    videoModel === "kling/v2-5-turbo-image-to-video-pro" ||
-    (videoModel === "veo3" && veoGenType !== "TEXT_2_VIDEO") ||
-    (videoModel === "veo3_fast" && veoGenType !== "TEXT_2_VIDEO") ||
-    videoModel === "sora-2-pro-storyboard"; // optional, but we allow one
-
-  // Current "reference" for first image field (reuse product/custom from image tab)
-  const currentRefUrl = selectedId === "custom" ? customUrl : (selected?.image_url || "");
+    isKlingImage ||
+    (isVeo && veoGenType !== "TEXT_2_VIDEO") ||
+    (isSora && videoModelDef.id === "sora-2-pro-storyboard");
 
   // Concurrency helper
   async function runWithLimit<T>(limit: number, tasks: Array<() => Promise<T>>) {
@@ -623,7 +725,7 @@ export default function ContentGeneratorPage() {
   // Video generate
   async function onGenerateVideo() {
     if (videoPromptLines.length === 0) return;
-    if (videoNeedsImage && !currentRefUrl && videoModel !== "veo3" && videoModel !== "veo3_fast") {
+    if (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo) {
       setVideoError("Please select a product or provide a custom image URL.");
       return;
     }
@@ -642,30 +744,30 @@ export default function ContentGeneratorPage() {
         let provider: VideoProvider = "kling";
         let body: any = {};
 
-        if (videoModel.startsWith("kling/")) {
+        if (isKling) {
           provider = "kling";
           const cfgVal = Number.isFinite(Number(klingCfg)) ? Number(klingCfg) : undefined;
           body = {
             provider,
             model: videoModel,
             // Kling payload (KIE jobs/createTask)
-            mode: videoModel === "kling/v2-5-turbo-text-to-video-pro" ? "text-to-video" : "image-to-video",
+            mode: isKlingText ? "text-to-video" : "image-to-video",
             prompt: line,
             duration: klingDuration,
-            ...(videoModel === "kling/v2-5-turbo-text-to-video-pro" ? { aspect_ratio: klingAspect } : {}),
+            ...(isKlingText ? { aspect_ratio: klingAspect } : {}),
             ...(klingNeg.trim() ? { negative_prompt: klingNeg.trim() } : {}),
             ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
-            ...(videoModel === "kling/v2-5-turbo-image-to-video-pro"
+            ...(isKlingImage
               ? {
                   productId: selectedId !== "custom" ? selectedId : null,
-                  customUrl: selectedId === "custom" ? customUrl : null,
+                  customUrl: selectedId === "custom" ? customUrl.trim() : null,
                 }
               : {}),
           };
-        } else if (videoModel === "veo3" || videoModel === "veo3_fast") {
+        } else if (isVeo) {
           provider = "veo";
           const imgs: string[] = [];
-          if (currentRefUrl) imgs.push(currentRefUrl);
+          if (resolvedVideoReferenceUrl) imgs.push(resolvedVideoReferenceUrl);
           if (veoGenType !== "TEXT_2_VIDEO" && veoSecondImage.trim()) imgs.push(veoSecondImage.trim());
 
           // Validate gen type availability
@@ -676,7 +778,7 @@ export default function ContentGeneratorPage() {
 
           body = {
             provider,
-            model: videoModel as VeoModel,
+            model: videoModel,
             prompt: line,
             aspectRatio: veoAspect,
             generationType: effectiveGen,
@@ -700,10 +802,10 @@ export default function ContentGeneratorPage() {
 
           body = {
             provider,
-            model: "sora-2-pro-storyboard",
+            model: videoModel,
             input: {
               n_frames: soraFrames,
-              image_urls: soraImageUrl.trim() ? [soraImageUrl.trim()] : [],
+              image_urls: trimmedSoraImageUrl ? [trimmedSoraImageUrl] : [],
               aspect_ratio: soraAspect,
               shots,
             },
@@ -731,7 +833,7 @@ export default function ContentGeneratorPage() {
         return item;
       });
 
-      await runWithLimit(Math.max(1, Math.min(3, videoParallel)), tasks);
+      await runWithLimit(Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, videoParallel)), tasks);
     } catch (e: any) {
       if (e?.name === "AbortError") setVideoError("Generation cancelled.");
       else setVideoError(e?.message || "Something went wrong.");
@@ -1029,11 +1131,13 @@ export default function ContentGeneratorPage() {
                       <select
                         className="rounded-md bg-neutral-900 border border-neutral-800 p-2 text-sm"
                         value={speed}
-                        onChange={(e) => setSpeed(Number(e.target.value) as 1 | 2 | 3)}
+                        onChange={(e) => setSpeed(Number(e.target.value) as RunSpeed)}
                       >
-                        <option value={1}>1× (safe)</option>
-                        <option value={2}>2×</option>
-                        <option value={3}>3×</option>
+                        {RUN_SPEED_OPTIONS.map((value) => (
+                          <option key={value} value={value}>
+                            {value}×{value === 1 ? " (safe)" : value === MAX_CONCURRENT_REQUESTS ? " (max)" : ""}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1051,7 +1155,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                       className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
                       onClick={onGenerateNewRun}
                       disabled={!referenceUrl || promptLines.length === 0}
-                      title="Start a new run. Oldest of 3 will be removed automatically."
+                      title={`Start a new run. Oldest of ${MAX_CONCURRENT_RUNS} will be removed automatically.`}
                     >
                       Start Run ({promptLines.length || 0})
                     </button>
@@ -1142,6 +1246,28 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                           alt={`Main ${activeRun.activeIdx + 1}`}
                           className="w-full h-auto"
                         />
+                        {activeRun.images.length > 1 && (
+                          <>
+                            <button
+                              type="button"
+                              className="absolute top-1/2 left-2 -translate-y-1/2 rounded-full bg-black/60 hover:bg-black/80 border border-white/30 text-white h-8 w-8 flex items-center justify-center text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                              onClick={() => stepActiveImage(activeRun.id, -1)}
+                              disabled={activeRun.activeIdx === 0}
+                              aria-label="Previous image"
+                            >
+                              ‹
+                            </button>
+                            <button
+                              type="button"
+                              className="absolute top-1/2 right-2 -translate-y-1/2 rounded-full bg-black/60 hover:bg-black/80 border border-white/30 text-white h-8 w-8 flex items-center justify-center text-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                              onClick={() => stepActiveImage(activeRun.id, 1)}
+                              disabled={activeRun.activeIdx >= activeRun.images.length - 1}
+                              aria-label="Next image"
+                            >
+                              ›
+                            </button>
+                          </>
+                        )}
                         <div className="absolute top-2 right-2 flex items-center gap-3">
                           <input
                             type="checkbox"
@@ -1240,26 +1366,24 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   value={videoModel}
                   onChange={(e) => setVideoModel(e.target.value as VideoModelId)}
                 >
-                  <optgroup label="Kling (KIE)">
-                    <option value="kling/v2-5-turbo-image-to-video-pro">Kling — Image → Video</option>
-                    <option value="kling/v2-5-turbo-text-to-video-pro">Kling — Text → Video</option>
-                  </optgroup>
-                  <optgroup label="Veo 3.1 (KIE / /veo/generate)">
-                    <option value="veo3_fast">Veo 3.1 Fast</option>
-                    <option value="veo3">Veo 3.1 Quality</option>
-                  </optgroup>
-                  <optgroup label="Sora (KIE storyboard)">
-                    <option value="sora-2-pro-storyboard">Sora — Storyboard</option>
-                  </optgroup>
+                  {VIDEO_MODEL_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
 
               {/* Product / reference (shown only when the selected model can use an image) */}
-              {(videoNeedsImage || videoModel.startsWith("kling/")) && (
+              {showReferencePicker && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="flex items-center justify-between">
                     <label className="text-sm text-neutral-300">Reference (Product or custom URL)</label>
-                    {videoModel !== "sora-2-pro-storyboard" && (
+                    {videoModelDef.id !== "sora-2-pro-storyboard" && (
                       <button
                         type="button"
                         className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
@@ -1295,7 +1419,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   )}
 
                   {/* Veo optional second image (only when not TEXT_2_VIDEO) */}
-                  {(videoModel === "veo3" || videoModel === "veo3_fast") && veoGenType !== "TEXT_2_VIDEO" && (
+                  {isVeo && veoGenType !== "TEXT_2_VIDEO" && (
                     <div className="space-y-2 mt-3">
                       <label className="text-sm text-neutral-300">
                         Second image URL (optional, becomes last frame)
@@ -1310,7 +1434,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   )}
 
                   {/* Sora optional reference image */}
-                  {videoModel === "sora-2-pro-storyboard" && (
+                  {videoModelDef.id === "sora-2-pro-storyboard" && (
                     <div className="space-y-2 mt-3">
                       <label className="text-sm text-neutral-300">Reference image URL (optional)</label>
                       <input
@@ -1321,11 +1445,25 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                       />
                     </div>
                   )}
+
+                  <div className="mt-3">
+                    <label className="text-xs text-neutral-400">Reference preview</label>
+                    <div className="mt-1 rounded-xl overflow-hidden border border-neutral-800 bg-neutral-950">
+                      <div className="aspect-square bg-neutral-950">
+                        {videoPreviewUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={videoPreviewUrl} alt="Reference preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-neutral-600 text-sm">—</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* Model-specific controls */}
-              {videoModel.startsWith("kling/") && (
+              {isKling && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1339,7 +1477,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                         <option value="10">10s</option>
                       </select>
                     </div>
-                    {videoModel === "kling/v2-5-turbo-text-to-video-pro" && (
+                    {isKlingText && (
                       <div>
                         <label className="text-xs text-neutral-400">Aspect Ratio</label>
                         <select
@@ -1379,7 +1517,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
               )}
 
-              {(videoModel === "veo3" || videoModel === "veo3_fast") && (
+              {isVeo && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1398,18 +1536,20 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                       <label className="text-xs text-neutral-400">Model Variant</label>
                       <select
                         className="mt-1 w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
-                        value={veoModelChoice}
+                        value={videoModel}
                         onChange={(e) => {
-                          const val = e.target.value as VeoModel;
-                          setVeoModelChoice(val);
-                          setVideoModel(val); // keep videoModel in sync
+                          const val = e.target.value as VideoModelId;
+                          setVideoModel(val);
                           if (val === "veo3" && veoGenType === "REFERENCE_2_VIDEO") {
                             setVeoGenType("TEXT_2_VIDEO");
                           }
                         }}
                       >
-                        <option value="veo3_fast">veo3_fast</option>
-                        <option value="veo3">veo3 (Quality)</option>
+                        {VEO_MODEL_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -1425,11 +1565,11 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                       <option value="TEXT_2_VIDEO">TEXT_2_VIDEO</option>
                       <option value="FIRST_AND_LAST_FRAMES_2_VIDEO">FIRST_AND_LAST_FRAMES_2_VIDEO</option>
                       {/* REFERENCE only for veo3_fast */}
-                      {veoModelChoice === "veo3_fast" && (
+                      {videoModel === "veo3_fast" && (
                         <option value="REFERENCE_2_VIDEO">REFERENCE_2_VIDEO</option>
                       )}
                     </select>
-                    {veoModelChoice === "veo3" && veoGenType === "REFERENCE_2_VIDEO" && (
+                    {videoModel === "veo3" && veoGenType === "REFERENCE_2_VIDEO" && (
                       <p className="text-[11px] text-amber-400 mt-1">
                         REFERENCE_2_VIDEO is only supported by veo3_fast. Switched to TEXT_2_VIDEO.
                       </p>
@@ -1448,7 +1588,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
               )}
 
-              {videoModel === "sora-2-pro-storyboard" && (
+              {videoModelDef.id === "sora-2-pro-storyboard" && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1493,13 +1633,19 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 <input
                   type="range"
                   min={1}
-                  max={3}
+                  max={MAX_CONCURRENT_REQUESTS}
                   step={1}
                   value={videoParallel}
-                  onChange={(e) => setVideoParallel(Number(e.target.value))}
+                  onChange={(e) =>
+                    setVideoParallel(
+                      Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, Number(e.target.value)))
+                    )
+                  }
                   className="w-full"
                 />
-                <div className="text-xs text-neutral-500 mt-1">Parallel: {videoParallel} (max 3)</div>
+                <div className="text-xs text-neutral-500 mt-1">
+                  Parallel: {videoParallel} (max {MAX_CONCURRENT_REQUESTS})
+                </div>
               </div>
             </div>
 
@@ -1512,11 +1658,11 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 <textarea
                   className="w-full h-56 rounded-md bg-neutral-900 border border-neutral-800 p-3"
                   placeholder={
-                    videoModel.startsWith("kling/")
-                      ? (videoModel === "kling/v2-5-turbo-image-to-video-pro"
+                    isKling
+                      ? (isKlingImage
                           ? `slow product orbit\nmacro detail pan, dramatic lighting`
                           : `Wide shot of city at dusk, slow aerial push-in\nCinematic macro of waves with golden reflections`)
-                      : videoModel === "sora-2-pro-storyboard"
+                      : videoModelDef.id === "sora-2-pro-storyboard"
                       ? `Overall story/theme for the storyboard (each line's Scene can override)`
                       : `Describe the scene(s) you want to generate`
                   }
@@ -1531,7 +1677,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                     disabled={
                       videoLoading ||
                       videoPromptLines.length === 0 ||
-                      (videoNeedsImage && !currentRefUrl && videoModel !== "veo3" && videoModel !== "veo3_fast")
+                      (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo)
                     }
                   >
                     {videoLoading ? "Generating…" : `Generate ${videoPromptLines.length || ""}`}
@@ -1746,13 +1892,13 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 <h3 className="font-semibold text-neutral-100">Overview</h3>
                 <p>
                   Outlight is a multi-model content generator for <b>images</b> and <b>videos</b>. Images support up to{" "}
-                  <b>3 concurrent runs</b> with parallel requests per run. Videos support Kling, Veo 3.1, and Sora storyboard via KIE.
+                  <b>{MAX_CONCURRENT_RUNS} concurrent runs</b> with parallel requests per run. Videos support Kling, Veo 3.1, and Sora storyboard via KIE.
                 </p>
               </section>
               <section>
                 <h3 className="font-semibold text-neutral-100">Video models</h3>
                 <ul className="list-disc ml-5 space-y-1">
-                  <li>Kling: Image→Video or Text→Video (duration, ratio, negative, cfg).</li>
+                  <li>Kling 2.5 Turbo &amp; 2.1: Image→Video or Text→Video (duration, ratio, negative, cfg).</li>
                   <li>Veo 3.1: Quality or Fast; TEXT_2_VIDEO, FIRST_AND_LAST_FRAMES; REFERENCE_2_VIDEO (Fast only).</li>
                   <li>Sora Storyboard: shots as <code>duration|Scene</code> lines; optional reference image.</li>
                 </ul>
@@ -1776,7 +1922,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               somethingRunning ? "bg-emerald-400 animate-pulse" : "bg-neutral-500"
             }`}
           />
-          <span className="text-xs text-neutral-200">Runs {runs.length}/3</span>
+          <span className="text-xs text-neutral-200">Runs {runs.length}/{MAX_CONCURRENT_RUNS}</span>
         </div>
       </div>
     </main>
