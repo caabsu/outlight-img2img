@@ -11,7 +11,11 @@ const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY!;
 
 // ---- TYPES from your UI ----
+type VideoProvider = "kling";
+
 type PostBody = {
+  provider?: VideoProvider;
+  model?: string;
   // mode: "image-to-video" | "text-to-video"
   mode: "image-to-video" | "text-to-video";
   // shared
@@ -27,7 +31,8 @@ type PostBody = {
 };
 
 async function getReferenceUrl(productId: string | null | undefined, customUrl: string | null | undefined) {
-  if (customUrl) return customUrl;
+  const trimmedCustom = customUrl?.trim();
+  if (trimmedCustom) return trimmedCustom;
   if (!productId) throw new Error("Reference image URL required (image-to-video).");
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   const { data, error } = await supabase
@@ -101,7 +106,9 @@ export async function POST(req: Request) {
 
     const body = (await req.json()) as PostBody;
     const {
+      provider = "kling",
       mode,
+      model,
       prompt,
       duration = "5",
       negative_prompt,
@@ -112,6 +119,9 @@ export async function POST(req: Request) {
     } = body;
 
     if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
+    if (provider !== "kling") {
+      return NextResponse.json({ error: `Provider ${provider} not supported` }, { status: 400 });
+    }
     if (mode !== "image-to-video" && mode !== "text-to-video") {
       return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
     }
@@ -120,7 +130,7 @@ export async function POST(req: Request) {
     if (mode === "image-to-video") {
       const image_url = await getReferenceUrl(productId, customUrl);
       const payload = {
-        model: "kling/v2-5-turbo-image-to-video-pro",
+        model: model || "kling/v2-5-turbo-image-to-video-pro",
         callBackUrl: "", // optional; leave blank for polling
         input: {
           prompt,
@@ -137,7 +147,7 @@ export async function POST(req: Request) {
 
     // text-to-video
     const payload = {
-      model: "kling/v2-5-turbo-text-to-video-pro",
+      model: model || "kling/v2-5-turbo-text-to-video-pro",
       callBackUrl: "",
       input: {
         prompt,
