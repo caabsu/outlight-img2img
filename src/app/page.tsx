@@ -270,6 +270,8 @@ export default function ContentGeneratorPage() {
   const [libSearch, setLibSearch] = useState("");
   const [libItems, setLibItems] = useState<LibraryItem[]>([]);
   const [libLoading, setLibLoading] = useState(false);
+  const [libFilterProduct, setLibFilterProduct] = useState<string>("");
+  const [libFilterModel, setLibFilterModel] = useState<string>("");
 
   // Saved images library
   const [savedImagesOpen, setSavedImagesOpen] = useState(false);
@@ -454,21 +456,43 @@ export default function ContentGeneratorPage() {
   }
 
   // Library
-  async function openLibrary() {
-    setLibOpen(true);
+  async function loadLibrary() {
     setLibLoading(true);
     try {
       const url = new URL("/api/prompts", window.location.origin);
-      if (selectedId !== "custom") url.searchParams.set("productId", selectedId);
+      if (libFilterProduct) url.searchParams.set("productId", libFilterProduct);
       if (libSearch.trim()) url.searchParams.set("q", libSearch.trim());
       const res = await fetch(url.toString());
       const json = await res.json();
-      if (res.ok) setLibItems(json.prompts || []);
-      else alert(json.error || "Failed to load library");
+      if (res.ok) {
+        let items = json.prompts || [];
+        // Client-side filter by model if needed
+        if (libFilterModel) {
+          items = items.filter((item: LibraryItem) => item.model_name === libFilterModel);
+        }
+        setLibItems(items);
+      } else {
+        setSaveToast({ message: json.error || "Failed to load library", type: "error" });
+      }
     } finally {
       setLibLoading(false);
     }
   }
+
+  function openLibrary() {
+    setLibOpen(true);
+    setLibFilterProduct("");
+    setLibFilterModel("");
+    loadLibrary();
+  }
+
+  // Reload library when filters change
+  useEffect(() => {
+    if (libOpen) {
+      loadLibrary();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [libFilterProduct, libFilterModel]);
   async function saveSinglePrompt(p: string) {
     const res = await fetch("/api/prompts", {
       method: "POST",
@@ -497,7 +521,6 @@ export default function ContentGeneratorPage() {
   }
 
   async function deletePrompt(id: string) {
-    if (!confirm("Delete this prompt?")) return;
     try {
       const res = await fetch(`/api/prompts/${id}`, { method: "DELETE" });
       const json = await res.json();
@@ -506,7 +529,7 @@ export default function ContentGeneratorPage() {
       } else {
         setSaveToast({ message: "Prompt deleted", type: "success" });
         // Reload library
-        await openLibrary();
+        await loadLibrary();
       }
     } catch (e: unknown) {
       setSaveToast({ message: (e as Error)?.message || "Delete failed", type: "error" });
@@ -1919,22 +1942,24 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               {batchVideoMode ? (
                 <>
                   <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60">
-                    <label className="text-sm text-neutral-300 mb-2 block">Upload Images for Batch</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="w-full text-sm text-neutral-400"
-                      onChange={async (e) => {
-                        const urls = await filesToDataUrls(e.target.files);
+                    <label className="text-sm text-neutral-300 mb-2 block">Image URLs (HTTPS only, one per line)</label>
+                    <textarea
+                      className="w-full rounded bg-neutral-900 border border-neutral-800 p-2 text-sm min-h-[120px] font-mono text-xs"
+                      placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg&#10;https://example.com/image3.jpg"
+                      value={batchVideoImages.join('\n')}
+                      onChange={(e) => {
+                        const urls = e.target.value.split('\n').map(u => u.trim()).filter(Boolean);
                         setBatchVideoImages(urls);
                       }}
                     />
                     {batchVideoImages.length > 0 && (
                       <div className="mt-2 text-xs text-neutral-400">
-                        {batchVideoImages.length} image(s) selected
+                        {batchVideoImages.length} image URL(s) ready
                       </div>
                     )}
+                    <p className="text-xs text-neutral-500 mt-2">
+                      Note: Images must be publicly accessible HTTPS URLs. You can use saved images from your library or product images.
+                    </p>
                   </div>
                   <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60">
                     <label className="text-sm text-neutral-300">Single Prompt (for all images)</label>
@@ -2274,11 +2299,17 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
 
                 {videoProgress.total > 0 && (
-                  <div className="h-1 w-full bg-neutral-800 rounded">
-                    <div
-                      className="h-1 bg-white/70 rounded"
-                      style={{ width: `${videoPct}%`, transition: "width .2s ease" }}
-                    />
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-xs text-neutral-400">
+                      <span>Generating videos...</span>
+                      <span>{videoProgress.done} / {videoProgress.total} ({videoPct}%)</span>
+                    </div>
+                    <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full"
+                        style={{ width: `${videoPct}%`, transition: "width .2s ease" }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -2366,19 +2397,45 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               </button>
             </div>
 
-            <div className="mb-3">
+            <div className="mb-3 space-y-2">
               <input
                 type="text"
                 placeholder="Search prompts..."
-                className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                className="w-full rounded bg-neutral-900 border border-neutral-800 p-2 text-sm"
                 value={libSearch}
                 onChange={(e) => setLibSearch(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
-                    openLibrary();
+                    loadLibrary();
                   }
                 }}
               />
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  className="w-full rounded bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                  value={libFilterProduct}
+                  onChange={(e) => setLibFilterProduct(e.target.value)}
+                >
+                  <option value="">All Products</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="w-full rounded bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                  value={libFilterModel}
+                  onChange={(e) => setLibFilterModel(e.target.value)}
+                >
+                  <option value="">All Models</option>
+                  {MODEL_LIST.map((m) => (
+                    <option key={m.id} value={`${m.label}-${m.version}`}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {libLoading && (
