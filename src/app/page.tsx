@@ -220,6 +220,14 @@ export default function ContentGeneratorPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<string>("custom");
   const [customUrl, setCustomUrl] = useState<string>("");
+  // New: multiple custom URLs and uploads for image models
+  const [customUrls, setCustomUrls] = useState<string[]>([]);
+  const [customUploads, setCustomUploads] = useState<string[]>([]);
+  // New: when a product is selected, allow additional refs (URLs or uploads)
+  const [extraRefUrls, setExtraRefUrls] = useState<string[]>([]);
+  const [extraRefUploads, setExtraRefUploads] = useState<string[]>([]);
+  // Reference image lightbox
+  const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
 
   // Model selection (image)
   const [modelId, setModelId] = useState<string>("nanobanana-v1");
@@ -267,6 +275,59 @@ export default function ContentGeneratorPage() {
   const productName = selected ? selected.name : "Custom";
   const referenceUrl =
     selectedId === "custom" ? customUrl.trim() : (selected?.image_url as string | undefined) ?? "";
+
+  // Helpers to load files as data URLs (client-side only)
+  async function filesToDataUrls(files: FileList | null): Promise<string[]> {
+    if (!files || files.length === 0) return [];
+    const tasks: Promise<string>[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      tasks.push(
+        new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(f);
+        })
+      );
+    }
+    return await Promise.all(tasks);
+  }
+
+  // Compute all reference sources in display order (uploads first for custom)
+  const refSources = useMemo(() => {
+    if (selectedId === "custom") {
+      const list = [
+        ...customUploads,
+        ...([customUrl.trim()].filter(Boolean) as string[]),
+        ...customUrls.map((u) => u.trim()).filter(Boolean),
+      ];
+      const seen = new Set<string>();
+      return list.filter((u) => {
+        if (seen.has(u)) return false;
+        seen.add(u);
+        return true;
+      });
+    } else {
+      const base = (selected?.image_url || "").trim();
+      const list = [
+        ...(base ? [base] : []),
+        ...extraRefUploads,
+        ...extraRefUrls.map((u) => u.trim()).filter(Boolean),
+      ];
+      const seen = new Set<string>();
+      return list.filter((u) => {
+        if (seen.has(u)) return false;
+        seen.add(u);
+        return true;
+      });
+    }
+  }, [selectedId, customUploads, customUrl, customUrls, selected, extraRefUploads, extraRefUrls]);
+
+  function removeUploadSrc(src: string) {
+    if (selectedId === "custom") setCustomUploads((prev) => prev.filter((u) => u !== src));
+    else setExtraRefUploads((prev) => prev.filter((u) => u !== src));
+  }
 
   // Load products
   async function loadProducts() {
@@ -476,8 +537,19 @@ export default function ContentGeneratorPage() {
 
   // Start run (image) with pool parallelism
   async function onGenerateNewRun() {
-    const ref = referenceUrl || "";
-    if (!ref || promptLines.length === 0) return;
+    const hasCustomRefs =
+      selectedId === "custom" &&
+      (
+        (customUrl.trim().length > 0) ||
+        customUrls.some((u) => (u || "").trim().length > 0) ||
+        customUploads.length > 0
+      );
+    const hasRefs = selectedId !== "custom" ? (referenceUrl.trim().length > 0) : hasCustomRefs;
+    const ref =
+      selectedId !== "custom"
+        ? (referenceUrl || "")
+        : (customUrl.trim() || customUrls.find((u) => (u || "").trim().length > 0) || customUploads[0] || "");
+    if (!hasRefs || promptLines.length === 0) return;
 
     // drop oldest if already at limit
     setRuns((prev) => {
@@ -570,6 +642,21 @@ export default function ContentGeneratorPage() {
               modelId: run.modelId,
               productId: run.productId,
               customUrl: run.productId ? null : run.referenceUrl,
+              // pass arrays: additionalUrls for product mode, customUrls for custom mode
+              ...(run.productId
+                ? {
+                    additionalUrls: [
+                      ...extraRefUrls.map((u) => u.trim()).filter(Boolean),
+                      ...extraRefUploads,
+                    ],
+                  }
+                : {
+                    customUrls: [
+                      ...(run.referenceUrl ? [run.referenceUrl] : []),
+                      ...customUrls.map((u) => u.trim()).filter(Boolean),
+                      ...customUploads,
+                    ],
+                  }),
               prompt,
               options:
                 getModelById(run.modelId)!.provider === "seedream"
@@ -1037,13 +1124,122 @@ export default function ContentGeneratorPage() {
 
                   {selectedId === "custom" && (
                     <div className="space-y-2 mt-3">
-                      <label className="text-sm text-neutral-300">Custom image URL</label>
+                      {/* Upload first (primary) */}
+                      <div className="space-y-2">
+                        <label className="text-sm text-neutral-300">Upload reference images</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={async (e) => {
+                            const urls = await filesToDataUrls(e.target.files);
+                            if (urls.length) setCustomUploads((prev) => [...prev, ...urls]);
+                            (e.target as HTMLInputElement).value = "";
+                          }}
+                          className="block w-full text-sm text-neutral-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-neutral-700 file:bg-white/5 hover:file:bg-white/10"
+                        />
+                        {customUploads.length > 0 && (
+                          <div className="text-xs text-neutral-400">{customUploads.length} uploaded image(s)</div>
+                        )}
+                      </div>
+
+                      {/* Optional URLs */}
+                      <label className="text-sm text-neutral-300 mt-2">Custom image URL (optional)</label>
                       <input
                         placeholder="https://..."
                         className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
                         value={customUrl}
                         onChange={(e) => setCustomUrl(e.target.value)}
                       />
+                      <div className="space-y-2 mt-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm text-neutral-300">Additional URLs (optional)</label>
+                          <button
+                            type="button"
+                            className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+                            onClick={() => setCustomUrls((prev) => [...prev, ""])}
+                          >
+                            + Add URL
+                          </button>
+                        </div>
+                        {customUrls.map((u, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              placeholder="https://..."
+                              className="flex-1 rounded-md bg-neutral-900 border border-neutral-800 p-2"
+                              value={u}
+                              onChange={(e) =>
+                                setCustomUrls((prev) => prev.map((x, i) => (i === idx ? e.target.value : x)))
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+                              onClick={() => setCustomUrls((prev) => prev.filter((_, i) => i !== idx))}
+                              title="Remove URL"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedId !== "custom" && (
+                    <div className="space-y-2 mt-3">
+                      {/* Upload first (primary) */}
+                      <div className="space-y-2">
+                        <label className="text-sm text-neutral-300">Upload additional images</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={async (e) => {
+                            const urls = await filesToDataUrls(e.target.files);
+                            if (urls.length) setExtraRefUploads((prev) => [...prev, ...urls]);
+                            (e.target as HTMLInputElement).value = "";
+                          }}
+                          className="block w-full text-sm text-neutral-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border file:border-neutral-700 file:bg-white/5 hover:file:bg-white/10"
+                        />
+                        {extraRefUploads.length > 0 && (
+                          <div className="text-xs text-neutral-400">{extraRefUploads.length} uploaded image(s)</div>
+                        )}
+                      </div>
+
+                      {/* Optional URLs */}
+                      <div className="space-y-2 mt-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-sm text-neutral-300">Additional URLs (optional)</label>
+                          <button
+                            type="button"
+                            className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+                            onClick={() => setExtraRefUrls((prev) => [...prev, ""])}
+                          >
+                            + Add URL
+                          </button>
+                        </div>
+                        {extraRefUrls.map((u, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <input
+                              placeholder="https://..."
+                              className="flex-1 rounded-md bg-neutral-900 border border-neutral-800 p-2"
+                              value={u}
+                              onChange={(e) =>
+                                setExtraRefUrls((prev) => prev.map((x, i) => (i === idx ? e.target.value : x)))
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+                              onClick={() => setExtraRefUrls((prev) => prev.filter((_, i) => i !== idx))}
+                              title="Remove URL"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1105,19 +1301,44 @@ export default function ContentGeneratorPage() {
                   </div>
                 )}
 
-                {/* Reference preview */}
+                {/* Reference images (grid + lightbox) */}
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
-                  <label className="text-sm text-neutral-300">Reference preview</label>
-                  <div className="rounded-xl overflow-hidden border border-neutral-800 mt-2 max-w-sm">
-                    <div className="aspect-square bg-neutral-950">
-                      {referenceUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={referenceUrl} alt="Reference" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-neutral-600 text-sm">—</div>
-                      )}
+                  <label className="text-sm text-neutral-300">Reference images</label>
+                  {refSources.length === 0 ? (
+                    <div className="mt-2 rounded-xl border border-neutral-800 bg-neutral-950 flex items-center justify-center text-neutral-600 text-sm h-24">
+                      —
                     </div>
-                  </div>
+                  ) : (
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {refSources.map((src, i) => {
+                        const isUpload = selectedId === "custom" ? customUploads.includes(src) : extraRefUploads.includes(src);
+                        return (
+                          <div key={`${src}-${i}`} className="relative aspect-square rounded-md overflow-hidden border border-neutral-800 group">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={src}
+                              alt={`Ref ${i + 1}`}
+                              className="absolute inset-0 w-full h-full object-cover cursor-pointer"
+                              onClick={() => setRefPreviewUrl(src)}
+                            />
+                            {isUpload && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeUploadSrc(src);
+                                }}
+                                className="absolute top-1 right-1 rounded bg-black/60 hover:bg-black/80 border border-white/30 text-white text-xs px-1 py-0.5"
+                                title="Remove uploaded image"
+                              >
+                                ×
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1154,7 +1375,17 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                     <button
                       className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
                       onClick={onGenerateNewRun}
-                      disabled={!referenceUrl || promptLines.length === 0}
+                      disabled={
+                        (
+                          selectedId !== "custom"
+                            ? referenceUrl.trim().length === 0
+                            : (
+                                customUrl.trim().length === 0 &&
+                                !customUrls.some((u) => (u || "").trim().length > 0) &&
+                                customUploads.length === 0
+                              )
+                        ) || promptLines.length === 0
+                      }
                       title={`Start a new run. Oldest of ${MAX_CONCURRENT_RUNS} will be removed automatically.`}
                     >
                       Start Run ({promptLines.length || 0})
@@ -1674,7 +1905,9 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   <button
                     className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
                     onClick={onGenerateVideo}
+                    title={!isKling ? "Coming soon: provider not yet supported" : undefined}
                     disabled={
+                      !isKling ||
                       videoLoading ||
                       videoPromptLines.length === 0 ||
                       (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo)
@@ -1908,6 +2141,30 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
         </div>
       )}
 
+      {/* Reference image lightbox */}
+      {refPreviewUrl && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
+          onClick={() => setRefPreviewUrl(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-2 flex justify-end">
+              <button
+                className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-1"
+                onClick={() => setRefPreviewUrl(null)}
+              >
+                Close
+              </button>
+            </div>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={refPreviewUrl} alt="Reference preview" className="w-full h-auto block bg-black" />
+          </div>
+        </div>
+      )}
+
       {/* Floating mini-indicator for image runs on mobile */}
       <div className="fixed bottom-4 right-4 md:hidden">
         <div
@@ -1928,3 +2185,5 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
     </main>
   );
 }
+
+// Lightbox modal for reference images

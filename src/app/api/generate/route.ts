@@ -23,7 +23,12 @@ const KIE_KEY = process.env.KIE_API_KEY;
 type PostBody = {
   modelId: string; // "nanobanana-v1" or startsWith("seedream")
   productId: string | null;
-  customUrl: string | null;
+  // legacy single custom url
+  customUrl?: string | null;
+  // new: multiple custom urls (http/https or data: URIs)
+  customUrls?: string[];
+  // new: additional refs when product is selected (http/https or data: URIs)
+  additionalUrls?: string[];
   prompt: string;
   options?: {
     image_size?: string;       // seedream-only
@@ -34,7 +39,22 @@ type PostBody = {
 };
 
 /* ========================= HELPERS ========================= */
+function parseDataUrl(url: string): { mime: string; base64: string } | null {
+  try {
+    if (!url.startsWith("data:")) return null;
+    const m = /^data:([^;]+);base64,(.*)$/i.exec(url);
+    if (!m) return null;
+    const mime = m[1] || "image/png";
+    const base64 = m[2] || "";
+    return { mime, base64 };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
+  const parsed = parseDataUrl(url);
+  if (parsed) return parsed;
   const res = await fetch(url, {
     redirect: "follow",
     headers: {
@@ -140,14 +160,12 @@ function extractGeminiImage(json: any): {
   };
 }
 
-/** Single-turn image edit: IMAGE first, then TEXT (works with v1beta REST) */
+/** Single-turn image edit: one or more IMAGES first, then TEXT (v1beta REST) */
 async function callGeminiImageEdit({
-  mime,
-  base64,
+  images,
   text,
 }: {
-  mime: string;
-  base64: string;
+  images: Array<{ mime: string; base64: string }>;
   text: string;
 }) {
   const payload = {
@@ -155,10 +173,10 @@ async function callGeminiImageEdit({
       {
         role: "user",
         parts: [
-          { inline_data: { mime_type: mime, data: base64 } },
+          ...images.map((img) => ({ inline_data: { mime_type: img.mime, data: img.base64 } })),
           {
             text:
-              `Edit ONLY the attached image using these instructions.\n` +
+              `Edit ONLY the attached image(s) using these instructions.\n` +
               `Return an IMAGE (not text). Instructions:\n${text}`,
           },
         ],
@@ -182,24 +200,47 @@ async function callGeminiImageEdit({
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PostBody;
-    const { modelId, productId, customUrl, prompt, options } = body;
+    const { modelId, productId, customUrl = null, customUrls = [], additionalUrls = [], prompt, options } = body;
 
     if (!prompt || !modelId) {
       return NextResponse.json({ error: "Missing modelId or prompt" }, { status: 400 });
     }
 
-    const referenceUrl = await getReferenceUrl(productId, customUrl);
+    // Build the list of reference images (http(s) or data:) in priority order
+    // product -> its image_url + any additionalUrls; otherwise use customUrls or fallback customUrl
+    let referenceUrls: string[] = [];
+    if (productId) {
+      const main = await getReferenceUrl(productId, null);
+      referenceUrls = [main, ...additionalUrls.filter((u) => typeof u === "string" && u.trim().length > 0)];
+    } else {
+      const cu = customUrl && customUrl.trim() ? [customUrl.trim()] : [];
+      const cus = (customUrls || []).map((u) => (u || "").trim()).filter(Boolean);
+      referenceUrls = [...cu, ...cus];
+    }
+    // Deduplicate while preserving order
+    referenceUrls = Array.from(new Set(referenceUrls));
+    if (referenceUrls.length === 0) {
+      return NextResponse.json({ error: "Reference image URL(s) required" }, { status: 400 });
+    }
 
     /* -------- Seedream (KIE) -------- */
     if (modelId.startsWith("seedream")) {
       if (!KIE_KEY) return NextResponse.json({ error: "Seedream API key missing" }, { status: 500 });
+      // KIE Seedream requires publicly accessible URLs, not data: URIs
+      const bad = referenceUrls.find((u) => !/^https?:\/\//i.test(u));
+      if (bad) {
+        return NextResponse.json(
+          { error: "Seedream requires public HTTP/HTTPS URLs for reference images" },
+          { status: 400 }
+        );
+      }
 
       const payload = {
         model: "bytedance/seedream-v4-edit",
         callBackUrl: "",
         input: {
           prompt,
-          image_urls: [referenceUrl],
+          image_urls: referenceUrls,
           image_size: options?.image_size || "square",
           image_resolution: options?.image_resolution || "1K",
           max_images: options?.max_images || 1,
@@ -265,14 +306,18 @@ export async function POST(req: Request) {
     /* -------- Gemini (Google AI Studio) -------- */
     if (!NB_API_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
-    // 1) load reference image
-    const { mime, base64 } = await fetchImageAsBase64(referenceUrl);
-    if (!mime.startsWith("image/")) {
-      return NextResponse.json({ error: `Reference URL is not an image (mime=${mime})` }, { status: 400 });
+    // 1) load reference image(s)
+    const imgBlobs: Array<{ mime: string; base64: string }> = [];
+    for (const u of referenceUrls) {
+      const { mime, base64 } = await fetchImageAsBase64(u);
+      if (!mime.startsWith("image/")) {
+        return NextResponse.json({ error: `Reference URL is not an image (mime=${mime})` }, { status: 400 });
+      }
+      imgBlobs.push({ mime, base64 });
     }
 
-    // 2) single-turn (IMAGE first, then TEXT)
-    const { nbRes, nbJson } = await callGeminiImageEdit({ mime, base64, text: prompt });
+    // 2) single-turn (IMAGES first, then TEXT)
+    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt });
 
     if (!nbRes.ok) {
       const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
