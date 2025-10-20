@@ -276,6 +276,11 @@ export default function ContentGeneratorPage() {
   const [savedImages, setSavedImages] = useState<SavedImage[]>([]);
   const [savedImagesLoading, setSavedImagesLoading] = useState(false);
   const [savedImagesError, setSavedImagesError] = useState<string | null>(null);
+  const [savedImagesFilterProduct, setSavedImagesFilterProduct] = useState<string>("");
+  const [savedImagesFilterModel, setSavedImagesFilterModel] = useState<string>("");
+
+  // Toast notifications for save feedback
+  const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const [prodOpen, setProdOpen] = useState(false);
   const [prodSaving, setProdSaving] = useState(false);
@@ -359,6 +364,29 @@ export default function ContentGeneratorPage() {
   useEffect(() => {
     loadProducts();
   }, []);
+
+  // ESC key handler to close panels
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (libOpen) setLibOpen(false);
+        else if (savedImagesOpen) setSavedImagesOpen(false);
+        else if (prodOpen) setProdOpen(false);
+        else if (guideOpen) setGuideOpen(false);
+        else if (refPreviewUrl) setRefPreviewUrl(null);
+      }
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, [libOpen, savedImagesOpen, prodOpen, guideOpen, refPreviewUrl]);
+
+  // Auto-hide toast after 3 seconds
+  useEffect(() => {
+    if (saveToast) {
+      const timer = setTimeout(() => setSaveToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveToast]);
 
   // Product manager
   function openProductManager() {
@@ -453,8 +481,11 @@ export default function ContentGeneratorPage() {
       }),
     });
     const json = await res.json();
-    if (!res.ok) alert(`Save failed: ${json.error || "unknown error"}`);
-    else alert("Prompt saved.");
+    if (!res.ok) {
+      setSaveToast({ message: `Failed to save prompt: ${json.error || "unknown error"}`, type: "error" });
+    } else {
+      setSaveToast({ message: "Prompt saved", type: "success" });
+    }
   }
   async function copyPromptToClipboard(p: string) {
     try {
@@ -478,6 +509,12 @@ export default function ContentGeneratorPage() {
     try {
       const url = new URL("/api/saved-images", window.location.origin);
       url.searchParams.set("limit", "100");
+      if (savedImagesFilterProduct) {
+        url.searchParams.set("productId", savedImagesFilterProduct);
+      }
+      if (savedImagesFilterModel) {
+        url.searchParams.set("modelName", savedImagesFilterModel);
+      }
       const res = await fetch(url.toString());
       const json = await res.json();
       if (res.ok) {
@@ -493,6 +530,7 @@ export default function ContentGeneratorPage() {
   }
 
   async function saveImageToLibrary(imageDataUrl: string, prompt: string) {
+    setSaveToast({ message: "Saving image...", type: "success" });
     try {
       const res = await fetch("/api/saved-images", {
         method: "POST",
@@ -508,16 +546,16 @@ export default function ContentGeneratorPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(`Save failed: ${json.error || "unknown error"}`);
+        setSaveToast({ message: `Failed to save: ${json.error || "unknown error"}`, type: "error" });
       } else {
-        alert("Image saved to library!");
+        setSaveToast({ message: "Image saved", type: "success" });
         // Reload saved images if library is open
         if (savedImagesOpen) {
           await loadSavedImages();
         }
       }
     } catch (e: unknown) {
-      alert((e as Error)?.message || "Save failed");
+      setSaveToast({ message: (e as Error)?.message || "Save failed", type: "error" });
     }
   }
 
@@ -527,17 +565,20 @@ export default function ContentGeneratorPage() {
       const res = await fetch(`/api/saved-images/${id}`, { method: "DELETE" });
       const json = await res.json();
       if (!res.ok) {
-        alert(json.error || "Failed to delete image");
+        setSaveToast({ message: json.error || "Failed to delete image", type: "error" });
       } else {
+        setSaveToast({ message: "Image deleted", type: "success" });
         await loadSavedImages();
       }
     } catch (e: unknown) {
-      alert((e as Error)?.message || "Delete failed");
+      setSaveToast({ message: (e as Error)?.message || "Delete failed", type: "error" });
     }
   }
 
   function openSavedImagesLibrary() {
     setSavedImagesOpen(true);
+    setSavedImagesFilterProduct("");
+    setSavedImagesFilterModel("");
     loadSavedImages();
   }
 
@@ -547,8 +588,16 @@ export default function ContentGeneratorPage() {
     } else {
       setExtraRefUploads((prev) => [...prev, imageData]);
     }
-    alert("Image added to reference images!");
+    setSaveToast({ message: "Added to reference images", type: "success" });
   }
+
+  // Reload saved images when filters change
+  useEffect(() => {
+    if (savedImagesOpen) {
+      loadSavedImages();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [savedImagesFilterProduct, savedImagesFilterModel]);
 
   // Runs helpers
   const activeRun = useMemo(() => runs.find((r) => r.id === activeRunId) || null, [runs, activeRunId]);
@@ -2119,6 +2168,78 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
         )}
       </div>
 
+      {/* Prompt Library Panel */}
+      {libOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex">
+          <div className="ml-auto h-full w-full max-w-3xl bg-neutral-950 border-l border-neutral-800 p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Prompt Library</h2>
+              <button
+                className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-1"
+                onClick={() => setLibOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mb-3">
+              <input
+                type="text"
+                placeholder="Search prompts..."
+                className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                value={libSearch}
+                onChange={(e) => setLibSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    openLibrary();
+                  }
+                }}
+              />
+            </div>
+
+            {libLoading && (
+              <div className="text-sm text-neutral-400">Loading prompts...</div>
+            )}
+
+            {!libLoading && libItems.length === 0 && (
+              <div className="text-sm text-neutral-500">No saved prompts found. Save prompts to see them here!</div>
+            )}
+
+            <div className="flex-1 overflow-auto space-y-2">
+              {libItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3 hover:border-neutral-700 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3 mb-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-neutral-200 line-clamp-3">
+                        {item.prompt}
+                      </p>
+                    </div>
+                    <button
+                      className="shrink-0 rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-xs"
+                      onClick={() => {
+                        setPromptsText((prev) => (prev ? prev + "\n" + item.prompt : item.prompt));
+                        setSaveToast({ message: "Prompt added", type: "success" });
+                      }}
+                      title="Add to prompts"
+                    >
+                      Use
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-3 text-[10px] text-neutral-500">
+                    <span>{item.model_name}</span>
+                    {item.product_name && <span>{item.product_name}</span>}
+                    <span className="ml-auto">{new Date(item.created_at).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Product Manager Panel */}
       {prodOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex">
@@ -2269,6 +2390,40 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               </button>
             </div>
 
+            {/* Filters */}
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-neutral-400 mb-1 block">Filter by Product</label>
+                <select
+                  className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                  value={savedImagesFilterProduct}
+                  onChange={(e) => setSavedImagesFilterProduct(e.target.value)}
+                >
+                  <option value="">All Products</option>
+                  {products.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-neutral-400 mb-1 block">Filter by Model</label>
+                <select
+                  className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                  value={savedImagesFilterModel}
+                  onChange={(e) => setSavedImagesFilterModel(e.target.value)}
+                >
+                  <option value="">All Models</option>
+                  {MODEL_LIST.map((m) => (
+                    <option key={m.id} value={`${m.label}-${m.version}`}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
             {savedImagesLoading && (
               <div className="text-sm text-neutral-400">Loading saved images...</div>
             )}
@@ -2278,7 +2433,11 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
             )}
 
             {!savedImagesLoading && savedImages.length === 0 && (
-              <div className="text-sm text-neutral-500">No saved images yet. Save generated images to see them here!</div>
+              <div className="text-sm text-neutral-500">
+                {savedImagesFilterProduct || savedImagesFilterModel
+                  ? "No images match the selected filters."
+                  : "No saved images yet. Save generated images to see them here!"}
+              </div>
             )}
 
             <div className="flex-1 overflow-auto">
@@ -2380,6 +2539,28 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
           <span className="text-xs text-neutral-200">Runs {runs.length}/{MAX_CONCURRENT_RUNS}</span>
         </div>
       </div>
+
+      {/* Toast Notification */}
+      {saveToast && (
+        <div className="fixed top-4 right-4 z-[60] animate-in fade-in slide-in-from-top-2 duration-300">
+          <div
+            className={`rounded-lg px-4 py-3 shadow-lg border backdrop-blur-sm ${
+              saveToast.type === "success"
+                ? "bg-emerald-900/90 border-emerald-600/50 text-emerald-100"
+                : "bg-red-900/90 border-red-600/50 text-red-100"
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {saveToast.type === "success" ? (
+                <span className="text-lg">✓</span>
+              ) : (
+                <span className="text-lg">✕</span>
+              )}
+              <span className="text-sm font-medium">{saveToast.message}</span>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
