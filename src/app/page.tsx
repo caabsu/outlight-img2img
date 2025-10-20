@@ -20,6 +20,19 @@ type Product = { id: string; name: string; slug: string; image_url: string };
 /** IMAGE generation (unchanged) */
 type GenImage = { id: string; prompt: string; imageDataUrl: string };
 
+type CustomReference = {
+  id: string;
+  kind: "url" | "upload";
+  value: string;
+  name?: string;
+};
+
+type ProductExtraReference = {
+  id: string;
+  url: string;
+  name?: string;
+};
+
 type LibraryItem = {
   id: string;
   product_id: string | null;
@@ -40,6 +53,7 @@ type Run = {
   productId: string | null;
   productName: string;
   referenceUrl: string;
+  useProductImage: boolean;
   prompts: string[];
 
   status: RunStatus;
@@ -151,6 +165,13 @@ function safeName(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 
+function randomId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+}
+
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -169,6 +190,18 @@ function downloadDataUrl(dataUrl: string, filename: string) {
   document.body.appendChild(a);
   a.click();
   a.remove();
+}
+
+function readFileAsDataURL(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") resolve(reader.result);
+      else reject(new Error("File read returned non-string result"));
+    };
+    reader.onerror = () => reject(reader.error || new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 /** Accepts data URL or http(s) URL and returns Uint8Array + mime (for ZIP) */
@@ -219,7 +252,13 @@ export default function ContentGeneratorPage() {
   // Products / reference
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedId, setSelectedId] = useState<string>("custom");
-  const [customUrl, setCustomUrl] = useState<string>("");
+  const [customReferences, setCustomReferences] = useState<CustomReference[]>(() => [
+    { id: randomId(), kind: "url", value: "" },
+  ]);
+  const [productExtraRefs, setProductExtraRefs] = useState<Record<string, ProductExtraReference[]>>({});
+  const [activeReferenceId, setActiveReferenceId] = useState<string | null>(null);
+  const customFileInputRef = useRef<HTMLInputElement | null>(null);
+  const productFileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Model selection (image)
   const [modelId, setModelId] = useState<string>("nanobanana-v1");
@@ -265,8 +304,325 @@ export default function ContentGeneratorPage() {
 
   const selected = useMemo(() => products.find((p) => p.id === selectedId), [products, selectedId]);
   const productName = selected ? selected.name : "Custom";
-  const referenceUrl =
-    selectedId === "custom" ? customUrl.trim() : (selected?.image_url as string | undefined) ?? "";
+  const productExtrasForSelected = useMemo(() => {
+    if (selectedId === "custom") return [] as ProductExtraReference[];
+    return productExtraRefs[selectedId] ?? [];
+  }, [productExtraRefs, selectedId]);
+
+  useEffect(() => {
+    if (selectedId === "custom") {
+      if (!customReferences.length) return;
+      if (!activeReferenceId || !customReferences.some((ref) => ref.id === activeReferenceId)) {
+        setActiveReferenceId(customReferences[0].id);
+      }
+    } else {
+      if (!selected) {
+        if (activeReferenceId) setActiveReferenceId(null);
+        return;
+      }
+      const baseId = `product:${selected.id}`;
+      const validIds = [baseId, ...productExtrasForSelected.map((extra) => extra.id)];
+      if (!activeReferenceId || !validIds.includes(activeReferenceId)) {
+        setActiveReferenceId(baseId);
+      }
+    }
+  }, [activeReferenceId, customReferences, productExtrasForSelected, selected, selectedId]);
+
+  const activeReference = useMemo(() => {
+    if (!activeReferenceId) return { url: "", usesProductBase: false };
+    if (selectedId === "custom") {
+      const ref = customReferences.find((item) => item.id === activeReferenceId);
+      if (!ref) return { url: "", usesProductBase: false };
+      const value = ref.kind === "url" ? ref.value.trim() : ref.value;
+      return { url: value, usesProductBase: false };
+    }
+    if (!selected) return { url: "", usesProductBase: false };
+    const baseId = `product:${selected.id}`;
+    if (activeReferenceId === baseId) {
+      const baseUrl = (selected.image_url || "").trim();
+      return { url: baseUrl, usesProductBase: true };
+    }
+    const extra = productExtrasForSelected.find((item) => item.id === activeReferenceId);
+    if (extra) return { url: extra.url, usesProductBase: false };
+    return { url: "", usesProductBase: false };
+  }, [activeReferenceId, customReferences, productExtrasForSelected, selected, selectedId]);
+
+  const referenceUrl = activeReference.url;
+  const usingProductBaseImage = activeReference.usesProductBase;
+
+  function addCustomUrl() {
+    const id = randomId();
+    setCustomReferences((prev) => [...prev, { id, kind: "url", value: "" }]);
+    setActiveReferenceId(id);
+  }
+
+  function updateCustomReference(id: string, value: string) {
+    setCustomReferences((prev) => prev.map((ref) => (ref.id === id ? { ...ref, value } : ref)));
+  }
+
+  function removeCustomReference(id: string) {
+    setCustomReferences((prev) => {
+      const filtered = prev.filter((ref) => ref.id !== id);
+      const next: CustomReference[] =
+        filtered.length > 0 ? filtered : [{ id: randomId(), kind: "url", value: "" }];
+      if (!next.some((ref) => ref.id === activeReferenceId)) {
+        setActiveReferenceId(next[0]?.id ?? null);
+      }
+      return next;
+    });
+  }
+
+  async function handleCustomUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (!images.length) return;
+    try {
+      const uploads = await Promise.all(
+        images.map(async (file) => ({
+          id: randomId(),
+          kind: "upload" as const,
+          value: await readFileAsDataURL(file),
+          name: file.name,
+        }))
+      );
+      setCustomReferences((prev) => [...prev, ...uploads]);
+      setActiveReferenceId(uploads[0]?.id ?? null);
+    } finally {
+      if (customFileInputRef.current) customFileInputRef.current.value = "";
+    }
+  }
+
+  async function handleProductExtraUpload(files: FileList | null) {
+    if (!files || files.length === 0 || selectedId === "custom") return;
+    const images = Array.from(files).filter((file) => file.type.startsWith("image/"));
+    if (!images.length) return;
+    try {
+      const uploads = await Promise.all(
+        images.map(async (file) => ({
+          id: randomId(),
+          url: await readFileAsDataURL(file),
+          name: file.name,
+        }))
+      );
+      setProductExtraRefs((prev) => {
+        const existing = prev[selectedId] ?? [];
+        return { ...prev, [selectedId]: [...existing, ...uploads] };
+      });
+      setActiveReferenceId(uploads[0]?.id ?? null);
+    } finally {
+      if (productFileInputRef.current) productFileInputRef.current.value = "";
+    }
+  }
+
+  function removeProductExtra(productId: string, extraId: string) {
+    setProductExtraRefs((prev) => {
+      const existing = prev[productId] ?? [];
+      const filtered = existing.filter((item) => item.id !== extraId);
+      const next = { ...prev } as Record<string, ProductExtraReference[]>;
+      if (filtered.length) next[productId] = filtered;
+      else delete next[productId];
+      return next;
+    });
+    if (activeReferenceId === extraId) {
+      if (selected && selected.id === productId) setActiveReferenceId(`product:${productId}`);
+      else setActiveReferenceId(null);
+    }
+  }
+
+  const renderCustomReferenceFields = () => (
+    <div className="space-y-3 mt-3">
+      <div className="space-y-2">
+        {customReferences.map((ref) => {
+          const isActive = activeReferenceId === ref.id;
+          const trimmed = ref.kind === "url" ? ref.value.trim() : ref.value;
+          return (
+            <div
+              key={ref.id}
+              className="rounded-md border border-neutral-800 bg-neutral-950/60 p-3"
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  className="mt-1 h-4 w-4"
+                  checked={isActive}
+                  onChange={() => setActiveReferenceId(ref.id)}
+                />
+                <div className="flex-1 space-y-2">
+                  {ref.kind === "url" ? (
+                    <>
+                      <input
+                        placeholder="https://..."
+                        className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2 text-sm"
+                        value={ref.value}
+                        onChange={(e) => updateCustomReference(ref.id, e.target.value)}
+                      />
+                      {trimmed && (
+                        <div className="rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
+                          <div className="aspect-square bg-neutral-950">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={trimmed}
+                              alt="Custom reference preview"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-xs text-neutral-400 truncate">
+                        {ref.name || "Uploaded image"}
+                      </div>
+                      <div className="rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
+                        <div className="aspect-square bg-neutral-950">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={ref.value}
+                            alt={ref.name || "Uploaded reference"}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+                {customReferences.length > 1 && (
+                  <button
+                    type="button"
+                    className="text-xs text-neutral-500 hover:text-red-400"
+                    onClick={() => removeCustomReference(ref.id)}
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button
+          type="button"
+          className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+          onClick={addCustomUrl}
+        >
+          + Add URL
+        </button>
+        <button
+          type="button"
+          className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+          onClick={() => customFileInputRef.current?.click()}
+        >
+          Upload images
+        </button>
+      </div>
+      <input
+        type="file"
+        ref={customFileInputRef}
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          void handleCustomUpload(e.target.files);
+        }}
+      />
+    </div>
+  );
+
+  const renderProductReferenceFields = () => {
+    if (!selected) {
+      return (
+        <div className="mt-3 text-xs text-neutral-500">Select a product to view references.</div>
+      );
+    }
+    const baseId = `product:${selected.id}`;
+    return (
+      <div className="space-y-3 mt-3">
+        <div className="space-y-2">
+          <div className="rounded-md border border-neutral-800 bg-neutral-950/60 p-3">
+            <div className="flex items-start gap-3">
+              <input
+                type="radio"
+                className="mt-1 h-4 w-4"
+                checked={activeReferenceId === baseId}
+                onChange={() => setActiveReferenceId(baseId)}
+              />
+              <div className="flex-1">
+                <div className="text-xs text-neutral-400">Primary product image</div>
+                <div className="mt-2 rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
+                  <div className="aspect-square bg-neutral-950">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selected.image_url}
+                      alt={`${selected.name} reference`}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {productExtrasForSelected.map((extra) => (
+            <div
+              key={extra.id}
+              className="rounded-md border border-neutral-800 bg-neutral-950/60 p-3"
+            >
+              <div className="flex items-start gap-3">
+                <input
+                  type="radio"
+                  className="mt-1 h-4 w-4"
+                  checked={activeReferenceId === extra.id}
+                  onChange={() => setActiveReferenceId(extra.id)}
+                />
+                <div className="flex-1">
+                  <div className="text-xs text-neutral-400 truncate">
+                    {extra.name || "Uploaded image"}
+                  </div>
+                  <div className="mt-2 rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
+                    <div className="aspect-square bg-neutral-950">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={extra.url}
+                        alt={extra.name || `${selected.name} reference`}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-neutral-500 hover:text-red-400"
+                  onClick={() => removeProductExtra(selected.id, extra.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <button
+            type="button"
+            className="text-xs rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1"
+            onClick={() => productFileInputRef.current?.click()}
+          >
+            Upload additional reference
+          </button>
+        </div>
+        <input
+          type="file"
+          ref={productFileInputRef}
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void handleProductExtraUpload(e.target.files);
+          }}
+        />
+      </div>
+    );
+  };
 
   // Load products
   async function loadProducts() {
@@ -502,6 +858,7 @@ export default function ContentGeneratorPage() {
       productId: selectedId !== "custom" ? selectedId : null,
       productName,
       referenceUrl: ref,
+      useProductImage: selectedId !== "custom" && usingProductBaseImage,
       prompts: [...promptLines],
       status: "running",
       error: null,
@@ -569,7 +926,8 @@ export default function ContentGeneratorPage() {
             body: JSON.stringify({
               modelId: run.modelId,
               productId: run.productId,
-              customUrl: run.productId ? null : run.referenceUrl,
+              customUrl:
+                run.productId && run.useProductImage ? null : run.referenceUrl || null,
               prompt,
               options:
                 getModelById(run.modelId)!.provider === "seedream"
@@ -645,9 +1003,7 @@ export default function ContentGeneratorPage() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const videoCtlRef = useRef<AbortController | null>(null);
 
-  const currentRefUrl = (
-    selectedId === "custom" ? customUrl : selected?.image_url || ""
-  ).trim();
+  const currentRefUrl = referenceUrl;
 
   const isKling = videoModelDef.provider === "kling";
   const isKlingText = isKling && videoModelDef.kind === "text-to-video";
@@ -760,7 +1116,12 @@ export default function ContentGeneratorPage() {
             ...(isKlingImage
               ? {
                   productId: selectedId !== "custom" ? selectedId : null,
-                  customUrl: selectedId === "custom" ? customUrl.trim() : null,
+                  customUrl:
+                    selectedId === "custom"
+                      ? referenceUrl || null
+                      : !usingProductBaseImage && referenceUrl
+                      ? referenceUrl
+                      : null,
                 }
               : {}),
           };
@@ -1035,17 +1396,9 @@ export default function ContentGeneratorPage() {
                     ))}
                   </select>
 
-                  {selectedId === "custom" && (
-                    <div className="space-y-2 mt-3">
-                      <label className="text-sm text-neutral-300">Custom image URL</label>
-                      <input
-                        placeholder="https://..."
-                        className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
-                        value={customUrl}
-                        onChange={(e) => setCustomUrl(e.target.value)}
-                      />
-                    </div>
-                  )}
+                  {selectedId === "custom"
+                    ? renderCustomReferenceFields()
+                    : renderProductReferenceFields()}
                 </div>
 
                 {/* Seedream-only controls */}
@@ -1406,17 +1759,9 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                     ))}
                   </select>
 
-                  {selectedId === "custom" && (
-                    <div className="space-y-2 mt-3">
-                      <label className="text-sm text-neutral-300">Custom image URL</label>
-                      <input
-                        placeholder="https://..."
-                        className="w-full rounded-md bg-neutral-900 border border-neutral-800 p-2"
-                        value={customUrl}
-                        onChange={(e) => setCustomUrl(e.target.value)}
-                      />
-                    </div>
-                  )}
+                  {selectedId === "custom"
+                    ? renderCustomReferenceFields()
+                    : renderProductReferenceFields()}
 
                   {/* Veo optional second image (only when not TEXT_2_VIDEO) */}
                   {isVeo && veoGenType !== "TEXT_2_VIDEO" && (

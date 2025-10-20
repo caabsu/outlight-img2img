@@ -35,6 +35,15 @@ type PostBody = {
 
 /* ========================= HELPERS ========================= */
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
+  if (url.startsWith("data:")) {
+    const match = /^data:([^;]+);base64,(.*)$/i.exec(url);
+    if (!match) {
+      throw new Error("Invalid data URL for reference image");
+    }
+    const mime = match[1] || "image/png";
+    const base64 = match[2] || "";
+    return { mime, base64 };
+  }
   const res = await fetch(url, {
     redirect: "follow",
     headers: {
