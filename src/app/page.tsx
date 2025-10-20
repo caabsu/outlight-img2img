@@ -490,8 +490,26 @@ export default function ContentGeneratorPage() {
   async function copyPromptToClipboard(p: string) {
     try {
       await navigator.clipboard.writeText(p);
+      setSaveToast({ message: "Copied to clipboard", type: "success" });
     } catch {
-      alert("Could not copy to clipboard.");
+      setSaveToast({ message: "Could not copy", type: "error" });
+    }
+  }
+
+  async function deletePrompt(id: string) {
+    if (!confirm("Delete this prompt?")) return;
+    try {
+      const res = await fetch(`/api/prompts/${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) {
+        setSaveToast({ message: json.error || "Failed to delete prompt", type: "error" });
+      } else {
+        setSaveToast({ message: "Prompt deleted", type: "success" });
+        // Reload library
+        await openLibrary();
+      }
+    } catch (e: unknown) {
+      setSaveToast({ message: (e as Error)?.message || "Delete failed", type: "error" });
     }
   }
   function downloadPromptTxt(p: string, id: string) {
@@ -1666,10 +1684,10 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                               const currentImage = activeRun.images[activeRun.activeIdx];
                               saveImageToLibrary(currentImage.imageDataUrl, currentImage.prompt);
                             }}
-                            className="rounded-md bg-emerald-600/60 hover:bg-emerald-600/75 border border-white/30 text-white text-sm px-3 py-1"
+                            className="rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white text-sm px-3 py-1"
                             title="Save image to library"
                           >
-                            💾 Save
+                            Save
                           </button>
                           <button
                             onClick={() => {
@@ -1681,10 +1699,10 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                               const filename = `${baseProduct}_${baseModel}_${id}.png`;
                               downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, filename);
                             }}
-                            className="rounded-md bg-black/60 hover:bg-black/75 border border-white/30 text-white text-sm px-3 py-1"
+                            className="rounded bg-white/10 hover:bg-white/15 border border-white/20 text-white text-sm px-3 py-1"
                             title="Download image"
                           >
-                            ⬇︎ Download
+                            Download
                           </button>
                         </div>
                       </div>
@@ -2209,7 +2227,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               {libItems.map((item) => (
                 <div
                   key={item.id}
-                  className="rounded-lg border border-neutral-800 bg-neutral-900/40 p-3 hover:border-neutral-700 transition-colors"
+                  className="rounded border border-neutral-800 bg-neutral-900/40 p-3 hover:border-neutral-700 transition-colors"
                 >
                   <div className="flex items-start justify-between gap-3 mb-2">
                     <div className="flex-1 min-w-0">
@@ -2217,16 +2235,25 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                         {item.prompt}
                       </p>
                     </div>
-                    <button
-                      className="shrink-0 rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-xs"
-                      onClick={() => {
-                        setPromptsText((prev) => (prev ? prev + "\n" + item.prompt : item.prompt));
-                        setSaveToast({ message: "Prompt added", type: "success" });
-                      }}
-                      title="Add to prompts"
-                    >
-                      Use
-                    </button>
+                    <div className="shrink-0 flex gap-1.5">
+                      <button
+                        className="rounded bg-white/5 hover:bg-white/10 border border-neutral-700 px-2.5 py-1 text-xs"
+                        onClick={() => {
+                          setPromptsText((prev) => (prev ? prev + "\n" + item.prompt : item.prompt));
+                          setSaveToast({ message: "Prompt added", type: "success" });
+                        }}
+                        title="Add to prompts"
+                      >
+                        Use
+                      </button>
+                      <button
+                        className="rounded bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-red-300 px-2 py-1 text-xs"
+                        onClick={() => deletePrompt(item.id)}
+                        title="Delete prompt"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 text-[10px] text-neutral-500">
                     <span>{item.model_name}</span>

@@ -10,24 +10,33 @@ const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY!;
 
-// ---- TYPES from your UI ----
-type VideoProvider = "kling";
+// ---- TYPES ----
+type VideoProvider = "kling" | "veo" | "sora";
 
 type PostBody = {
-  provider?: VideoProvider;
-  model?: string;
-  // mode: "image-to-video" | "text-to-video"
-  mode: "image-to-video" | "text-to-video";
-  // shared
-  prompt: string;
-  duration?: "5" | "10";          // KIE expects string "5" | "10"
+  provider: VideoProvider;
+  model: string;
+  // Kling-specific
+  mode?: "image-to-video" | "text-to-video";
+  prompt?: string;
+  duration?: "5" | "10";
   negative_prompt?: string;
-  cfg_scale?: number;             // 0..1
-  aspect_ratio?: "16:9" | "9:16" | "1:1"; // text2video only
-
-  // image-to-video reference
+  cfg_scale?: number;
+  aspect_ratio?: "16:9" | "9:16" | "1:1";
   productId?: string | null;
-  customUrl?: string | null;      // direct URL if using custom
+  customUrl?: string | null;
+  // Veo-specific
+  aspectRatio?: "16:9" | "9:16" | "Auto";
+  generationType?: "TEXT_2_VIDEO" | "FIRST_AND_LAST_FRAMES" | "REFERENCE_2_VIDEO";
+  imageUrls?: string[];
+  seeds?: number;
+  // Sora-specific
+  input?: {
+    n_frames?: "10" | "15" | "25";
+    image_urls?: string[];
+    aspect_ratio?: "portrait" | "landscape";
+    shots?: Array<{ duration: number; Scene: string }>;
+  };
 };
 
 async function getReferenceUrl(productId: string | null | undefined, customUrl: string | null | undefined) {
@@ -105,61 +114,106 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as PostBody;
-    const {
-      provider = "kling",
-      mode,
-      model,
-      prompt,
-      duration = "5",
-      negative_prompt,
-      cfg_scale,
-      aspect_ratio,
-      productId = null,
-      customUrl = null,
-    } = body;
+    const { provider, model } = body;
 
-    if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
-    if (provider !== "kling") {
-      return NextResponse.json({ error: `Provider ${provider} not supported` }, { status: 400 });
-    }
-    if (mode !== "image-to-video" && mode !== "text-to-video") {
-      return NextResponse.json({ error: "Invalid mode" }, { status: 400 });
+    if (!provider) return NextResponse.json({ error: "Missing provider" }, { status: 400 });
+
+    let payload: any;
+    let taskId: string;
+    let result: { url: string };
+
+    // KLING MODELS
+    if (provider === "kling") {
+      const {
+        mode,
+        prompt,
+        duration = "5",
+        negative_prompt,
+        cfg_scale,
+        aspect_ratio,
+        productId = null,
+        customUrl = null,
+      } = body;
+
+      if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
+      if (mode !== "image-to-video" && mode !== "text-to-video") {
+        return NextResponse.json({ error: "Invalid mode for Kling" }, { status: 400 });
+      }
+
+      if (mode === "image-to-video") {
+        const image_url = await getReferenceUrl(productId, customUrl);
+        payload = {
+          model: model || "kling/v2-5-turbo-image-to-video-pro",
+          callBackUrl: "",
+          input: {
+            prompt,
+            image_url,
+            duration,
+            ...(negative_prompt ? { negative_prompt } : {}),
+            ...(typeof cfg_scale === "number" ? { cfg_scale } : {}),
+          },
+        };
+      } else {
+        // text-to-video
+        payload = {
+          model: model || "kling/v2-5-turbo-text-to-video-pro",
+          callBackUrl: "",
+          input: {
+            prompt,
+            duration,
+            ...(aspect_ratio ? { aspect_ratio } : {}),
+            ...(negative_prompt ? { negative_prompt } : {}),
+            ...(typeof cfg_scale === "number" ? { cfg_scale } : {}),
+          },
+        };
+      }
+
+      taskId = await kieCreateTask(payload);
+      result = await kiePoll(taskId);
+      return NextResponse.json({ videoUrl: result.url });
     }
 
-    // Build payloads exactly per KIE docs
-    if (mode === "image-to-video") {
-      const image_url = await getReferenceUrl(productId, customUrl);
-      const payload = {
-        model: model || "kling/v2-5-turbo-image-to-video-pro",
-        callBackUrl: "", // optional; leave blank for polling
+    // VEO MODELS
+    if (provider === "veo") {
+      const { prompt, aspectRatio, generationType, imageUrls, seeds } = body;
+
+      if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
+
+      payload = {
+        model: model || "veo3_fast",
+        callBackUrl: "",
         input: {
           prompt,
-          image_url,                 // must be a PUBLIC url < 10MB
-          duration,                  // "5" | "10"
-          ...(negative_prompt ? { negative_prompt } : {}),
-          ...(typeof cfg_scale === "number" ? { cfg_scale } : {}),
+          ...(aspectRatio ? { aspectRatio } : {}),
+          ...(generationType ? { generationType } : {}),
+          ...(imageUrls && imageUrls.length ? { imageUrls } : {}),
+          ...(typeof seeds === "number" ? { seeds } : {}),
         },
       };
-      const taskId = await kieCreateTask(payload);
-      const { url } = await kiePoll(taskId);
-      return NextResponse.json({ videoUrl: url });
+
+      taskId = await kieCreateTask(payload);
+      result = await kiePoll(taskId, 300_000); // 5 min timeout for Veo
+      return NextResponse.json({ videoUrl: result.url });
     }
 
-    // text-to-video
-    const payload = {
-      model: model || "kling/v2-5-turbo-text-to-video-pro",
-      callBackUrl: "",
-      input: {
-        prompt,
-        duration,
-        ...(aspect_ratio ? { aspect_ratio } : {}),
-        ...(negative_prompt ? { negative_prompt } : {}),
-        ...(typeof cfg_scale === "number" ? { cfg_scale } : {}),
-      },
-    };
-    const taskId = await kieCreateTask(payload);
-    const { url } = await kiePoll(taskId);
-    return NextResponse.json({ videoUrl: url });
+    // SORA MODELS
+    if (provider === "sora") {
+      const { input } = body;
+
+      if (!input) return NextResponse.json({ error: "Missing input for Sora" }, { status: 400 });
+
+      payload = {
+        model: model || "sora-2-pro-storyboard",
+        callBackUrl: "",
+        input,
+      };
+
+      taskId = await kieCreateTask(payload);
+      result = await kiePoll(taskId, 360_000); // 6 min timeout for Sora
+      return NextResponse.json({ videoUrl: result.url });
+    }
+
+    return NextResponse.json({ error: `Provider ${provider} not supported` }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
