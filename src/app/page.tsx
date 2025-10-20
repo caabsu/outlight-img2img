@@ -29,6 +29,17 @@ type LibraryItem = {
   created_at: string;
 };
 
+type SavedImage = {
+  id: string;
+  image_data: string;
+  prompt: string;
+  model_name: string;
+  product_id: string | null;
+  product_name: string | null;
+  reference_url: string | null;
+  created_at: string;
+};
+
 type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
 
 type Run = {
@@ -260,6 +271,12 @@ export default function ContentGeneratorPage() {
   const [libItems, setLibItems] = useState<LibraryItem[]>([]);
   const [libLoading, setLibLoading] = useState(false);
 
+  // Saved images library
+  const [savedImagesOpen, setSavedImagesOpen] = useState(false);
+  const [savedImages, setSavedImages] = useState<SavedImage[]>([]);
+  const [savedImagesLoading, setSavedImagesLoading] = useState(false);
+  const [savedImagesError, setSavedImagesError] = useState<string | null>(null);
+
   const [prodOpen, setProdOpen] = useState(false);
   const [prodSaving, setProdSaving] = useState(false);
   const [prodError, setProdError] = useState<string | null>(null);
@@ -452,6 +469,85 @@ export default function ContentGeneratorPage() {
     const filename = `${baseProduct}_${baseModel}_${id}.txt`;
     const blob = new Blob([p], { type: "text/plain;charset=utf-8" });
     downloadBlob(blob, filename);
+  }
+
+  // Saved Images Library
+  async function loadSavedImages() {
+    setSavedImagesLoading(true);
+    setSavedImagesError(null);
+    try {
+      const url = new URL("/api/saved-images", window.location.origin);
+      url.searchParams.set("limit", "100");
+      const res = await fetch(url.toString());
+      const json = await res.json();
+      if (res.ok) {
+        setSavedImages(json.images || []);
+      } else {
+        setSavedImagesError(json.error || "Failed to load saved images");
+      }
+    } catch (e: unknown) {
+      setSavedImagesError((e as Error)?.message || "Failed to load saved images");
+    } finally {
+      setSavedImagesLoading(false);
+    }
+  }
+
+  async function saveImageToLibrary(imageDataUrl: string, prompt: string) {
+    try {
+      const res = await fetch("/api/saved-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageData: imageDataUrl,
+          prompt,
+          modelName: modelNameDisplay,
+          productId: selectedId !== "custom" ? selectedId : null,
+          productName,
+          referenceUrl: referenceUrl || null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(`Save failed: ${json.error || "unknown error"}`);
+      } else {
+        alert("Image saved to library!");
+        // Reload saved images if library is open
+        if (savedImagesOpen) {
+          await loadSavedImages();
+        }
+      }
+    } catch (e: unknown) {
+      alert((e as Error)?.message || "Save failed");
+    }
+  }
+
+  async function deleteSavedImage(id: string) {
+    if (!confirm("Delete this saved image?")) return;
+    try {
+      const res = await fetch(`/api/saved-images/${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) {
+        alert(json.error || "Failed to delete image");
+      } else {
+        await loadSavedImages();
+      }
+    } catch (e: unknown) {
+      alert((e as Error)?.message || "Delete failed");
+    }
+  }
+
+  function openSavedImagesLibrary() {
+    setSavedImagesOpen(true);
+    loadSavedImages();
+  }
+
+  function addSavedImageToReference(imageData: string) {
+    if (selectedId === "custom") {
+      setCustomUploads((prev) => [...prev, imageData]);
+    } else {
+      setExtraRefUploads((prev) => [...prev, imageData]);
+    }
+    alert("Image added to reference images!");
   }
 
   // Runs helpers
@@ -1399,6 +1495,14 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                       Prompt Library
                     </button>
 
+                    <button
+                      className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-2"
+                      onClick={openSavedImagesLibrary}
+                      title="Open Saved Images Library"
+                    >
+                      Saved Images
+                    </button>
+
                     {activeRun && (
                       <>
                         <button
@@ -1508,6 +1612,16 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                                    checked:bg-white checked:shadow-[inset_0_0_0_2px_rgba(0,0,0,1)]"
                             title={activeRun.selectedIdx.has(activeRun.activeIdx) ? "Deselect" : "Select"}
                           />
+                          <button
+                            onClick={() => {
+                              const currentImage = activeRun.images[activeRun.activeIdx];
+                              saveImageToLibrary(currentImage.imageDataUrl, currentImage.prompt);
+                            }}
+                            className="rounded-md bg-emerald-600/60 hover:bg-emerald-600/75 border border-white/30 text-white text-sm px-3 py-1"
+                            title="Save image to library"
+                          >
+                            💾 Save
+                          </button>
                           <button
                             onClick={() => {
                               const baseProduct = safeName(activeRun.productName || "product");
@@ -2136,6 +2250,90 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   <li>Sora Storyboard: shots as <code>duration|Scene</code> lines; optional reference image.</li>
                 </ul>
               </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Saved Images Library Panel */}
+      {savedImagesOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex">
+          <div className="ml-auto h-full w-full max-w-4xl bg-neutral-950 border-l border-neutral-800 p-4 flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Saved Images Library</h2>
+              <button
+                className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-1"
+                onClick={() => setSavedImagesOpen(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            {savedImagesLoading && (
+              <div className="text-sm text-neutral-400">Loading saved images...</div>
+            )}
+
+            {savedImagesError && (
+              <div className="text-sm text-red-400 mb-3">{savedImagesError}</div>
+            )}
+
+            {!savedImagesLoading && savedImages.length === 0 && (
+              <div className="text-sm text-neutral-500">No saved images yet. Save generated images to see them here!</div>
+            )}
+
+            <div className="flex-1 overflow-auto">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {savedImages.map((img) => (
+                  <div
+                    key={img.id}
+                    className="rounded-lg border border-neutral-800 bg-neutral-900/40 overflow-hidden hover:border-neutral-700 transition-colors"
+                  >
+                    <div className="relative aspect-square bg-neutral-950">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={img.image_data}
+                        alt={img.prompt}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <p className="text-xs text-neutral-400 line-clamp-2" title={img.prompt}>
+                        {img.prompt}
+                      </p>
+                      <div className="flex items-center justify-between text-[10px] text-neutral-500">
+                        <span>{img.model_name}</span>
+                        {img.product_name && <span>{img.product_name}</span>}
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          className="flex-1 rounded-md bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/40 text-emerald-300 px-2 py-1 text-xs"
+                          onClick={() => addSavedImageToReference(img.image_data)}
+                          title="Add to reference images"
+                        >
+                          + Add to Ref
+                        </button>
+                        <button
+                          className="flex-1 rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-xs"
+                          onClick={() => {
+                            const filename = `saved_${safeName(img.model_name)}_${img.id.slice(0, 8)}.png`;
+                            downloadDataUrl(img.image_data, filename);
+                          }}
+                          title="Download image"
+                        >
+                          Download
+                        </button>
+                        <button
+                          className="rounded-md bg-red-500/10 hover:bg-red-500/20 border border-red-500/40 text-red-300 px-2 py-1 text-xs"
+                          onClick={() => deleteSavedImage(img.id)}
+                          title="Delete image"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
