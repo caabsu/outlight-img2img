@@ -895,6 +895,11 @@ export default function ContentGeneratorPage() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const videoCtlRef = useRef<AbortController | null>(null);
 
+  // Batch video generation (1 prompt + multiple images = multiple videos)
+  const [batchVideoMode, setBatchVideoMode] = useState(false);
+  const [batchVideoImages, setBatchVideoImages] = useState<string[]>([]);
+  const [batchVideoPrompt, setBatchVideoPrompt] = useState("");
+
   const currentRefUrl = (
     selectedId === "custom" ? customUrl : selected?.image_url || ""
   ).trim();
@@ -1094,6 +1099,110 @@ export default function ContentGeneratorPage() {
   }
   function cancelVideo() {
     videoCtlRef.current?.abort();
+  }
+
+  // Batch video generation (1 prompt + N images = N videos)
+  async function onGenerateBatchVideo() {
+    const prompt = batchVideoPrompt.trim();
+    if (!prompt || batchVideoImages.length === 0) {
+      setVideoError("Please provide a prompt and at least one image for batch generation.");
+      return;
+    }
+
+    setVideoLoading(true);
+    setVideoError(null);
+    setVideos([]);
+    setVideoProgress({ done: 0, total: batchVideoImages.length });
+
+    const ac = new AbortController();
+    videoCtlRef.current = ac;
+
+    try {
+      const tasks = batchVideoImages.map((imageUrl, idx) => async () => {
+        let provider: VideoProvider = "kling";
+        let body: any = {};
+
+        if (isKling) {
+          provider = "kling";
+          const cfgVal = Number.isFinite(Number(klingCfg)) ? Number(klingCfg) : undefined;
+          body = {
+            provider,
+            model: videoModel,
+            mode: "image-to-video", // Batch is always image-to-video
+            prompt,
+            duration: klingDuration,
+            ...(klingNeg.trim() ? { negative_prompt: klingNeg.trim() } : {}),
+            ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
+            customUrl: imageUrl, // Use the batch image directly
+            productId: null,
+          };
+        } else if (isVeo) {
+          provider = "veo";
+          body = {
+            provider,
+            model: videoModel,
+            prompt,
+            aspectRatio: veoAspect,
+            generationType: "FIRST_AND_LAST_FRAMES_2_VIDEO", // Use image as reference
+            imageUrls: [imageUrl],
+            ...(veoSeed.trim() ? { seeds: Number(veoSeed) } : {}),
+          };
+        } else {
+          // Sora with image reference
+          provider = "sora";
+          const shots = soraShotsText
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((row) => {
+              const [durStr, ...rest] = row.split("|");
+              const duration = Math.max(1, Number(durStr.trim() || "1"));
+              const Scene = rest.join("|").trim() || prompt;
+              return { duration, Scene };
+            });
+
+          body = {
+            provider,
+            model: videoModel,
+            input: {
+              n_frames: soraFrames,
+              image_urls: [imageUrl],
+              aspect_ratio: soraAspect,
+              shots,
+            },
+          };
+        }
+
+        const res = await fetch("/api/video/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: ac.signal,
+        });
+
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json.error || `Generation failed for image ${idx + 1}`);
+        }
+        const item: VideoItem = {
+          id: crypto.randomUUID(),
+          prompt: `${prompt} (Image ${idx + 1})`,
+          url: json.videoUrl,
+        };
+        setVideos((prev) => [...prev, item]);
+        setVideoProgress((p) => ({ done: p.done + 1, total: p.total }));
+        return item;
+      });
+
+      await runWithLimit(Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, videoParallel)), tasks);
+      setSaveToast({ message: `${batchVideoImages.length} videos generated`, type: "success" });
+    } catch (e: any) {
+      if (e?.name === "AbortError") setVideoError("Generation cancelled.");
+      else setVideoError(e?.message || "Something went wrong.");
+    } finally {
+      setVideoLoading(false);
+      videoCtlRef.current = null;
+    }
   }
 
   const videoPct =
@@ -1790,8 +1899,57 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </select>
               </div>
 
-              {/* Product / reference (shown only when the selected model can use an image) */}
-              {showReferencePicker && (
+              {/* Batch Video Mode Toggle */}
+              <div className="rounded border border-emerald-600/30 bg-emerald-950/20 p-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={batchVideoMode}
+                    onChange={(e) => setBatchVideoMode(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  <span className="text-sm font-medium text-emerald-200">Batch Mode: 1 Prompt + Multiple Images</span>
+                </label>
+                <p className="text-xs text-emerald-300/70 mt-1">
+                  Generate one video per image using the same prompt. Each image gets its own API call.
+                </p>
+              </div>
+
+              {/* Batch Mode UI */}
+              {batchVideoMode ? (
+                <>
+                  <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60">
+                    <label className="text-sm text-neutral-300 mb-2 block">Upload Images for Batch</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="w-full text-sm text-neutral-400"
+                      onChange={async (e) => {
+                        const urls = await filesToDataUrls(e.target.files);
+                        setBatchVideoImages(urls);
+                      }}
+                    />
+                    {batchVideoImages.length > 0 && (
+                      <div className="mt-2 text-xs text-neutral-400">
+                        {batchVideoImages.length} image(s) selected
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60">
+                    <label className="text-sm text-neutral-300">Single Prompt (for all images)</label>
+                    <textarea
+                      className="mt-1 w-full rounded bg-neutral-900 border border-neutral-800 p-2 text-sm min-h-[80px]"
+                      placeholder="Enter the prompt that will be used for all images..."
+                      value={batchVideoPrompt}
+                      onChange={(e) => setBatchVideoPrompt(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Product / reference (shown only when the selected model can use an image) */}
+                  {showReferencePicker && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="flex items-center justify-between">
                     <label className="text-sm text-neutral-300">Reference (Product or custom URL)</label>
@@ -1873,9 +2031,11 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   </div>
                 </div>
               )}
+                </>
+              )}
 
               {/* Model-specific controls */}
-              {isKling && (
+              {!batchVideoMode && isKling && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -1929,7 +2089,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
               )}
 
-              {isVeo && (
+              {!batchVideoMode && isVeo && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -2000,7 +2160,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
               )}
 
-              {videoModelDef.id === "sora-2-pro-storyboard" && (
+              {!batchVideoMode && videoModelDef.id === "sora-2-pro-storyboard" && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -2084,26 +2244,32 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
 
                 <div className="flex items-center gap-2">
                   <button
-                    className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
-                    onClick={onGenerateVideo}
-                    title={!isKling ? "Coming soon: provider not yet supported" : undefined}
+                    className="rounded bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
+                    onClick={batchVideoMode ? onGenerateBatchVideo : onGenerateVideo}
                     disabled={
-                      !isKling ||
                       videoLoading ||
-                      videoPromptLines.length === 0 ||
-                      (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo)
+                      (batchVideoMode
+                        ? (batchVideoPrompt.trim().length === 0 || batchVideoImages.length === 0)
+                        : (videoPromptLines.length === 0 || (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo)))
                     }
                   >
-                    {videoLoading ? "Generating…" : `Generate ${videoPromptLines.length || ""}`}
+                    {videoLoading
+                      ? "Generating…"
+                      : batchVideoMode
+                      ? `Generate ${batchVideoImages.length} Videos`
+                      : `Generate ${videoPromptLines.length || ""}`}
                   </button>
                   {videoLoading && (
                     <button
-                      className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-2"
+                      className="rounded bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-2"
                       onClick={cancelVideo}
                     >
                       Cancel
                     </button>
                   )}
+                  <div className="text-xs text-neutral-400">
+                    Speed: {videoParallel}x
+                  </div>
                   {videoError && <span className="text-sm text-red-400">{videoError}</span>}
                 </div>
 
