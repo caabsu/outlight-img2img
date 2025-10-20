@@ -920,8 +920,10 @@ export default function ContentGeneratorPage() {
 
   // Batch video generation (1 prompt + multiple images = multiple videos)
   const [batchVideoMode, setBatchVideoMode] = useState(false);
-  const [batchVideoImages, setBatchVideoImages] = useState<string[]>([]);
+  const [batchVideoImages, setBatchVideoImages] = useState<string[]>([]); // Public URLs
   const [batchVideoPrompt, setBatchVideoPrompt] = useState("");
+  const [batchVideoPreviews, setBatchVideoPreviews] = useState<string[]>([]); // Data URLs for preview
+  const [batchVideoUploading, setBatchVideoUploading] = useState(false);
 
   const currentRefUrl = (
     selectedId === "custom" ? customUrl : selected?.image_url || ""
@@ -1225,6 +1227,54 @@ export default function ContentGeneratorPage() {
     } finally {
       setVideoLoading(false);
       videoCtlRef.current = null;
+    }
+  }
+
+  // Handle batch video file uploads
+  async function handleBatchVideoUpload(files: FileList | null) {
+    if (!files || files.length === 0) return;
+
+    setBatchVideoUploading(true);
+    setVideoError(null);
+
+    try {
+      // Create previews
+      const previews: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const reader = new FileReader();
+        const dataUrl = await new Promise<string>((resolve) => {
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.readAsDataURL(file);
+        });
+        previews.push(dataUrl);
+      }
+      setBatchVideoPreviews(previews);
+
+      // Upload to server
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append("files", files[i]);
+      }
+
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || "Upload failed");
+      }
+
+      setBatchVideoImages(json.urls || []);
+      setSaveToast({ message: `${json.urls.length} images uploaded`, type: "success" });
+    } catch (e: any) {
+      setVideoError(e?.message || "Upload failed");
+      setBatchVideoPreviews([]);
+      setBatchVideoImages([]);
+    } finally {
+      setBatchVideoUploading(false);
     }
   }
 
@@ -1941,26 +1991,47 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               {/* Batch Mode UI */}
               {batchVideoMode ? (
                 <>
-                  <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60">
-                    <label className="text-sm text-neutral-300 mb-2 block">Image URLs (HTTPS only, one per line)</label>
-                    <textarea
-                      className="w-full rounded bg-neutral-900 border border-neutral-800 p-2 text-sm min-h-[120px] font-mono text-xs"
-                      placeholder="https://example.com/image1.jpg&#10;https://example.com/image2.jpg&#10;https://example.com/image3.jpg"
-                      value={batchVideoImages.join('\n')}
-                      onChange={(e) => {
-                        const urls = e.target.value.split('\n').map(u => u.trim()).filter(Boolean);
-                        setBatchVideoImages(urls);
-                      }}
-                    />
-                    {batchVideoImages.length > 0 && (
-                      <div className="mt-2 text-xs text-neutral-400">
-                        {batchVideoImages.length} image URL(s) ready
+                  <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60 space-y-3">
+                    <div>
+                      <label className="text-sm text-neutral-300 mb-2 block">Upload Images</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) => handleBatchVideoUpload(e.target.files)}
+                        disabled={batchVideoUploading}
+                        className="w-full text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:bg-white/10 file:text-white hover:file:bg-white/15 disabled:opacity-50"
+                      />
+                      {batchVideoUploading && (
+                        <div className="mt-2 text-xs text-emerald-400">Uploading images...</div>
+                      )}
+                      {batchVideoImages.length > 0 && !batchVideoUploading && (
+                        <div className="mt-2 text-xs text-neutral-400">
+                          {batchVideoImages.length} image(s) uploaded and ready
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Image Previews */}
+                    {batchVideoPreviews.length > 0 && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {batchVideoPreviews.map((preview, idx) => (
+                          <div key={idx} className="relative aspect-square rounded border border-neutral-700 overflow-hidden bg-neutral-900">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={preview}
+                              alt={`Batch image ${idx + 1}`}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 text-center">
+                              {idx + 1}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     )}
-                    <p className="text-xs text-neutral-500 mt-2">
-                      Note: Images must be publicly accessible HTTPS URLs. You can use saved images from your library or product images.
-                    </p>
                   </div>
+
                   <div className="rounded border border-neutral-800 p-3 bg-neutral-950/60">
                     <label className="text-sm text-neutral-300">Single Prompt (for all images)</label>
                     <textarea
