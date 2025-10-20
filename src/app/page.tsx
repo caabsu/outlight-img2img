@@ -1163,13 +1163,19 @@ export default function ContentGeneratorPage() {
           };
         } else if (isVeo) {
           provider = "veo";
+          // For batch mode, use the selected generation type but ensure we have the right image setup
+          const imgs: string[] = [imageUrl];
+          // If user wants a second image for FIRST_AND_LAST_FRAMES, they can set it in veoSecondImage
+          if (veoGenType !== "TEXT_2_VIDEO" && veoSecondImage.trim()) {
+            imgs.push(veoSecondImage.trim());
+          }
           body = {
             provider,
             model: videoModel,
             prompt,
             aspectRatio: veoAspect,
-            generationType: "FIRST_AND_LAST_FRAMES_2_VIDEO", // Use image as reference
-            imageUrls: [imageUrl],
+            generationType: veoGenType,
+            ...(imgs.length ? { imageUrls: imgs } : {}),
             ...(veoSeed.trim() ? { seeds: Number(veoSeed) } : {}),
           };
         } else {
@@ -2131,8 +2137,14 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               )}
 
               {/* Model-specific controls */}
-              {!batchVideoMode && isKling && (
+              {isKling && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
+                  {batchVideoMode && (
+                    <div className="mb-3 text-xs text-emerald-400 bg-emerald-950/20 border border-emerald-600/30 rounded p-2">
+                      These settings will apply to all videos in the batch
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-neutral-400">Duration</label>
@@ -2185,8 +2197,14 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
               )}
 
-              {!batchVideoMode && isVeo && (
+              {isVeo && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
+                  {batchVideoMode && (
+                    <div className="mb-3 text-xs text-emerald-400 bg-emerald-950/20 border border-emerald-600/30 rounded p-2">
+                      These settings will apply to all videos in the batch
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-neutral-400">Aspect Ratio</label>
@@ -2256,8 +2274,14 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 </div>
               )}
 
-              {!batchVideoMode && videoModelDef.id === "sora-2-pro-storyboard" && (
+              {videoModelDef.id === "sora-2-pro-storyboard" && (
                 <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
+                  {batchVideoMode && (
+                    <div className="mb-3 text-xs text-emerald-400 bg-emerald-950/20 border border-emerald-600/30 rounded p-2">
+                      These settings will apply to all videos in the batch
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-neutral-400">Total length</label>
