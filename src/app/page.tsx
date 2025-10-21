@@ -80,27 +80,6 @@ type VideoModelOption = {
   requiresImage?: boolean;
 };
 
-type VideoRun = {
-  id: string;
-  name: string;
-  startedAt: number;
-  modelId: string;
-  modelLabel: string;
-  isBatch: boolean;
-  prompts: string[];
-
-  status: RunStatus;
-  error: string | null;
-
-  videos: VideoItem[];
-  activeIdx: number;
-  selectedIdx: Set<number>;
-  progress: { done: number; total: number };
-  speed: number;
-
-  controller: AbortController | null;
-};
-
 const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> = [
   {
     label: "Kling (KIE)",
@@ -931,11 +910,13 @@ export default function ContentGeneratorPage() {
     [videoPrompts]
   );
 
-  // Video runs management
-  const [videoRuns, setVideoRuns] = useState<VideoRun[]>([]);
-  const [activeVideoRunId, setActiveVideoRunId] = useState<string | null>(null);
+  // Shared controls
   const [videoParallel, setVideoParallel] = useState<number>(1);
-  const MAX_VIDEO_RUNS = 5;
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [videoProgress, setVideoProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const videoCtlRef = useRef<AbortController | null>(null);
 
   // Batch video generation (1 prompt + multiple images = multiple videos)
   const [batchVideoMode, setBatchVideoMode] = useState(false);
@@ -1021,126 +1002,21 @@ export default function ContentGeneratorPage() {
     });
   }
 
-  // Video run helpers
-  const activeVideoRun = useMemo(
-    () => videoRuns.find((r) => r.id === activeVideoRunId) || null,
-    [videoRuns, activeVideoRunId]
-  );
-
-  function stepActiveVideo(runId: string, delta: number) {
-    setVideoRuns((prev) =>
-      prev.map((r) => {
-        if (r.id !== runId) return r;
-        const newIdx = Math.max(0, Math.min(r.videos.length - 1, r.activeIdx + delta));
-        return { ...r, activeIdx: newIdx };
-      })
-    );
-  }
-
-  function toggleVideoSelection(runId: string, idx: number) {
-    setVideoRuns((prev) =>
-      prev.map((r) => {
-        if (r.id !== runId) return r;
-        const newSet = new Set(r.selectedIdx);
-        if (newSet.has(idx)) newSet.delete(idx);
-        else newSet.add(idx);
-        return { ...r, selectedIdx: newSet };
-      })
-    );
-  }
-
-  function cancelVideoRun(runId: string) {
-    const run = videoRuns.find((r) => r.id === runId);
-    if (run?.controller) run.controller.abort();
-    setVideoRuns((prev) =>
-      prev.map((r) => {
-        if (r.id !== runId) return r;
-        return { ...r, status: "cancelled" as RunStatus, controller: null };
-      })
-    );
-  }
-
-  function deleteVideoRun(runId: string) {
-    setVideoRuns((prev) => prev.filter((r) => r.id !== runId));
-    if (activeVideoRunId === runId) {
-      const remaining = videoRuns.filter((r) => r.id !== runId);
-      setActiveVideoRunId(remaining.length > 0 ? remaining[0].id : null);
-    }
-  }
-
-  // Start a new video generation run
-  function startVideoRun() {
+  // Video generate
+  async function onGenerateVideo() {
     if (videoPromptLines.length === 0) return;
     if (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo) {
-      setSaveToast({ message: "Please select a product or provide a reference image", type: "error" });
-      return;
-    }
-    if (videoRuns.length >= MAX_VIDEO_RUNS) {
-      setSaveToast({ message: `Maximum ${MAX_VIDEO_RUNS} concurrent video runs`, type: "error" });
+      setVideoError("Please select a product or provide a custom image URL.");
       return;
     }
 
-    const runId = crypto.randomUUID();
-    const modelLabel = videoModelDef.label;
-    const runName = `${modelLabel} - ${new Date().toLocaleTimeString()}`;
+    setVideoLoading(true);
+    setVideoError(null);
+    setVideos([]);
+    setVideoProgress({ done: 0, total: videoPromptLines.length });
 
-    const newRun: VideoRun = {
-      id: runId,
-      name: runName,
-      startedAt: Date.now(),
-      modelId: videoModel,
-      modelLabel,
-      isBatch: false,
-      prompts: videoPromptLines,
-      status: "running",
-      error: null,
-      videos: [],
-      activeIdx: 0,
-      selectedIdx: new Set(),
-      progress: { done: 0, total: videoPromptLines.length },
-      speed: videoParallel,
-      controller: new AbortController(),
-    };
-
-    setVideoRuns((prev) => [...prev, newRun]);
-    setActiveVideoRunId(runId);
-    executeVideoRun(newRun);
-  }
-
-  // Execute video generation for a run
-  async function executeVideoRun(run: VideoRun) {
-    const pushVideo = (item: VideoItem) => {
-      setVideoRuns((prev) =>
-        prev.map((r) => {
-          if (r.id !== run.id) return r;
-          return { ...r, videos: [...r.videos, item] };
-        })
-      );
-    };
-
-    const updateProgress = () => {
-      setVideoRuns((prev) =>
-        prev.map((r) => {
-          if (r.id !== run.id) return r;
-          return { ...r, progress: { done: r.progress.done + 1, total: r.progress.total } };
-        })
-      );
-    };
-
-    const worker = async () => {
-      while (true) {
-        let promptLine: string | undefined;
-        setVideoRuns((prev) => {
-          const r = prev.find((x) => x.id === run.id);
-          if (!r) return prev;
-          const idx = r.progress.done;
-          if (idx >= r.prompts.length) return prev;
-          promptLine = r.prompts[idx];
-          return prev;
-        });
-
-        if (!promptLine) break;
-        if (run.controller?.signal.aborted) break;
+    const ac = new AbortController();
+    videoCtlRef.current = ac;
 
     try {
       const tasks = videoPromptLines.map((line, idx) => async () => {
