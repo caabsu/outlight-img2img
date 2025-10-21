@@ -80,6 +80,27 @@ type VideoModelOption = {
   requiresImage?: boolean;
 };
 
+type VideoRun = {
+  id: string;
+  name: string;
+  startedAt: number;
+  modelId: string;
+  modelLabel: string;
+  isBatch: boolean;
+  prompts: string[];
+
+  status: RunStatus;
+  error: string | null;
+
+  videos: VideoItem[];
+  activeIdx: number;
+  selectedIdx: Set<number>;
+  progress: { done: number; total: number };
+  speed: number;
+
+  controller: AbortController | null;
+};
+
 const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> = [
   {
     label: "Kling (KIE)",
@@ -910,13 +931,18 @@ export default function ContentGeneratorPage() {
     [videoPrompts]
   );
 
-  // Shared controls
+  // Video runs management
+  const [videoRuns, setVideoRuns] = useState<VideoRun[]>([]);
+  const [activeVideoRunId, setActiveVideoRunId] = useState<string | null>(null);
   const [videoParallel, setVideoParallel] = useState<number>(1);
-  const [videoLoading, setVideoLoading] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
-  const [videoProgress, setVideoProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
-  const [videos, setVideos] = useState<VideoItem[]>([]);
-  const videoCtlRef = useRef<AbortController | null>(null);
+  const MAX_VIDEO_RUNS = 5;
+
+  const activeVideoRun = useMemo(
+    () => videoRuns.find((r) => r.id === activeVideoRunId) || null,
+    [videoRuns, activeVideoRunId]
+  );
+
+  const videoSomethingRunning = videoRuns.some((r) => r.status === "running");
 
   // Batch video generation (1 prompt + multiple images = multiple videos)
   const [batchVideoMode, setBatchVideoMode] = useState(false);
@@ -1002,246 +1028,11 @@ export default function ContentGeneratorPage() {
     });
   }
 
-  // Video generate
-  async function onGenerateVideo() {
-    if (videoPromptLines.length === 0) return;
-    if (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo) {
-      setVideoError("Please select a product or provide a custom image URL.");
-      return;
-    }
-
-    setVideoLoading(true);
-    setVideoError(null);
-    setVideos([]);
-    setVideoProgress({ done: 0, total: videoPromptLines.length });
-
-    const ac = new AbortController();
-    videoCtlRef.current = ac;
-
-    try {
-      const tasks = videoPromptLines.map((line, idx) => async () => {
-        // Build provider & payload based on model
-        let provider: VideoProvider = "kling";
-        let body: any = {};
-
-        if (isKling) {
-          provider = "kling";
-          const cfgVal = Number.isFinite(Number(klingCfg)) ? Number(klingCfg) : undefined;
-          body = {
-            provider,
-            model: videoModel,
-            // Kling payload (KIE jobs/createTask)
-            mode: isKlingText ? "text-to-video" : "image-to-video",
-            prompt: line,
-            duration: klingDuration,
-            ...(isKlingText ? { aspect_ratio: klingAspect } : {}),
-            ...(klingNeg.trim() ? { negative_prompt: klingNeg.trim() } : {}),
-            ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
-            ...(isKlingImage
-              ? {
-                  productId: selectedId !== "custom" ? selectedId : null,
-                  customUrl: selectedId === "custom" ? customUrl.trim() : null,
-                }
-              : {}),
-          };
-        } else if (isVeo) {
-          provider = "veo";
-          const imgs: string[] = [];
-          if (resolvedVideoReferenceUrl) imgs.push(resolvedVideoReferenceUrl);
-          if (veoGenType !== "TEXT_2_VIDEO" && veoSecondImage.trim()) imgs.push(veoSecondImage.trim());
-
-          // Validate gen type availability
-          let effectiveGen = veoGenType;
-          if (videoModel === "veo3" && veoGenType === "REFERENCE_2_VIDEO") {
-            effectiveGen = "TEXT_2_VIDEO";
-          }
-
-          body = {
-            provider,
-            model: videoModel,
-            prompt: line,
-            aspectRatio: veoAspect,
-            generationType: effectiveGen,
-            ...(imgs.length ? { imageUrls: imgs } : {}),
-            ...(veoSeed.trim() ? { seeds: Number(veoSeed) } : {}),
-          };
-        } else {
-          // Sora storyboard (KIE jobs/createTask)
-          provider = "sora";
-          // Parse shots
-          const shots = soraShotsText
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter(Boolean)
-            .map((row) => {
-              const [durStr, ...rest] = row.split("|");
-              const duration = Math.max(1, Number(durStr.trim() || "1"));
-              const Scene = rest.join("|").trim() || line;
-              return { duration, Scene };
-            });
-
-          body = {
-            provider,
-            model: videoModel,
-            input: {
-              n_frames: soraFrames,
-              image_urls: trimmedSoraImageUrl ? [trimmedSoraImageUrl] : [],
-              aspect_ratio: soraAspect,
-              shots,
-            },
-          };
-        }
-
-        const res = await fetch("/api/video/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: ac.signal,
-        });
-
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(json.error || `Generation failed (line ${idx + 1})`);
-        }
-        const item: VideoItem = {
-          id: crypto.randomUUID(),
-          prompt: line,
-          url: json.videoUrl, // server should normalize to { videoUrl }
-        };
-        setVideos((prev) => [...prev, item]);
-        setVideoProgress((p) => ({ done: p.done + 1, total: p.total }));
-        return item;
-      });
-
-      await runWithLimit(Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, videoParallel)), tasks);
-    } catch (e: any) {
-      if (e?.name === "AbortError") setVideoError("Generation cancelled.");
-      else setVideoError(e?.message || "Something went wrong.");
-    } finally {
-      setVideoLoading(false);
-      videoCtlRef.current = null;
-    }
-  }
-  function cancelVideo() {
-    videoCtlRef.current?.abort();
-  }
-
-  // Batch video generation (1 prompt + N images = N videos)
-  async function onGenerateBatchVideo() {
-    const prompt = batchVideoPrompt.trim();
-    if (!prompt || batchVideoImages.length === 0) {
-      setVideoError("Please provide a prompt and at least one image for batch generation.");
-      return;
-    }
-
-    setVideoLoading(true);
-    setVideoError(null);
-    setVideos([]);
-    setVideoProgress({ done: 0, total: batchVideoImages.length });
-
-    const ac = new AbortController();
-    videoCtlRef.current = ac;
-
-    try {
-      const tasks = batchVideoImages.map((imageUrl, idx) => async () => {
-        let provider: VideoProvider = "kling";
-        let body: any = {};
-
-        if (isKling) {
-          provider = "kling";
-          const cfgVal = Number.isFinite(Number(klingCfg)) ? Number(klingCfg) : undefined;
-          body = {
-            provider,
-            model: videoModel,
-            mode: "image-to-video", // Batch is always image-to-video
-            prompt,
-            duration: klingDuration,
-            ...(klingNeg.trim() ? { negative_prompt: klingNeg.trim() } : {}),
-            ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
-            customUrl: imageUrl, // Use the batch image directly
-            productId: null,
-          };
-        } else if (isVeo) {
-          provider = "veo";
-          // For batch mode, use the selected generation type but ensure we have the right image setup
-          const imgs: string[] = [imageUrl];
-          // If user wants a second image for FIRST_AND_LAST_FRAMES, they can set it in veoSecondImage
-          if (veoGenType !== "TEXT_2_VIDEO" && veoSecondImage.trim()) {
-            imgs.push(veoSecondImage.trim());
-          }
-          body = {
-            provider,
-            model: videoModel,
-            prompt,
-            aspectRatio: veoAspect,
-            generationType: veoGenType,
-            ...(imgs.length ? { imageUrls: imgs } : {}),
-            ...(veoSeed.trim() ? { seeds: Number(veoSeed) } : {}),
-          };
-        } else {
-          // Sora with image reference
-          provider = "sora";
-          const shots = soraShotsText
-            .split(/\r?\n/)
-            .map((s) => s.trim())
-            .filter(Boolean)
-            .map((row) => {
-              const [durStr, ...rest] = row.split("|");
-              const duration = Math.max(1, Number(durStr.trim() || "1"));
-              const Scene = rest.join("|").trim() || prompt;
-              return { duration, Scene };
-            });
-
-          body = {
-            provider,
-            model: videoModel,
-            input: {
-              n_frames: soraFrames,
-              image_urls: [imageUrl],
-              aspect_ratio: soraAspect,
-              shots,
-            },
-          };
-        }
-
-        const res = await fetch("/api/video/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-          signal: ac.signal,
-        });
-
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(json.error || `Generation failed for image ${idx + 1}`);
-        }
-        const item: VideoItem = {
-          id: crypto.randomUUID(),
-          prompt: `${prompt} (Image ${idx + 1})`,
-          url: json.videoUrl,
-        };
-        setVideos((prev) => [...prev, item]);
-        setVideoProgress((p) => ({ done: p.done + 1, total: p.total }));
-        return item;
-      });
-
-      await runWithLimit(Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, videoParallel)), tasks);
-      setSaveToast({ message: `${batchVideoImages.length} videos generated`, type: "success" });
-    } catch (e: any) {
-      if (e?.name === "AbortError") setVideoError("Generation cancelled.");
-      else setVideoError(e?.message || "Something went wrong.");
-    } finally {
-      setVideoLoading(false);
-      videoCtlRef.current = null;
-    }
-  }
-
   // Handle batch video file uploads
   async function handleBatchVideoUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
 
     setBatchVideoUploading(true);
-    setVideoError(null);
 
     try {
       // Create previews
@@ -1276,7 +1067,7 @@ export default function ContentGeneratorPage() {
       setBatchVideoImages(json.urls || []);
       setSaveToast({ message: `${json.urls.length} images uploaded`, type: "success" });
     } catch (e: any) {
-      setVideoError(e?.message || "Upload failed");
+      setSaveToast({ message: e?.message || "Upload failed", type: "error" });
       setBatchVideoPreviews([]);
       setBatchVideoImages([]);
     } finally {
@@ -1284,8 +1075,369 @@ export default function ContentGeneratorPage() {
     }
   }
 
-  const videoPct =
-    videoProgress.total > 0 ? Math.round((videoProgress.done / videoProgress.total) * 100) : 0;
+  // Video run helpers
+  function stepActiveVideo(runId: string, delta: number) {
+    setVideoRuns((prev) =>
+      prev.map((r) => {
+        if (r.id !== runId) return r;
+        const newIdx = Math.max(0, Math.min(r.videos.length - 1, r.activeIdx + delta));
+        return { ...r, activeIdx: newIdx };
+      })
+    );
+  }
+
+  function toggleVideoSelection(runId: string, idx: number) {
+    setVideoRuns((prev) =>
+      prev.map((r) => {
+        if (r.id !== runId) return r;
+        const newSet = new Set(r.selectedIdx);
+        if (newSet.has(idx)) newSet.delete(idx);
+        else newSet.add(idx);
+        return { ...r, selectedIdx: newSet };
+      })
+    );
+  }
+
+  function cancelVideoRun(runId: string) {
+    const run = videoRuns.find((r) => r.id === runId);
+    if (run?.controller) run.controller.abort();
+    setVideoRuns((prev) =>
+      prev.map((r) => {
+        if (r.id !== runId) return r;
+        return { ...r, status: "cancelled" as RunStatus, controller: null };
+      })
+    );
+  }
+
+  function deleteVideoRun(runId: string) {
+    setVideoRuns((prev) => prev.filter((r) => r.id !== runId));
+    if (activeVideoRunId === runId) {
+      const remaining = videoRuns.filter((r) => r.id !== runId);
+      setActiveVideoRunId(remaining.length > 0 ? remaining[0].id : null);
+    }
+  }
+
+  // Start a new video run (normal mode: 1+ prompts, 0-1 reference images)
+  function startVideoRun() {
+    if (videoPromptLines.length === 0) {
+      setSaveToast({ message: "Please enter at least one prompt", type: "error" });
+      return;
+    }
+    if (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo) {
+      setSaveToast({ message: "Please select reference image", type: "error" });
+      return;
+    }
+    if (videoRuns.length >= MAX_VIDEO_RUNS) {
+      setSaveToast({ message: `Maximum ${MAX_VIDEO_RUNS} concurrent runs`, type: "error" });
+      return;
+    }
+
+    const runId = crypto.randomUUID();
+    const runName = `${videoModelDef.label} - ${new Date().toLocaleTimeString()}`;
+
+    const newRun: VideoRun = {
+      id: runId,
+      name: runName,
+      startedAt: Date.now(),
+      modelId: videoModel,
+      modelLabel: videoModelDef.label,
+      isBatch: false,
+      prompts: [...videoPromptLines],
+      status: "running",
+      error: null,
+      videos: [],
+      activeIdx: 0,
+      selectedIdx: new Set(),
+      progress: { done: 0, total: videoPromptLines.length },
+      speed: videoParallel,
+      controller: new AbortController(),
+    };
+
+    setVideoRuns((prev) => [...prev, newRun]);
+    setActiveVideoRunId(runId);
+    executeVideoRun(newRun);
+  }
+
+  // Start a batch video run (batch mode: 1 prompt, N images = N videos)
+  function startBatchVideoRun() {
+    const prompt = batchVideoPrompt.trim();
+    if (!prompt || batchVideoImages.length === 0) {
+      setSaveToast({ message: "Please provide a prompt and at least one image", type: "error" });
+      return;
+    }
+    if (videoRuns.length >= MAX_VIDEO_RUNS) {
+      setSaveToast({ message: `Maximum ${MAX_VIDEO_RUNS} concurrent runs`, type: "error" });
+      return;
+    }
+
+    const runId = crypto.randomUUID();
+    const runName = `${videoModelDef.label} Batch - ${new Date().toLocaleTimeString()}`;
+
+    const newRun: VideoRun = {
+      id: runId,
+      name: runName,
+      startedAt: Date.now(),
+      modelId: videoModel,
+      modelLabel: videoModelDef.label,
+      isBatch: true,
+      prompts: [prompt],
+      status: "running",
+      error: null,
+      videos: [],
+      activeIdx: 0,
+      selectedIdx: new Set(),
+      progress: { done: 0, total: batchVideoImages.length },
+      speed: videoParallel,
+      controller: new AbortController(),
+    };
+
+    setVideoRuns((prev) => [...prev, newRun]);
+    setActiveVideoRunId(runId);
+    executeVideoRun(newRun);
+  }
+
+  // Execute a video run with concurrent processing
+  async function executeVideoRun(run: VideoRun) {
+    const ac = run.controller;
+    if (!ac) return;
+
+    const pushVideo = (video: VideoItem) => {
+      setVideoRuns((prev) =>
+        prev.map((r) => {
+          if (r.id !== run.id) return r;
+          const videos = [...r.videos, video];
+          const activeIdx = videos.length === 1 ? 0 : r.activeIdx;
+          return { ...r, videos, activeIdx };
+        })
+      );
+    };
+
+    const incProgress = () => {
+      setVideoRuns((prev) =>
+        prev.map((r) => {
+          if (r.id !== run.id) return r;
+          const done = r.progress.done + 1;
+          return { ...r, progress: { done, total: r.progress.total } };
+        })
+      );
+    };
+
+    const setError = (message: string) => {
+      setVideoRuns((prev) =>
+        prev.map((r) => {
+          if (r.id !== run.id) return r;
+          return { ...r, status: "error" as RunStatus, error: message, controller: null };
+        })
+      );
+    };
+
+    try {
+      let tasks: Array<() => Promise<VideoItem>>;
+
+      if (run.isBatch) {
+        // Batch mode: 1 prompt, N images
+        const prompt = run.prompts[0];
+        tasks = batchVideoImages.map((imageUrl, idx) => async () => {
+          let provider: VideoProvider = "kling";
+          let body: any = {};
+
+          if (isKling) {
+            provider = "kling";
+            const cfgVal = Number.isFinite(Number(klingCfg)) ? Number(klingCfg) : undefined;
+            body = {
+              provider,
+              model: videoModel,
+              mode: "image-to-video",
+              prompt,
+              duration: klingDuration,
+              ...(klingNeg.trim() ? { negative_prompt: klingNeg.trim() } : {}),
+              ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
+              imageUrl,
+            };
+          } else if (isVeo) {
+            provider = "veo";
+            const imgs: string[] = [imageUrl];
+            if (veoSecondImage.trim()) imgs.push(veoSecondImage.trim());
+
+            let effectiveGen = veoGenType;
+            if (videoModel === "veo3" && veoGenType === "REFERENCE_2_VIDEO") {
+              effectiveGen = "TEXT_2_VIDEO";
+            }
+
+            body = {
+              provider,
+              model: videoModel,
+              prompt,
+              aspectRatio: veoAspect,
+              generationType: effectiveGen,
+              imageUrls: imgs,
+              ...(veoSeed.trim() ? { seeds: Number(veoSeed) } : {}),
+            };
+          } else {
+            // Sora
+            provider = "sora";
+            const shots = soraShotsText
+              .split(/\r?\n/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((row) => {
+                const [durStr, ...rest] = row.split("|");
+                const duration = Math.max(1, Number(durStr.trim() || "1"));
+                const Scene = rest.join("|").trim() || prompt;
+                return { duration, Scene };
+              });
+
+            body = {
+              provider,
+              model: videoModel,
+              input: {
+                n_frames: soraFrames,
+                image_urls: [imageUrl],
+                aspect_ratio: soraAspect,
+                shots,
+              },
+            };
+          }
+
+          const res = await fetch("/api/video/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            signal: ac.signal,
+          });
+
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(json.error || `Generation failed (image ${idx + 1})`);
+          }
+
+          const item: VideoItem = {
+            id: crypto.randomUUID(),
+            prompt: `${prompt} [img ${idx + 1}]`,
+            url: json.videoUrl,
+          };
+          pushVideo(item);
+          incProgress();
+          return item;
+        });
+      } else {
+        // Normal mode: N prompts, 0-1 reference images
+        tasks = run.prompts.map((line, idx) => async () => {
+          let provider: VideoProvider = "kling";
+          let body: any = {};
+
+          if (isKling) {
+            provider = "kling";
+            const cfgVal = Number.isFinite(Number(klingCfg)) ? Number(klingCfg) : undefined;
+            body = {
+              provider,
+              model: videoModel,
+              mode: isKlingText ? "text-to-video" : "image-to-video",
+              prompt: line,
+              duration: klingDuration,
+              ...(isKlingText ? { aspect_ratio: klingAspect } : {}),
+              ...(klingNeg.trim() ? { negative_prompt: klingNeg.trim() } : {}),
+              ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
+              ...(isKlingImage
+                ? {
+                    productId: selectedId !== "custom" ? selectedId : null,
+                    customUrl: selectedId === "custom" ? customUrl.trim() : null,
+                  }
+                : {}),
+            };
+          } else if (isVeo) {
+            provider = "veo";
+            const imgs: string[] = [];
+            if (resolvedVideoReferenceUrl) imgs.push(resolvedVideoReferenceUrl);
+            if (veoGenType !== "TEXT_2_VIDEO" && veoSecondImage.trim()) imgs.push(veoSecondImage.trim());
+
+            let effectiveGen = veoGenType;
+            if (videoModel === "veo3" && veoGenType === "REFERENCE_2_VIDEO") {
+              effectiveGen = "TEXT_2_VIDEO";
+            }
+
+            body = {
+              provider,
+              model: videoModel,
+              prompt: line,
+              aspectRatio: veoAspect,
+              generationType: effectiveGen,
+              ...(imgs.length ? { imageUrls: imgs } : {}),
+              ...(veoSeed.trim() ? { seeds: Number(veoSeed) } : {}),
+            };
+          } else {
+            // Sora
+            provider = "sora";
+            const shots = soraShotsText
+              .split(/\r?\n/)
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((row) => {
+                const [durStr, ...rest] = row.split("|");
+                const duration = Math.max(1, Number(durStr.trim() || "1"));
+                const Scene = rest.join("|").trim() || line;
+                return { duration, Scene };
+              });
+
+            body = {
+              provider,
+              model: videoModel,
+              input: {
+                n_frames: soraFrames,
+                image_urls: trimmedSoraImageUrl ? [trimmedSoraImageUrl] : [],
+                aspect_ratio: soraAspect,
+                shots,
+              },
+            };
+          }
+
+          const res = await fetch("/api/video/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            signal: ac.signal,
+          });
+
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            throw new Error(json.error || `Generation failed (line ${idx + 1})`);
+          }
+
+          const item: VideoItem = {
+            id: crypto.randomUUID(),
+            prompt: line,
+            url: json.videoUrl,
+          };
+          pushVideo(item);
+          incProgress();
+          return item;
+        });
+      }
+
+      const parallel = Math.max(1, Math.min(MAX_CONCURRENT_REQUESTS, run.speed));
+      await runWithLimit(parallel, tasks);
+
+      // Mark as done if still running
+      setVideoRuns((prev) =>
+        prev.map((r) => {
+          if (r.id !== run.id) return r;
+          if (r.status === "running") return { ...r, status: "done" as RunStatus, controller: null };
+          return r;
+        })
+      );
+    } catch (e: any) {
+      if (e?.name === "AbortError") {
+        setVideoRuns((prev) =>
+          prev.map((r) => {
+            if (r.id !== run.id) return r;
+            return { ...r, status: "cancelled" as RunStatus, controller: null };
+          })
+        );
+      } else {
+        setError(e?.message || "Generation failed");
+      }
+    }
+  }
 
   /* =====================================================
      UI
@@ -1956,7 +2108,79 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
 
         {/* ========================= VIDEO TAB ========================= */}
         {tab === "video" && (
-          <section className="grid md:grid-cols-3 gap-6">
+          <>
+            {/* Video Runs Dock */}
+            <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                {videoRuns.length === 0 && (
+                  <div className="text-xs text-neutral-500 px-2 py-1">
+                    No video runs yet. Configure your prompt(s) and click <span className="underline">Generate</span>.
+                  </div>
+                )}
+                {videoRuns.map((r) => {
+                  const pct =
+                    r.progress.total > 0
+                      ? Math.round((r.progress.done / r.progress.total) * 100)
+                      : 0;
+                  return (
+                    <div
+                      key={r.id}
+                      className={`group rounded-md border ${
+                        activeVideoRunId === r.id
+                          ? "border-white/30 bg-white/5"
+                          : "border-white/10 bg-black/20 hover:bg-black/30"
+                      }`}
+                    >
+                      <button
+                        className="px-3 py-1.5 text-sm flex items-center gap-2"
+                        onClick={() => setActiveVideoRunId(r.id)}
+                        title={`${r.name} — ${r.status}`}
+                      >
+                        <span className={`inline-block h-2 w-2 rounded-full ${statusColor(r.status)}`} />
+                        <span className="text-neutral-200">{r.name}</span>
+                        {r.status === "running" && (
+                          <span className="text-[11px] text-neutral-400">
+                            {r.progress.done}/{r.progress.total}
+                          </span>
+                        )}
+                      </button>
+                      <div className="h-[3px] w-full bg-white/5">
+                        <div
+                          className={`h-[3px] ${r.status === "error" ? "bg-red-500" : "bg-white/70"}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="ml-auto flex items-center gap-2">
+                  {activeVideoRun && (
+                    <>
+                      <span className="text-xs text-neutral-500">
+                        Viewing: <b className="text-neutral-300">{activeVideoRun.name}</b>
+                      </span>
+                      {activeVideoRun.status === "running" && (
+                        <button
+                          className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-xs"
+                          onClick={() => cancelVideoRun(activeVideoRun.id)}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      <button
+                        className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-2 py-1 text-xs"
+                        onClick={() => deleteVideoRun(activeVideoRun.id)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <section className="grid md:grid-cols-3 gap-6">
             {/* LEFT: video model + inputs (tailored per model) */}
             <div className="space-y-4 md:col-span-1">
               <div className="rounded-lg border border-neutral-800 p-3 bg-neutral-950/60">
@@ -2365,44 +2589,42 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                 <div className="flex items-center gap-2">
                   <button
                     className="rounded bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
-                    onClick={batchVideoMode ? onGenerateBatchVideo : onGenerateVideo}
+                    onClick={batchVideoMode ? startBatchVideoRun : startVideoRun}
                     disabled={
-                      videoLoading ||
+                      videoSomethingRunning ||
                       (batchVideoMode
                         ? (batchVideoPrompt.trim().length === 0 || batchVideoImages.length === 0)
                         : (videoPromptLines.length === 0 || (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo)))
                     }
                   >
-                    {videoLoading
+                    {videoSomethingRunning
                       ? "Generating…"
                       : batchVideoMode
                       ? `Generate ${batchVideoImages.length} Videos`
                       : `Generate ${videoPromptLines.length || ""}`}
                   </button>
-                  {videoLoading && (
-                    <button
-                      className="rounded bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-2"
-                      onClick={cancelVideo}
-                    >
-                      Cancel
-                    </button>
-                  )}
                   <div className="text-xs text-neutral-400">
                     Speed: {videoParallel}x
                   </div>
-                  {videoError && <span className="text-sm text-red-400">{videoError}</span>}
+                  {activeVideoRun?.error && <span className="text-sm text-red-400">{activeVideoRun.error}</span>}
                 </div>
 
-                {videoProgress.total > 0 && (
+                {activeVideoRun && activeVideoRun.status === "running" && activeVideoRun.progress.total > 0 && (
                   <div className="space-y-1">
                     <div className="flex justify-between text-xs text-neutral-400">
                       <span>Generating videos...</span>
-                      <span>{videoProgress.done} / {videoProgress.total} ({videoPct}%)</span>
+                      <span>
+                        {activeVideoRun.progress.done} / {activeVideoRun.progress.total} (
+                        {Math.round((activeVideoRun.progress.done / activeVideoRun.progress.total) * 100)}%)
+                      </span>
                     </div>
                     <div className="h-1.5 w-full bg-neutral-800 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${videoPct}%`, transition: "width .2s ease" }}
+                        style={{
+                          width: `${Math.round((activeVideoRun.progress.done / activeVideoRun.progress.total) * 100)}%`,
+                          transition: "width .2s ease"
+                        }}
                       />
                     </div>
                   </div>
@@ -2410,16 +2632,16 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               </div>
 
               {/* Results */}
-              {videos.length > 0 && (
+              {activeVideoRun && activeVideoRun.videos.length > 0 && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm text-neutral-300">Results ({videos.length})</div>
+                    <div className="text-sm text-neutral-300">Results ({activeVideoRun.videos.length})</div>
                     <button
                       className="rounded-md bg-white/5 hover:bg-white/10 border border-neutral-700 px-3 py-1 text-sm"
                       onClick={async () => {
-                        const base = safeName(productName || "product");
-                        for (let i = 0; i < videos.length; i++) {
-                          const v = videos[i];
+                        const base = safeName(activeVideoRun.name || "videos");
+                        for (let i = 0; i < activeVideoRun.videos.length; i++) {
+                          const v = activeVideoRun.videos[i];
                           try {
                             const res = await fetch(v.url);
                             const blob = await res.blob();
@@ -2441,7 +2663,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   </div>
 
                   <div className="grid md:grid-cols-2 gap-4">
-                    {videos.map((v, i) => (
+                    {activeVideoRun.videos.map((v, i) => (
                       <div key={v.id} className="rounded-lg border border-neutral-800 overflow-hidden">
                         <video className="w-full h-auto block bg-black" src={v.url} controls playsInline />
                         <div className="p-3 flex items-center justify-between gap-3">
@@ -2449,7 +2671,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                           <button
                             className="rounded-md bg-black/60 hover:bg-black/75 border border-white/30 text-white text-xs px-3 py-1"
                             onClick={async () => {
-                              const base = safeName(productName || "product");
+                              const base = safeName(activeVideoRun.name || "videos");
                               try {
                                 const res = await fetch(v.url);
                                 const blob = await res.blob();
@@ -2475,6 +2697,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
               )}
             </div>
           </section>
+          </>
         )}
       </div>
 
