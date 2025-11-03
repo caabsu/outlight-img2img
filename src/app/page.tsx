@@ -252,7 +252,7 @@ export default function ContentGeneratorPage() {
   const [sdSeed, setSdSeed] = useState<number | "">("");
 
   // Speed (parallelism per run)
-  const [speed, setSpeed] = useState<RunSpeed>(1);
+  const [speed, setSpeed] = useState<RunSpeed>(3);
 
   // Prompts (image)
   const [promptsText, setPromptsText] = useState<string>("");
@@ -671,7 +671,7 @@ export default function ContentGeneratorPage() {
       const baseModel = safeName(run.modelNameDisplay);
       const basePrompt = safeName(img.prompt).slice(0, 60) || `img-${i + 1}`;
       const { bytes, ext } = await fetchImageBytes(img.imageDataUrl);
-      const filename = `${folderName}/${String(i + 1).padStart(2, "0")}_${baseModel}_${basePrompt}.${ext}`;
+      const filename = `${folderName}/${folderName}_${baseModel}_${String(i + 1).padStart(2, "0")}_${basePrompt}.${ext}`;
       zip.file(filename, bytes);
     }
 
@@ -870,7 +870,7 @@ export default function ContentGeneratorPage() {
   );
 
   // Shared controls
-  const [videoParallel, setVideoParallel] = useState<number>(1);
+  const [videoParallel, setVideoParallel] = useState<number>(3);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [videoProgress, setVideoProgress] = useState<{ done: number; total: number }>({ done: 0, total: 0 });
@@ -2068,9 +2068,7 @@ place this floor lamp on a studio-like space, extremely zoomed in to show the te
                   <button
                     className="rounded-md bg-white/10 hover:bg-white/15 border border-neutral-700 px-4 py-2 disabled:opacity-50"
                     onClick={onGenerateVideo}
-                    title={!isKling ? "Coming soon: provider not yet supported" : undefined}
                     disabled={
-                      !isKling ||
                       videoLoading ||
                       videoPromptLines.length === 0 ||
                       (videoNeedsImage && !resolvedVideoReferenceUrl && !isVeo)

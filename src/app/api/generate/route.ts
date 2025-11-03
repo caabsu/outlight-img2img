@@ -235,11 +235,14 @@ export async function POST(req: Request) {
         );
       }
 
+      // Enhance prompt for better instruction following
+      const enhancedPrompt = `Edit the provided image(s) according to these instructions. Make sure to follow the instructions precisely and apply the requested changes to the image. Instructions: ${prompt}`;
+
       const payload = {
         model: "bytedance/seedream-v4-edit",
         callBackUrl: "",
         input: {
-          prompt,
+          prompt: enhancedPrompt,
           image_urls: referenceUrls,
           image_size: options?.image_size || "square",
           image_resolution: options?.image_resolution || "1K",
