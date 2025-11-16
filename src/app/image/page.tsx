@@ -962,7 +962,7 @@ export default function ImageStudioPage() {
                   Start Run ({promptLines.length})
                 </button>
                 <Link href="/library" className="text-sm font-medium text-slate-600 hover:text-slate-900">
-                  Prompt Library ->
+                  Prompt Library &gt;
                 </Link>
                 <span className="text-xs text-slate-400">
                   Oldest runs auto-close when hitting {MAX_CONCURRENT_RUNS}.
