@@ -754,12 +754,12 @@ export default function ImageStudioPage() {
                     <p className="font-semibold text-slate-900">{selectedProduct.name}</p>
                     <p className="text-xs uppercase tracking-wide text-slate-500">{selectedProduct.slug}</p>
                     {selectedProduct.image_url && (
-                      <div className="mt-3 overflow-hidden rounded-lg border border-slate-200">
+                      <div className="mt-3 aspect-square overflow-hidden rounded-lg border border-slate-200">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={selectedProduct.image_url}
                           alt={selectedProduct.name}
-                          className="h-36 w-full object-cover"
+                          className="h-full w-full object-cover"
                         />
                       </div>
                     )}

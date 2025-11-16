@@ -155,9 +155,9 @@ export default function ProductsPage() {
                     className="rounded-xl border border-slate-200 p-4 text-sm text-slate-600 shadow-sm"
                   >
                     {product.image_url && (
-                      <div className="overflow-hidden rounded-lg border border-slate-100">
+                      <div className="aspect-square overflow-hidden rounded-lg border border-slate-100">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={product.image_url} alt={product.name} className="h-32 w-full object-cover" />
+                        <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
                       </div>
                     )}
                     <p className="mt-3 text-base font-semibold text-slate-900">{product.name}</p>
@@ -214,9 +214,9 @@ export default function ProductsPage() {
               />
             </label>
             {selectedProduct?.image_url && (
-              <div className="overflow-hidden rounded-xl border border-slate-200">
+              <div className="aspect-square overflow-hidden rounded-xl border border-slate-200">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={selectedProduct.image_url} alt={selectedProduct.name} className="h-32 w-full object-cover" />
+                <img src={selectedProduct.image_url} alt={selectedProduct.name} className="h-full w-full object-cover" />
               </div>
             )}
             <button
