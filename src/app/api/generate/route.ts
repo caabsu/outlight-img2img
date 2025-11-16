@@ -196,6 +196,29 @@ async function callGeminiImageEdit({
   return { nbRes, nbJson };
 }
 
+async function callGeminiTextToImage(text: string) {
+  const payload = {
+    contents: [
+      {
+        role: "user",
+        parts: [{ text }],
+      },
+    ],
+    generationConfig: {
+      temperature: 0.6,
+      response_mime_type: "image/png",
+    },
+  };
+
+  const nbRes = await fetch(NB_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", [NB_AUTH_HEADER]: NB_API_KEY },
+    body: JSON.stringify(payload),
+  });
+  const nbJson = await nbRes.json().catch(() => ({}));
+  return { nbRes, nbJson };
+}
+
 /* ========================= ROUTE ========================= */
 export async function POST(req: Request) {
   try {
@@ -205,6 +228,9 @@ export async function POST(req: Request) {
     if (!prompt || !modelId) {
       return NextResponse.json({ error: "Missing modelId or prompt" }, { status: 400 });
     }
+
+    const isSeedream = modelId.startsWith("seedream");
+    const requiresReference = isSeedream;
 
     // Build the list of reference images (http(s) or data:) in priority order
     // product -> its image_url + any additionalUrls; otherwise use customUrls or fallback customUrl
@@ -219,7 +245,7 @@ export async function POST(req: Request) {
     }
     // Deduplicate while preserving order
     referenceUrls = Array.from(new Set(referenceUrls));
-    if (referenceUrls.length === 0) {
+    if (requiresReference && referenceUrls.length === 0) {
       return NextResponse.json({ error: "Reference image URL(s) required" }, { status: 400 });
     }
 
@@ -308,6 +334,21 @@ export async function POST(req: Request) {
 
     /* -------- Gemini (Google AI Studio) -------- */
     if (!NB_API_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
+
+    if (referenceUrls.length === 0) {
+      const { nbRes, nbJson } = await callGeminiTextToImage(prompt);
+      if (!nbRes.ok) {
+        const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
+        return NextResponse.json({ error: msg }, { status: nbRes.status || 502 });
+      }
+      const out = extractGeminiImage(nbJson);
+      if (out.dataUrl) return NextResponse.json({ imageDataUrl: out.dataUrl });
+      if (out.url) return NextResponse.json({ imageDataUrl: out.url });
+      return NextResponse.json(
+        { error: out.reason || "Gemini returned no image data", debug: out.debug ?? null },
+        { status: 502 }
+      );
+    }
 
     // 1) load reference image(s)
     const imgBlobs: Array<{ mime: string; base64: string }> = [];

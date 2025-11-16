@@ -9,6 +9,8 @@ export type ModelDef = {
   provider: Provider;
   // provider-specific name (e.g., KIE model string or internal alias)
   providerName: string;
+  // whether the model REQUIRES a reference image
+  requiresReference?: boolean;
   // UI capability flags (only Seedream needs these now)
   supportsSize?: boolean;
   supportsResolution?: boolean;
@@ -23,6 +25,7 @@ export const MODEL_LIST: ModelDef[] = [
     version: "v1",
     provider: "nanobanana",
     providerName: process.env.NEXT_PUBLIC_NANO_BANANA_MODEL_NAME || "model",
+    requiresReference: false,
   },
   {
     id: "seedream-v4-edit",
@@ -30,6 +33,7 @@ export const MODEL_LIST: ModelDef[] = [
     version: "v4-edit",
     provider: "seedream",
     providerName: "bytedance/seedream-v4-edit",
+    requiresReference: true,
     supportsSize: true,
     supportsResolution: true,
     supportsMaxImages: true,

@@ -7,6 +7,33 @@ function sb() {
   return createClient(url, anon, { auth: { persistSession: false } });
 }
 
+// GET /api/saved-images/[id]
+export async function GET(
+  _req: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { id } = params;
+    if (!id) {
+      return NextResponse.json({ error: "ID is required" }, { status: 400 });
+    }
+
+    const { data, error } = await sb()
+      .from("saved_images")
+      .select("id,image_data,prompt,model_name,product_id,product_name,reference_url,created_at")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+
+    return NextResponse.json({ image: data });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 });
+  }
+}
+
 // DELETE /api/saved-images/[id]
 export async function DELETE(
   req: Request,
