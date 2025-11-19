@@ -147,7 +147,7 @@ export async function POST(req: Request) {
     if (process.env.GEMINI_API_KEY) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3.0-pro-preview" });
 
         const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
         
