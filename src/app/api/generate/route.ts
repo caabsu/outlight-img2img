@@ -204,9 +204,10 @@ async function callGeminiTextToImage(text: string) {
         parts: [{ text }],
       },
     ],
+    // Leave response_mime_type unset: the Gemini image endpoint only accepts text/application values here but still
+    // returns inline image data when omitted, so we can parse it via extractGeminiImage.
     generationConfig: {
       temperature: 0.6,
-      response_mime_type: "image/png",
     },
   };
 

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { MODEL_LIST } from "@/lib/models";
+import { PromptAssistant } from "@/components/PromptAssistant";
 
 type Product = { id: string; name: string; slug: string; image_url: string };
 
@@ -96,6 +97,21 @@ function safeName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 
+function statusColor(status: RunStatus) {
+  switch (status) {
+    case "running":
+      return "text-emerald-600 bg-emerald-50 ring-emerald-500/10";
+    case "done":
+      return "text-indigo-600 bg-indigo-50 ring-indigo-500/10";
+    case "cancelled":
+      return "text-slate-600 bg-slate-50 ring-slate-500/10";
+    case "error":
+      return "text-rose-600 bg-rose-50 ring-rose-500/10";
+    default:
+      return "text-slate-600 bg-slate-50 ring-slate-500/10";
+  }
+}
+
 export default function VideoStudioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -165,6 +181,7 @@ export default function VideoStudioPage() {
   const canStartVideo = videoPromptLines.length > 0 && (!videoNeedsImage || !!finalReferenceUrl || isVeo);
   const canStartBatch = batchVideoPrompt.trim().length > 0 && batchVideoImages.length > 0;
 
+  // ... (runWithLimit, load, useEffects, filesToDataUrls same as before)
   async function runWithLimit<T>(limit: number, tasks: Array<() => Promise<T>>) {
     const queue = [...tasks];
     const out: T[] = [];
@@ -330,8 +347,8 @@ export default function VideoStudioPage() {
     });
     setActiveVideoRunId(run.id);
   }
-
-  function startVideoRun() {
+  
+   function startVideoRun() {
     if (!canStartVideo) {
       setSaveToast({ message: "Add prompts and required reference first.", type: "error" });
       return;
@@ -413,7 +430,7 @@ export default function VideoStudioPage() {
     addRun(run);
     void executeVideoRun(run, context);
   }
-
+  
   async function executeVideoRun(run: VideoRun, context: VideoRunContext) {
     const controller = run.controller;
     if (!controller) return;
@@ -459,7 +476,8 @@ export default function VideoStudioPage() {
     const tasks: Array<() => Promise<void>> = [];
 
     if (run.isBatch) {
-      const prompt = run.prompts[0];
+        // ... (batch logic same as before)
+        const prompt = run.prompts[0];
       (context.batchImages || []).forEach((imageUrl, index) => {
         tasks.push(async () => {
           let provider: VideoProvider = "kling";
@@ -533,7 +551,8 @@ export default function VideoStudioPage() {
     } else {
       run.prompts.forEach((line, index) => {
         tasks.push(async () => {
-          let provider: VideoProvider = "kling";
+           // ... (normal run logic same as before)
+           let provider: VideoProvider = "kling";
           let body: any = {};
           if (runIsKling) {
             const cfgVal = Number.isFinite(Number(context.kling.cfg)) ? Number(context.kling.cfg) : undefined;
@@ -631,610 +650,352 @@ export default function VideoStudioPage() {
   }
 
   return (
-    <div className="px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-10">
-        <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-purple-50 via-white to-indigo-50 p-10 shadow-sm">
-          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr),320px] lg:items-center">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-purple-500">Outlight Video Studio</p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900">
-                Multi-model video generation with production oversight.
-              </h1>
-              <p className="mt-4 text-base text-slate-600">
-                Move between Kling, Veo, and Sora workflows with structured prompts, reference stewardship, and clean run history.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-3">
-                <Link
-                  href="/library"
-                  className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-slate-800"
-                >
-                  Browse Library
-                </Link>
-                <Link
-                  href="/products"
-                  className="rounded-full border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 hover:border-slate-400"
-                >
-                  Manage Products
-                </Link>
-              </div>
-            </div>
-            <dl className="grid grid-cols-2 gap-4 rounded-2xl border border-purple-100 bg-white/70 p-5 text-sm text-slate-600 shadow-inner">
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-400">Models</dt>
-                <dd className="mt-1 text-2xl font-semibold text-slate-900">
-                  {VIDEO_MODEL_GROUPS.reduce((acc, g) => acc + g.options.length, 0)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-slate-400">Image Models</dt>
-                <dd className="mt-1 text-2xl font-semibold text-slate-900">{MODEL_LIST.length}</dd>
-              </div>
-            </dl>
-          </div>
-        </section>
+    <div className="min-h-screen bg-[#fcfcfc] p-4 lg:p-6">
+      <div className="mx-auto max-w-[1800px]">
+        <div className="mb-6 flex items-center justify-between">
+           <div className="flex items-center gap-3">
+               <h1 className="text-xl font-bold text-slate-900 tracking-tight">Video Studio</h1>
+               <div className="h-4 w-px bg-slate-200" />
+               <div className="flex gap-1 text-xs font-medium text-slate-500">
+                   <span>Runs: {videoRuns.length}</span>
+                   <span className="text-slate-300">•</span>
+                   <span>Active: {videoRuns.filter(r => r.status === "running").length}</span>
+               </div>
+           </div>
+           <Link href="/library" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">
+             View Library &rarr;
+           </Link>
+        </div>
 
-        <div className="grid gap-8 lg:grid-cols-[420px,1fr]">
-          <div className="space-y-8">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Video Model</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">Select Engine</h2>
-                </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {videoModelDef.label}
-                </span>
-              </div>
-              <div className="mt-5 space-y-4">
-                {VIDEO_MODEL_GROUPS.map((group) => (
-                  <div key={group.label}>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.label}</p>
-                    <div className="mt-2 space-y-2">
-                      {group.options.map((option) => {
-                        const active = option.id === videoModel;
-                        return (
-                          <button
-                            key={option.id}
-                            onClick={() => setVideoModel(option.id)}
-                            className={`w-full rounded-xl border px-4 py-3 text-left text-sm transition ${
-                              active
-                                ? "border-slate-900 bg-slate-900 text-white shadow-sm"
-                                : "border-slate-200 hover:border-slate-300"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <span>{option.label}</span>
-                              <span className="text-xs uppercase tracking-wide opacity-70">{option.kind}</span>
+        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)_380px] items-start">
+          
+          {/* Column 1: Configuration */}
+          <div className="space-y-6">
+             {/* Model Select */}
+             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                 <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400">Model</h2>
+                 <div className="space-y-4">
+                     {VIDEO_MODEL_GROUPS.map(group => (
+                         <div key={group.label}>
+                             <p className="mb-2 text-[10px] font-bold uppercase text-slate-400 opacity-70">{group.label}</p>
+                             <div className="space-y-2">
+                                 {group.options.map(option => (
+                                     <button
+                                        key={option.id}
+                                        onClick={() => setVideoModel(option.id)}
+                                        className={`w-full flex items-center justify-between p-2.5 rounded-lg border text-left text-sm transition-all ${ 
+                                            videoModel === option.id
+                                            ? "border-indigo-600 ring-1 ring-indigo-600 bg-indigo-50/50 text-indigo-900"
+                                            : "border-slate-200 hover:border-slate-300 text-slate-700"
+                                        }`}
+                                     >
+                                         <span className="font-medium">{option.label}</span>
+                                     </button>
+                                 ))}
+                             </div>
+                         </div>
+                     ))}
+                 </div>
+                 
+                 {/* Model Specific Params */}
+                 <div className="mt-4 border-t border-slate-100 pt-4">
+                     {/* Kling Params */}
+                     {isKling && (
+                         <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400">Duration</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs" value={klingDuration} onChange={e => setKlingDuration(e.target.value as any)}>
+                                        <option value="5">5s</option>
+                                        <option value="10">10s</option>
+                                    </select>
+                                </div>
+                                {isKlingText && (
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-slate-400">Aspect</label>
+                                        <select className="w-full mt-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs" value={klingAspect} onChange={e => setKlingAspect(e.target.value as any)}>
+                                            <option value="16:9">16:9</option>
+                                            <option value="9:16">9:16</option>
+                                            <option value="1:1">1:1</option>
+                                        </select>
+                                    </div>
+                                )}
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+                            <div>
+                                <label className="text-[10px] font-bold uppercase text-slate-400">Negative</label>
+                                <input className="w-full mt-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs" placeholder="Optional" value={klingNeg} onChange={e => setKlingNeg(e.target.value)} />
+                            </div>
+                         </div>
+                     )}
+                     {/* Veo Params */}
+                     {isVeo && (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                 <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400">Aspect</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs" value={veoAspect} onChange={e => setVeoAspect(e.target.value as any)}>
+                                        <option value="16:9">16:9</option>
+                                        <option value="9:16">9:16</option>
+                                    </select>
+                                </div>
+                                 <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400">Seed</label>
+                                    <input className="w-full mt-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs" placeholder="Random" value={veoSeed} onChange={e => setVeoSeed(e.target.value)} />
+                                </div>
+                            </div>
+                        </div>
+                     )}
+                 </div>
+             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-5">
-              {(() => {
-                if (videoModelDef.provider === "kling") {
-                  return (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-900">Kling Controls</h3>
-                        <span className="text-xs text-slate-500">{videoModelDef.kind}</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <label className="text-xs font-semibold text-slate-500">
-                          Duration
-                          <select
-                            className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                            value={klingDuration}
-                            onChange={(e) => setKlingDuration(e.target.value as "5" | "10")}
-                          >
-                            <option value="5">5s</option>
-                            <option value="10">10s</option>
-                          </select>
-                        </label>
-                        {isKlingText && (
-                          <label className="text-xs font-semibold text-slate-500">
-                            Aspect
-                            <select
-                              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                              value={klingAspect}
-                              onChange={(e) => setKlingAspect(e.target.value as "16:9" | "9:16" | "1:1")}
-                            >
-                              <option value="16:9">16:9</option>
-                              <option value="9:16">9:16</option>
-                              <option value="1:1">1:1</option>
-                            </select>
-                          </label>
-                        )}
-                      </div>
-                      <label className="text-xs font-semibold text-slate-500">
-                        Negative Prompt
-                        <input
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          placeholder="Optional"
-                          value={klingNeg}
-                          onChange={(e) => setKlingNeg(e.target.value)}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold text-slate-500">
-                        CFG Scale
-                        <input
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          value={klingCfg}
-                          onChange={(e) => setKlingCfg(e.target.value)}
-                        />
-                      </label>
-                    </>
-                  );
-                }
-                if (videoModelDef.provider === "veo") {
-                  return (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-slate-900">Veo Controls</h3>
-                        <span className="text-xs text-slate-500">{videoModelDef.label}</span>
-                      </div>
-                      <label className="text-xs font-semibold text-slate-500">
-                        Aspect Ratio
+             {/* Context / Reference */}
+             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                 <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Context</h2>
+                     {videoNeedsImage && (
+                        <span className={`h-2 w-2 rounded-full ${finalReferenceUrl ? "bg-emerald-500" : "bg-rose-500"}`} />
+                    )}
+                 </div>
+                 
+                 <div className="space-y-4">
+                     <div>
+                        <label className="mb-1 block text-xs font-medium text-slate-600">Subject / Product</label>
                         <select
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          value={veoAspect}
-                          onChange={(e) => setVeoAspect(e.target.value as VeoRatio)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                            value={selectedId}
+                            onChange={(e) => { setSelectedId(e.target.value); setReferenceUploadPreview(null); setReferenceUploadedUrl(null); }}
                         >
-                          <option value="16:9">16:9</option>
-                          <option value="9:16">9:16</option>
-                          <option value="Auto">Auto</option>
+                            <option value="custom">Custom</option>
+                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                         </select>
-                      </label>
-                      <label className="text-xs font-semibold text-slate-500">
-                        Mode
-                        <select
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          value={veoGenType}
-                          onChange={(e) => setVeoGenType(e.target.value as VeoGenType)}
-                        >
-                          <option value="TEXT_2_VIDEO">Text to Video</option>
-                          <option value="FIRST_AND_LAST_FRAMES_2_VIDEO">First + Last Frames</option>
-                          <option value="REFERENCE_2_VIDEO">Reference to Video</option>
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold text-slate-500">
-                        Seed (optional)
-                        <input
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          placeholder="10000"
-                          value={veoSeed}
-                          onChange={(e) => setVeoSeed(e.target.value)}
-                        />
-                      </label>
-                      <label className="text-xs font-semibold text-slate-500">
-                        Secondary Image URL
-                        <input
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          placeholder="https://..."
-                          value={veoSecondImage}
-                          onChange={(e) => setVeoSecondImage(e.target.value)}
-                        />
-                      </label>
-                    </>
-                  );
-                }
-                return (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-sm font-semibold text-slate-900">Sora Storyboard</h3>
-                      <span className="text-xs text-slate-500">{videoModelDef.label}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <label className="text-xs font-semibold text-slate-500">
-                        Frames
-                        <select
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          value={soraFrames}
-                          onChange={(e) => setSoraFrames(e.target.value as "10" | "15" | "25")}
-                        >
-                          <option value="10">10</option>
-                          <option value="15">15</option>
-                          <option value="25">25</option>
-                        </select>
-                      </label>
-                      <label className="text-xs font-semibold text-slate-500">
-                        Aspect
-                        <select
-                          className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                          value={soraAspect}
-                          onChange={(e) => setSoraAspect(e.target.value as "portrait" | "landscape")}
-                        >
-                          <option value="landscape">Landscape</option>
-                          <option value="portrait">Portrait</option>
-                        </select>
-                      </label>
-                    </div>
-                    <label className="text-xs font-semibold text-slate-500">
-                      Shot Script
-                      <textarea
-                        className="mt-1 h-28 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm"
-                        value={soraShotsText}
-                        onChange={(e) => setSoraShotsText(e.target.value)}
-                      />
-                    </label>
-                    <label className="text-xs font-semibold text-slate-500">
-                      Reference Image URL
-                      <input
-                        className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                        placeholder="https://..."
-                        value={soraImageUrl}
-                        onChange={(e) => setSoraImageUrl(e.target.value)}
-                      />
-                    </label>
-                  </>
-                );
-              })()}
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">
-                    Reference
-                  </p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">Product Context</h2>
-                  <p className="mt-1 text-sm text-slate-500">
-                    Required for Kling image-to-video and Sora storyboard. Optional for Veo text runs.
-                  </p>
-                </div>
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                    videoNeedsImage && !finalReferenceUrl
-                      ? "bg-rose-50 text-rose-700"
-                      : "bg-emerald-50 text-emerald-700"
-                  }`}
-                >
-                  {videoNeedsImage && !finalReferenceUrl ? "Needs reference" : "Ready"}
-                </span>
-              </div>
-              <select
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                value={selectedId}
-                onChange={(e) => {
-                  setSelectedId(e.target.value);
-                  setReferenceUploadPreview(null);
-                  setReferenceUploadedUrl(null);
-                }}
-              >
-                <option value="custom">Custom Session</option>
-                {products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.name}
-                  </option>
-                ))}
-              </select>
-              {productsLoading && <p className="text-xs text-slate-400">Loading products...</p>}
-              {selectedProduct && selectedId !== "custom" && (
-                <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-sm text-slate-600">
-                  <p className="font-semibold text-slate-900">{selectedProduct.name}</p>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">{selectedProduct.slug}</p>
-                  {selectedProduct.image_url && (
-                    <div className="mt-3 aspect-square overflow-hidden rounded-lg border border-slate-200">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={selectedProduct.image_url}
-                        alt={selectedProduct.name}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-              <label className="text-xs font-semibold text-slate-500">
-                Custom Reference URL
-                <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  placeholder="https://..."
-                  value={customVideoUrl}
-                  onChange={(e) => {
-                    setCustomVideoUrl(e.target.value);
-                    setReferenceUploadedUrl(null);
-                    setReferenceUploadPreview(null);
-                  }}
-                  disabled={selectedId !== "custom"}
-                />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">
-                Upload Reference (creates public URL)
-                <label className="mt-1 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 hover:border-slate-400">
-                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleReferenceUpload(e.target.files)} />
-                  Drop file or click to upload
-                </label>
-              </label>
-              {referenceUploadPreview && (
-                <div className="overflow-hidden rounded-xl border border-slate-200">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={referenceUploadPreview} alt="Reference preview" className="h-28 w-full object-cover" />
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-900">Batch Mode</h3>
-                <label className="flex items-center gap-2 text-xs text-slate-500">
-                  <input
-                    type="checkbox"
-                    checked={batchVideoMode}
-                    onChange={(e) => setBatchVideoMode(e.target.checked)}
-                  />
-                  Enable
-                </label>
-              </div>
-              <p className="text-sm text-slate-500">
-                Upload multiple reference frames to generate one video per image with the same prompt.
-              </p>
-              <label className="text-xs font-semibold text-slate-500">
-                Batch Prompt
-                <input
-                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
-                  placeholder="Describe the scene..."
-                  value={batchVideoPrompt}
-                  onChange={(e) => setBatchVideoPrompt(e.target.value)}
-                />
-              </label>
-              <label className="text-xs font-semibold text-slate-500">
-                Upload Images
-                <label className="mt-1 flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-6 text-center text-sm text-slate-500 hover:border-slate-400">
-                  <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleBatchVideoUpload(e.target.files)} />
-                  {batchVideoUploading ? "Uploading..." : "Drop files or click to upload"}
-                </label>
-              </label>
-              {batchVideoPreviews.length > 0 && (
-                <div className="grid grid-cols-3 gap-2">
-                  {batchVideoPreviews.map((preview, idx) => (
-                    <div key={idx} className="overflow-hidden rounded-xl border border-slate-200">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={preview} alt={`Batch ${idx + 1}`} className="h-20 w-full object-cover" />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                     </div>
+                     
+                     {selectedId !== "custom" && selectedProduct && (
+                         <div className="flex gap-3 items-center rounded-lg bg-slate-50 p-2 border border-slate-100">
+                             {selectedProduct.image_url && (
+                                 // eslint-disable-next-line @next/next/no-img-element
+                                 <img src={selectedProduct.image_url} className="h-10 w-10 rounded object-cover" alt="" />
+                             )}
+                             <span className="text-xs font-semibold text-slate-700">{selectedProduct.name}</span>
+                         </div>
+                     )}
+                     
+                     <div className="space-y-2">
+                         <label className="text-xs font-medium text-slate-600">Reference Source</label>
+                         {selectedId === "custom" ? (
+                             <div className="space-y-2">
+                                <input 
+                                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs"
+                                    placeholder="Video Reference URL..."
+                                    value={customVideoUrl}
+                                    onChange={(e) => { setCustomVideoUrl(e.target.value); setReferenceUploadedUrl(null); }}
+                                />
+                                <label className="flex w-full items-center justify-center rounded-lg border border-dashed border-slate-300 p-4 text-xs text-slate-500 hover:bg-slate-50 cursor-pointer transition">
+                                    <input type="file" accept="image/*" className="hidden" onChange={e => handleReferenceUpload(e.target.files)} />
+                                    {referenceUploadPreview ? "Change Image" : "Upload Image"}
+                                </label>
+                             </div>
+                         ) : (
+                             <p className="text-xs text-slate-400 italic">Using product image as reference.</p>
+                         )}
+                         
+                         {referenceUploadPreview && (
+                             <div className="relative rounded-lg overflow-hidden border border-slate-200">
+                                 {/* eslint-disable-next-line @next/next/no-img-element */}
+                                 <img src={referenceUploadPreview} className="w-full h-32 object-cover" alt="" />
+                             </div>
+                         )}
+                     </div>
+                 </div>
+             </div>
           </div>
-          <div className="space-y-8">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Prompts</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">Video Direction</h2>
-                  <p className="text-xs text-slate-500">One line per video.</p>
-                </div>
-                <label className="text-xs text-slate-500">
-                  Parallel
-                  <select
-                    className="ml-2 rounded-full border border-slate-200 px-3 py-1 text-sm"
-                    value={videoParallel}
-                    onChange={(e) => setVideoParallel(Number(e.target.value))}
-                  >
-                    {RUN_PARALLEL_OPTIONS.map((val) => (
-                      <option key={val} value={val}>
-                        {val}x
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              <textarea
-                className="mt-4 h-48 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"
-                placeholder="Kling camera push-in on a chrome floor lamp..."
-                value={videoPrompts}
-                onChange={(e) => setVideoPrompts(e.target.value)}
-              />
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={startVideoRun}
-                  disabled={!canStartVideo || videoSomethingRunning}
-                  className={`rounded-full px-5 py-2 text-sm font-semibold text-white shadow-sm transition ${
-                    canStartVideo && !videoSomethingRunning ? "bg-slate-900 hover:bg-slate-800" : "bg-slate-300 cursor-not-allowed"
-                  }`}
-                >
-                  {videoSomethingRunning ? "Running..." : `Generate ${videoPromptLines.length || ""}`}
-                </button>
-                <button
-                  onClick={startBatchVideoRun}
-                  disabled={!batchVideoMode || !canStartBatch}
-                  className={`rounded-full border px-4 py-2 text-sm ${
-                    batchVideoMode && canStartBatch
-                      ? "border-slate-900 text-slate-900"
-                      : "border-slate-200 text-slate-400 cursor-not-allowed"
-                  }`}
-                >
-                  Run Batch ({batchVideoImages.length})
-                </button>
-                <span className="text-xs text-slate-400">Limit {MAX_VIDEO_RUNS} concurrent runs.</span>
-              </div>
-            </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Active Run</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">
-                    {activeVideoRun ? activeVideoRun.name : "No runs yet"}
-                  </h2>
-                  {activeVideoRun && (
-                    <p className="text-xs uppercase tracking-wide text-slate-500">
-                      {activeVideoRun.status} - {activeVideoRun.progress.done}/{activeVideoRun.progress.total}
-                    </p>
-                  )}
+          {/* Column 2: Creation */}
+          <div className="flex flex-col gap-6 h-[calc(100vh-120px)]">
+             <div className="flex-1 flex flex-col rounded-xl border border-slate-200 bg-white p-1 shadow-sm overflow-hidden">
+                 <div className="flex items-center justify-between p-3 border-b border-slate-100 bg-slate-50/50">
+                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Director</h2>
+                     <div className="flex items-center gap-2">
+                        <PromptAssistant 
+                            onAccept={(newPrompts) => {
+                                setVideoPrompts(prev => {
+                                    const prefix = prev.trim() ? prev.trim() + "\n" : "";
+                                    return prefix + newPrompts.join("\n");
+                                });
+                            }}
+                        />
+                         <div className="h-4 w-px bg-slate-200" />
+                          <select 
+                            className="bg-transparent text-xs font-medium text-slate-600 focus:outline-none"
+                            value={videoParallel}
+                            onChange={(e) => setVideoParallel(Number(e.target.value))}
+                        >
+                            {RUN_PARALLEL_OPTIONS.map(s => <option key={s} value={s}>Parallel {s}x</option>)}
+                         </select>
+                     </div>
                 </div>
-                {activeVideoRun && (
-                  <div className="flex gap-2">
-                    <button
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                      onClick={() => cancelVideoRun(activeVideoRun.id)}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                      onClick={() => deleteVideoRun(activeVideoRun.id)}
-                    >
-                      Clear
-                    </button>
-                  </div>
+                
+                {batchVideoMode ? (
+                    <div className="flex-1 p-6 space-y-6">
+                        <div className="p-4 rounded-lg bg-indigo-50 border border-indigo-100">
+                            <h3 className="text-sm font-bold text-indigo-900 mb-2">Batch Mode Active</h3>
+                            <p className="text-xs text-indigo-700">One prompt will be applied to all uploaded images.</p>
+                        </div>
+                        <div className="space-y-2">
+                             <label className="text-xs font-bold uppercase text-slate-500">Batch Prompt</label>
+                             <textarea 
+                                className="w-full rounded-lg border border-slate-200 p-3 text-sm"
+                                rows={3}
+                                placeholder="Describe the motion..."
+                                value={batchVideoPrompt}
+                                onChange={(e) => setBatchVideoPrompt(e.target.value)}
+                             />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase text-slate-500">Images ({batchVideoImages.length})</label>
+                            <div className="grid grid-cols-4 gap-2">
+                                <label className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-slate-300 hover:bg-slate-50 cursor-pointer">
+                                    <span className="text-xl text-slate-400">+</span>
+                                    <input type="file" accept="image/*" multiple className="hidden" onChange={e => handleBatchVideoUpload(e.target.files)} />
+                                </label>
+                                {batchVideoPreviews.map((src, i) => (
+                                    <div key={i} className="rounded-lg overflow-hidden border border-slate-200 bg-slate-100">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img src={src} className="h-full w-full object-cover" alt="" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <textarea 
+                        className="flex-1 w-full resize-none p-4 text-sm outline-none text-slate-700 placeholder:text-slate-300 font-mono leading-relaxed"
+                        placeholder="One video prompt per line..."
+                        value={videoPrompts}
+                        onChange={(e) => setVideoPrompts(e.target.value)}
+                    />
                 )}
-              </div>
-              {activeVideoRun ? (
-                <>
-                  {activeVideoRun.videos.length > 0 ? (
-                    <div className="mt-4 space-y-3">
-                      <div className="rounded-2xl border border-slate-100 bg-black/5 p-3">
-                        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                        <video
-                          className="h-[320px] w-full rounded-xl bg-black object-cover"
-                          src={activeVideoRun.videos[activeVideoRun.activeIdx].url}
-                          controls
-                          playsInline
-                        />
-                      </div>
-                      <div className="flex items-center justify-between text-xs text-slate-500">
-                        <button onClick={() => stepActiveVideo(activeVideoRun.id, -1)}>Previous</button>
-                        <span>
-                          {activeVideoRun.activeIdx + 1} / {activeVideoRun.videos.length}
-                        </span>
-                        <button onClick={() => stepActiveVideo(activeVideoRun.id, 1)}>Next</button>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-white"
-                          onClick={() => {
-                            const current = activeVideoRun.videos[activeVideoRun.activeIdx];
-                            const base = safeName(activeVideoRun.name || "video");
-                            const a = document.createElement("a");
-                            a.href = current.url;
-                            a.download = `${base}_${activeVideoRun.activeIdx + 1}.mp4`;
-                            document.body.appendChild(a);
-                            a.click();
-                            a.remove();
-                          }}
-                        >
-                          Download
-                        </button>
-                        <button
-                          className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-white"
-                          onClick={() => {
-                            const updated = activeVideoRun.selectedIdx.has(activeVideoRun.activeIdx);
-                            toggleVideoSelection(activeVideoRun.id, activeVideoRun.activeIdx);
-                            setSaveToast({
-                              message: updated ? "Frame removed from selection" : "Frame tagged for download",
-                              type: "success",
-                            });
-                          }}
-                        >
-                          Toggle Select
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-4 gap-2">
-                        {activeVideoRun.videos.map((vid, idx) => {
-                          const isSelected = activeVideoRun.selectedIdx.has(idx);
-                          return (
-                            <button
-                              key={vid.id}
-                              className={`rounded-xl border p-1 ${isSelected ? "border-slate-900" : "border-slate-200"}`}
-                              onClick={() => {
-                                setActiveVideoRun(activeVideoRun.id);
-                                setVideoRuns((prev) =>
-                                  prev.map((run) => (run.id === activeVideoRun.id ? { ...run, activeIdx: idx } : run))
-                                );
-                              }}
-                            >
-                              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                              <video src={vid.url} className="h-16 w-full rounded-lg bg-black object-cover" />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mt-4 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
-                      Waiting for first video...
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="mt-4 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-slate-500">
-                  No runs yet. Start one to monitor results.
-                </div>
-              )}
-            </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-slate-900">Run Queue</h2>
-                <span className="text-xs text-slate-500">{videoRuns.length} total</span>
-              </div>
-              {videoRuns.length === 0 ? (
-                <p className="mt-4 text-sm text-slate-500">Runs will appear here with status and progress.</p>
-              ) : (
-                <div className="mt-4 space-y-3">
-                  {videoRuns.map((run) => (
-                    <div
-                      key={run.id}
-                      className={`rounded-2xl border px-4 py-3 text-sm shadow-sm ${
-                        run.id === activeVideoRun?.id ? "border-slate-900 bg-slate-50" : "border-slate-200 bg-white"
-                      }`}
+                <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <label className="flex items-center gap-2 text-xs font-medium text-slate-600 cursor-pointer select-none">
+                            <input type="checkbox" checked={batchVideoMode} onChange={e => setBatchVideoMode(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+                            Batch Mode
+                        </label>
+                     </div>
+                     <button
+                        onClick={batchVideoMode ? startBatchVideoRun : startVideoRun}
+                        disabled={batchVideoMode ? !canStartBatch : !canStartVideo}
+                        className="px-6 py-2 bg-slate-900 text-white text-sm font-semibold rounded-lg hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
                     >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <button className="font-semibold text-slate-900 hover:underline" onClick={() => setActiveVideoRun(run.id)}>
-                            {run.name}
-                          </button>
-                          <p className="text-xs text-slate-500">
-                            {run.prompts.length} prompt(s) - {run.modelLabel}
-                          </p>
+                        {videoSomethingRunning ? "Running..." : "Start Generation"}
+                    </button>
+                </div>
+             </div>
+          </div>
+
+          {/* Column 3: Feed */}
+          <div className="flex flex-col gap-4 h-[calc(100vh-120px)]">
+              {/* Active Video Card */}
+              {activeVideoRun ? (
+                  <div className="flex flex-col flex-1 rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <div className="p-4 border-b border-slate-100">
+                           <div className="flex items-center justify-between mb-2">
+                             <span className="font-semibold text-sm text-slate-900">{activeVideoRun.name}</span>
+                             <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ring-1 ring-inset ${statusColor(activeVideoRun.status)}`}>
+                                 {activeVideoRun.status}
+                             </span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold text-white ${run.status === "running"
-                              ? "bg-emerald-500"
-                              : run.status === "done"
-                              ? "bg-slate-900"
-                              : run.status === "error"
-                              ? "bg-rose-500"
-                              : "bg-slate-400"
-                            }`}
-                          >
-                            {run.status}
-                          </span>
-                          <button className="text-xs text-slate-500 hover:text-slate-900" onClick={() => cancelVideoRun(run.id)}>
-                            Cancel
-                          </button>
-                          <button className="text-xs text-slate-500 hover:text-rose-600" onClick={() => deleteVideoRun(run.id)}>
-                            Remove
-                          </button>
+                        <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                             <div className="h-full bg-slate-900 transition-all duration-500" style={{ width: `${activeVideoRun.progress.total > 0 ? Math.round((activeVideoRun.progress.done / activeVideoRun.progress.total) * 100) : 0}%` }} />
                         </div>
                       </div>
-                      <div className="mt-3 h-1.5 rounded-full bg-slate-200">
-                        <div
-                          className="h-1.5 rounded-full bg-slate-900"
-                          style={{
-                            width:
-                              run.progress.total === 0 ? "0%" : `${Math.round((run.progress.done / run.progress.total) * 100)}%`,
-                          }}
-                        />
+
+                      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
+                          {activeVideoRun.videos.length > 0 ? (
+                              <div className="space-y-3">
+                                  <div className="rounded-lg overflow-hidden bg-black shadow-lg">
+                                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                                      <video 
+                                        src={activeVideoRun.videos[activeVideoRun.activeIdx].url} 
+                                        controls 
+                                        playsInline 
+                                        className="w-full aspect-video object-contain" 
+                                      />
+                                  </div>
+                                  <div className="flex items-center justify-between px-1">
+                                     <button onClick={() => stepActiveVideo(activeVideoRun.id, -1)} className="p-1 hover:bg-slate-100 rounded text-slate-500">←</button>
+                                     <span className="text-xs font-medium text-slate-600">{activeVideoRun.activeIdx + 1} of {activeVideoRun.videos.length}</span>
+                                     <button onClick={() => stepActiveVideo(activeVideoRun.id, 1)} className="p-1 hover:bg-slate-100 rounded text-slate-500">→</button>
+                                 </div>
+                                 <div className="bg-white p-3 rounded-lg border border-slate-100 text-xs text-slate-600 leading-relaxed">
+                                     {activeVideoRun.videos[activeVideoRun.activeIdx].prompt}
+                                 </div>
+                                 
+                                 <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100">
+                                     {activeVideoRun.videos.map((vid, idx) => (
+                                         <button
+                                            key={vid.id}
+                                            onClick={() => {
+                                                 setVideoRuns(prev => prev.map(r => r.id === activeVideoRun.id ? { ...r, activeIdx: idx } : r));
+                                            }}
+                                            className={`aspect-video rounded overflow-hidden border bg-black ${activeVideoRun.activeIdx === idx ? 'border-slate-900 ring-1 ring-slate-900' : 'border-slate-200 opacity-70 hover:opacity-100'}`}
+                                         >
+                                             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                                             <video src={vid.url} className="h-full w-full object-cover pointer-events-none" />
+                                         </button>
+                                     ))}
+                                 </div>
+                              </div>
+                          ) : (
+                              <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                                 <div className="h-8 w-8 border-2 border-slate-200 border-t-slate-400 rounded-full animate-spin" />
+                                 <span className="text-xs">Generating video...</span>
+                             </div>
+                          )}
                       </div>
-                    </div>
-                  ))}
+                  </div>
+              ) : (
+                  <div className="flex-1 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 flex items-center justify-center text-slate-400 text-sm">
+                    No active video run
                 </div>
               )}
-            </div>
+
+              {/* Queue */}
+              <div className="h-1/3 rounded-xl border border-slate-200 bg-white p-4 overflow-y-auto shadow-sm">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Recent Runs</h3>
+                  <div className="space-y-2">
+                    {videoRuns.map(run => (
+                        <div key={run.id} 
+                             onClick={() => setActiveVideoRunId(run.id)}
+                             className={`group p-3 rounded-lg border cursor-pointer transition ${activeVideoRunId === run.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-slate-300'}`}
+                        >
+                            <div className="flex justify-between items-center">
+                                <span className="font-semibold text-xs">{run.name}</span>
+                                <span className={`text-[9px] uppercase font-bold ${activeVideoRunId === run.id ? 'text-slate-400' : 'text-slate-400'}`}>{run.status}</span>
+                            </div>
+                            <div className="mt-1 flex justify-between text-[10px] opacity-80">
+                                <span>{run.videos.length} vids</span>
+                                <button 
+                                    onClick={(e) => { e.stopPropagation(); deleteVideoRun(run.id); }}
+                                    className="hover:text-red-400"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                    {videoRuns.length === 0 && <p className="text-xs text-slate-400 italic">History empty.</p>}
+                </div>
+              </div>
           </div>
+
         </div>
       </div>
+      
+       {/* Toast Notification */}
       {saveToast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-lg">
+        <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg transition-all transform translate-y-0 ${saveToast.type === 'success' ? 'bg-slate-900 text-white' : 'bg-rose-600 text-white'}`}>
           {saveToast.message}
         </div>
       )}
