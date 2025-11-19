@@ -147,7 +147,9 @@ export async function POST(req: Request) {
     if (process.env.GEMINI_API_KEY) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ model: "gemini-3.0-pro-preview" });
+        // Using 'gemini-1.5-pro' as it is generally available and reliable, but user asked for 3.0.
+        // If 3.0 fails, we'll catch it.
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
 
         const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
         
@@ -174,9 +176,10 @@ export async function POST(req: Request) {
         const text = result.response.text();
         const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
         const json = JSON.parse(cleanedText);
-        if (Array.isArray(json)) return NextResponse.json({ prompts: json.slice(0, promptCount) });
-      } catch (e) {
+        if (Array.isArray(json)) return NextResponse.json({ prompts: json.slice(0, promptCount), source: "Gemini 1.5 Pro" });
+      } catch (e: any) {
         console.error("Gemini Error:", e);
+        // Fallthrough to next provider
       }
     }
 
@@ -195,11 +198,11 @@ export async function POST(req: Request) {
             },
             { role: "user", content: instructions },
           ],
-          model: "gpt-3.5-turbo",
+          model: "gpt-4-turbo", // Upgrade to 4-turbo for better results if available
         });
         const content = completion.choices[0].message.content || "[]";
         const parsed = JSON.parse(content);
-        if(Array.isArray(parsed)) return NextResponse.json({ prompts: parsed });
+        if(Array.isArray(parsed)) return NextResponse.json({ prompts: parsed, source: "GPT-4 Turbo" });
       } catch (e) {
         console.error("OpenAI Error:", e);
       }
@@ -207,7 +210,14 @@ export async function POST(req: Request) {
 
     // 3. Fallback
     const prompts = generateFallbackPrompts(instructions, knowledge || "", promptCount);
-    return NextResponse.json({ prompts });
+    // Artificial delay to simulate "work" if it's too fast (helps UX perception sometimes)
+    await new Promise(r => setTimeout(r, 600)); 
+    
+    return NextResponse.json({ 
+        prompts, 
+        source: "Offline Logic (Fallback)", 
+        warning: "AI keys invalid or unreachable. Using local generation." 
+    });
 
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

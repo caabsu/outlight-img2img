@@ -27,11 +27,13 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
   const [count, setCount] = useState(3);
   const [generated, setGenerated] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [source, setSource] = useState<string | null>(null);
 
   async function handleGenerate() {
     if (!instructions.trim()) return;
     setLoading(true);
     setGenerated([]);
+    setSource(null);
     try {
       const res = await fetch("/api/prompt-assistant", {
         method: "POST",
@@ -41,6 +43,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
       const json = await res.json();
       if (res.ok) {
         setGenerated(json.prompts || []);
+        setSource(json.source || null);
       }
     } catch (error) {
       console.error("Failed to generate prompts", error);
@@ -198,7 +201,14 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
               {generated.length > 0 && (
                 <div className="mt-6 space-y-3 border-t border-slate-100 pt-6">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-slate-900">Generated Results</h4>
+                    <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-semibold text-slate-900">Generated Results</h4>
+                        {source && (
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${source.includes("Fallback") ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>
+                                via {source}
+                            </span>
+                        )}
+                    </div>
                     <button
                       onClick={() => {
                         onAccept(generated);
