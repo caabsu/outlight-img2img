@@ -4,138 +4,178 @@ import OpenAI from "openai";
 
 export const runtime = "nodejs";
 
-// Helper for the fallback logic to avoid contradictions
-function getSmartVariance(instructions: string, index: number) {
-  const lower = instructions.toLowerCase();
-  const isDark = lower.includes("dark") || lower.includes("night") || lower.includes("dim") || lower.includes("shadow");
-  const isBright = lower.includes("bright") || lower.includes("sun") || lower.includes("day") || lower.includes("white");
+// --- Smart Fallback Logic (Simulates AI when no keys are present) ---
 
-  const darkVariances = [
-    "low-key lighting with rim accents",
-    "moody atmospheric shadows",
-    "cinematic high-contrast noir style",
-    "subtle volumetric fog with deep blacks",
-    "soft localized glow in a dark environment"
-  ];
+const ADJECTIVES = {
+  dark: ["shadowy", "dimly lit", "nocturnal", "moody", "low-key", "dusky", "obsidian", "mysterious"],
+  bright: ["radiant", "sun-drenched", "airy", "luminous", "high-key", "vibrant", "pristine", "gleaming"],
+  modern: ["sleek", "minimalist", "contemporary", "polished", "avant-garde", "streamlined", "geometric"],
+  natural: ["organic", "earthy", "raw", "botanical", "rustic", "untouched", "biophilic", "authentic"],
+  warm: ["golden", "amber-hued", "cozy", "sun-kissed", "rich", "inviting", "sepia-toned"],
+  cool: ["glacial", "steel-blue", "cyborgian", "sterile", "frosty", "industrial", "melancholic"]
+};
 
-  const brightVariances = [
-    "bright natural sunlight streaming in",
-    "soft airy high-key lighting",
-    "crisp studio daylight",
-    "warm golden hour glow",
-    "clean even illumination"
-  ];
+const ENVIRONMENTS = [
+  "in a high-end architectural void",
+  "set against a textured concrete wall",
+  "placed within a lush indoor garden",
+  "resting on a polished marble surface",
+  "floating in a limitless dark studio",
+  "situated in a chic minimalist living space",
+  "surrounded by soft velvet drapery",
+  "framed by raw industrial steel beams"
+];
 
-  const neutralVariances = [
-    "neutral balanced studio lighting",
-    "soft diffused light from the left",
-    "professional 3-point lighting setup",
-    "gentle ambient occlusion",
-    "sharp commercial product lighting"
-  ];
-
-  let pool = neutralVariances;
-  if (isDark) pool = darkVariances;
-  if (isBright) pool = brightVariances;
-
-  return pool[index % pool.length];
+function getRandom(arr: string[]) {
+  return arr[Math.floor(Math.random() * arr.length)];
 }
 
-function getSmartAngle(instructions: string, index: number) {
-  const lower = instructions.toLowerCase();
-  if (lower.includes("front") || lower.includes("straight")) {
-     return ["straight-on front view", "eye-level symmetrical shot", "direct frontal composition"][index % 3];
-  }
-  if (lower.includes("top") || lower.includes("above")) {
-    return ["top-down flat lay", "high-angle bird's eye view", "directly from above"][index % 3];
+function generateFallbackPrompts(instructions: string, knowledge: string, count: number): string[] {
+  const lowerInst = instructions.toLowerCase();
+  
+  // 1. Analyze Mood/Tone
+  const isDark = lowerInst.includes("dark") || lowerInst.includes("night") || lowerInst.includes("black") || lowerInst.includes("shadow");
+  const isBright = lowerInst.includes("bright") || lowerInst.includes("day") || lowerInst.includes("white") || lowerInst.includes("sun");
+  const isModern = lowerInst.includes("modern") || lowerInst.includes("clean") || lowerInst.includes("minimal");
+  
+  // 2. Analyze Camera/Angle
+  let forcedAngle = "";
+  if (lowerInst.includes("front") || lowerInst.includes("straight")) forcedAngle = "straight-on frontal view";
+  else if (lowerInst.includes("top") || lowerInst.includes("above") || lowerInst.includes("flat")) forcedAngle = "top-down flat lay composition";
+  else if (lowerInst.includes("side") || lowerInst.includes("profile")) forcedAngle = "side profile shot";
+  else if (lowerInst.includes("low")) forcedAngle = "imposing low angle shot";
+  
+  // 3. Extract explicit prefix/suffix from Knowledge Base if present (simple heuristic)
+  let prefix = "";
+  let suffix = "";
+  
+  // Simple check if user put "Start with..." in knowledge base
+  if (knowledge.toLowerCase().includes("start with")) {
+     const match = knowledge.match(/start with ["']?([^"']+)["']?/i);
+     if (match && match[1]) prefix = match[1] + " ";
   }
   
-  const angles = [
-    "slightly low angle for grandeur",
-    "isometric 45-degree view",
-    "close-up macro detail",
-    "wide establishing shot",
-    "dynamic dutch angle"
-  ];
-  return angles[index % angles.length];
+  // Treat the rest of knowledge as style keywords
+  const styleKeywords = knowledge
+    .replace(/start with.*?[.;]/i, "") // remove instructions
+    .replace(/always.*?[.;]/i, "")
+    .split(/[,.]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 3 && !s.toLowerCase().includes("instructions"));
+
+  const prompts: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    // Select varied descriptors based on mood
+    let moodWords = [...(isModern ? ADJECTIVES.modern : [])];
+    if (isDark) moodWords = [...moodWords, ...ADJECTIVES.dark];
+    else if (isBright) moodWords = [...moodWords, ...ADJECTIVES.bright];
+    else moodWords = [...moodWords, ...ADJECTIVES.natural, ...ADJECTIVES.warm]; // default mix
+
+    const adj1 = getRandom(moodWords) || "detailed";
+    const adj2 = getRandom(moodWords) || "cinematic";
+    const env = getRandom(ENVIRONMENTS);
+    
+    // Determine lighting for this variation
+    const lighting = isDark 
+        ? ["deep shadows with rim lighting", "soft moonlight fill", "contrast chiaroscuro lighting", "minimalist spotlighting"][i % 4]
+        : ["soft diffused window light", "bright studio global illumination", "warm sunlight shafts", "even commercial lighting"][i % 4];
+
+    // Determine angle (use forced if exists, else vary)
+    const angle = forcedAngle || ["wide establishing shot", "close-up detail shot", "isometric view", "dynamic 3/4 angle"][i % 4];
+
+    // Assemble the description
+    // Structure: [Prefix] + [Adjectives] + [User Subject] + [Environment] + [Lighting] + [Angle] + [Style Suffix]
+    
+    let core = instructions;
+    // Attempt to make the user prompt flow better if it's just a list of keywords
+    if (!core.endsWith(".")) core += ".";
+    
+    const styleInjection = styleKeywords.slice(0, 3).join(", ");
+    
+    const narrative = `The scene depicts ${core.toLowerCase().replace(/\.$/, "")}, characterized by a ${adj1} and ${adj2} atmosphere. It is ${env}. Lighting is provided by ${lighting}. Captured as a ${angle}.`;
+    
+    const technical = `8k resolution, photorealistic, highly detailed texture, ${styleInjection}`;
+
+    prompts.push(`${prefix}${narrative} ${technical}${suffix}`);
+  }
+
+  return prompts;
 }
+
+// --- Main Handler ---
 
 export async function POST(req: Request) {
   try {
     const { knowledge, instructions, count } = await req.json();
     const promptCount = Math.max(1, Math.min(10, Number(count) || 3));
 
-    // 1. Try Google Gemini API
+    // 1. Google Gemini
     if (process.env.GEMINI_API_KEY) {
       try {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-        const systemPrompt = `You are an expert cinematic prompt engineer for Stable Diffusion and Midjourney.
-        Your task is to generate ${promptCount} distinct, high-quality image generation prompts based on the user's SCENE DESCRIPTION.
+        const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
         
-        RULES:
-        1. STRICTLY adhere to the user's description. Do not contradict it (e.g. if "dark", do not add "bright sun").
-        2. INCORPORATE the "Knowledge Base" style guidelines naturally into the description.
-        3. Add creative variance to each prompt (lighting, composition, film stock) BUT keep the core subject consistent.
-        4. Output ONLY a JSON array of strings. No markdown formatting. Example: ["prompt1", "prompt2"]
+        USER REQUEST:
+        "${instructions}"
         
-        Knowledge Base: "${knowledge}"
-        Scene Description: "${instructions}"`;
+        BRAND KNOWLEDGE BASE (Style/Constraints):
+        "${knowledge}"
+        
+        TASK:
+        Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
+        
+        REQUIREMENTS:
+        1. BASE: Start with the core elements of the User Request.
+        2. EXPAND: Elaborate on textures, lighting, atmosphere, and composition. Make it "visual" and "evocative".
+        3. VARIANCE: Each prompt must have a distinct setting or lighting variation (e.g., one moody, one clean, one textured) while staying true to the core request.
+        4. INTEGRATION: Apply the tone and style from the Knowledge Base implicitly (do not output "(Knowledge applied: ...)").
+        5. FORMAT: Return strictly a JSON array of strings.
+        
+        Example Output Format:
+        ["Detailed prompt 1...", "Detailed prompt 2..."]`;
 
         const result = await model.generateContent(systemPrompt);
-        const response = result.response;
-        const text = response.text();
-        
-        // Attempt to parse JSON output
+        const text = result.response.text();
         const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
         const json = JSON.parse(cleanedText);
-        if (Array.isArray(json)) {
-           return NextResponse.json({ prompts: json.slice(0, promptCount) });
-        }
+        if (Array.isArray(json)) return NextResponse.json({ prompts: json.slice(0, promptCount) });
       } catch (e) {
-        console.error("Gemini API Error, falling back:", e);
+        console.error("Gemini Error:", e);
       }
     }
 
-    // 2. Try OpenAI API
+    // 2. OpenAI
     if (process.env.OPENAI_API_KEY) {
       try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const completion = await openai.chat.completions.create({
           messages: [
-            { role: "system", content: `Generate ${promptCount} detailed image prompts based on the user description. Incorporate the style guide: "${knowledge}". Return strictly a JSON array of strings.` },
+            { 
+                role: "system", 
+                content: `You are a professional Prompt Engineer. Generate ${promptCount} distinct, detailed, and descriptive image prompts based on the user's description. 
+                Incorporate the following style guide naturally: "${knowledge}". 
+                Ensure specific constraints (like 'dark', 'front view') are strictly respected. 
+                Return ONLY a JSON array of strings.` 
+            },
             { role: "user", content: instructions },
           ],
           model: "gpt-3.5-turbo",
         });
-        
         const content = completion.choices[0].message.content || "[]";
         const parsed = JSON.parse(content);
-        if(Array.isArray(parsed)) {
-             return NextResponse.json({ prompts: parsed });
-        }
+        if(Array.isArray(parsed)) return NextResponse.json({ prompts: parsed });
       } catch (e) {
-        console.error("OpenAI API Error, falling back:", e);
+        console.error("OpenAI Error:", e);
       }
     }
 
-    // 3. Smart Fallback (Rule-based)
-    // This runs if no keys are present or if APIs fail.
-    const generatedPrompts = Array.from({ length: promptCount }).map((_, i) => {
-      const variance = getSmartVariance(instructions, i);
-      const angle = getSmartAngle(instructions, i);
-      
-      // Clean up knowledge base integration
-      const styleNote = knowledge && knowledge.length > 5 
-        ? ", style adhering to: " + knowledge.replace(/\n/g, ", ") 
-        : "";
+    // 3. Fallback
+    const prompts = generateFallbackPrompts(instructions, knowledge || "", promptCount);
+    return NextResponse.json({ prompts });
 
-      // Construct a sentence that flows naturally
-      return `${instructions}. The scene features ${variance}. Captured from a ${angle}${styleNote}. High resolution, photorealistic, 8k, detailed textures.`;
-    });
-
-    return NextResponse.json({ prompts: generatedPrompts });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
