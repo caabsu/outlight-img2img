@@ -548,7 +548,7 @@ export default function ImageStudioPage() {
            </Link>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)_380px] items-start">
+        <div className="grid gap-6 lg:grid-cols-[320px_380px_minmax(0,1fr)] items-start">
           
           {/* Column 1: Configuration */}
           <div className="space-y-6">
