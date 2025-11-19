@@ -811,7 +811,7 @@ export default function ImageStudioPage() {
                                      
                                      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition flex justify-center gap-3">
                                          <button onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)} className="bg-white/90 hover:bg-white text-slate-900 text-xs font-medium px-3 py-1.5 rounded-full shadow">Save</button>
-                                         <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, "image.png")} className="bg-white/90 hover:bg-white text-slate-900 text-xs font-medium px-3 py-1.5 rounded-full shadow">Download</button>
+                                         <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, `${safeName(activeRun.productName || "custom")}_${safeName(modelNameDisplay)}_${Date.now()}.png`)} className="bg-white/90 hover:bg-white text-slate-900 text-xs font-medium px-3 py-1.5 rounded-full shadow">Download</button>
                                      </div>
                                  </div>
                                  
@@ -860,30 +860,28 @@ export default function ImageStudioPage() {
             )}
             
             {/* Run Queue / History List (Mini) */}
-            <div className="h-1/3 rounded-xl border border-slate-200 bg-white p-4 overflow-y-auto shadow-sm">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Recent Runs</h3>
-                <div className="space-y-2">
+            <div className="max-h-[200px] rounded-xl border border-slate-200 bg-white p-3 overflow-y-auto shadow-sm">
+                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">History</h3>
+                <div className="space-y-1">
                     {runs.map(run => (
                         <div key={run.id} 
                              onClick={() => setActiveRunId(run.id)}
-                             className={`group p-3 rounded-lg border cursor-pointer transition ${activeRunId === run.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-slate-300'}`}
+                             className={`group flex items-center justify-between p-2 rounded-md border cursor-pointer transition ${activeRunId === run.id ? 'bg-slate-50 border-slate-300' : 'bg-white border-transparent hover:bg-slate-50'}`}
                         >
-                            <div className="flex justify-between items-center">
-                                <span className="font-semibold text-xs">{run.name}</span>
-                                <span className={`text-[9px] uppercase font-bold ${activeRunId === run.id ? 'text-slate-400' : 'text-slate-400'}`}>{run.status}</span>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                                <div className={`h-2 w-2 rounded-full ${run.status === 'running' ? 'bg-emerald-500 animate-pulse' : run.status === 'error' ? 'bg-rose-500' : 'bg-slate-300'}`} />
+                                <span className="truncate text-xs font-medium text-slate-700">{run.name}</span>
+                                <span className="text-[10px] text-slate-400">({run.images.length})</span>
                             </div>
-                            <div className="mt-1 flex justify-between text-[10px] opacity-80">
-                                <span>{run.images.length}imgs</span>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); deleteRun(run.id); }}
-                                    className="hover:text-red-400"
-                                >
-                                    Dismiss
-                                </button>
-                            </div>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); deleteRun(run.id); }}
+                                className="opacity-0 group-hover:opacity-100 text-[10px] text-slate-400 hover:text-rose-500 px-1"
+                            >
+                                ×
+                            </button>
                         </div>
                     ))}
-                    {runs.length === 0 && <p className="text-xs text-slate-400 italic">History empty.</p>}
+                    {runs.length === 0 && <p className="text-[10px] text-slate-400 italic">No recent runs.</p>}
                 </div>
             </div>
 

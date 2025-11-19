@@ -26,6 +26,7 @@ type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
 type VideoRun = {
   id: string;
   name: string;
+  productName?: string;
   startedAt: number;
   modelId: string;
   modelLabel: string;
@@ -400,6 +401,7 @@ export default function VideoStudioPage() {
     const run: VideoRun = {
       id: crypto.randomUUID(),
       name: `${videoModelDef.label} - ${new Date().toLocaleTimeString()}`,
+      productName: selectedProduct ? selectedProduct.name : "Custom",
       startedAt: Date.now(),
       modelId: videoModel,
       modelLabel: videoModelDef.label,
@@ -441,6 +443,7 @@ export default function VideoStudioPage() {
     const run: VideoRun = {
       id: crypto.randomUUID(),
       name: `${videoModelDef.label} Batch - ${new Date().toLocaleTimeString()}`,
+      productName: selectedProduct ? selectedProduct.name : "Custom",
       startedAt: Date.now(),
       modelId: videoModel,
       modelLabel: videoModelDef.label,
@@ -991,6 +994,24 @@ export default function VideoStudioPage() {
                                  <div className="bg-white p-3 rounded-lg border border-slate-100 text-xs text-slate-600 leading-relaxed">
                                      {activeVideoRun.videos[activeVideoRun.activeIdx].prompt}
                                  </div>
+
+                                 <div className="flex justify-end gap-2">
+                                    <button 
+                                        onClick={() => {
+                                            const current = activeVideoRun.videos[activeVideoRun.activeIdx];
+                                            const base = safeName(activeVideoRun.productName || "video");
+                                            const a = document.createElement("a");
+                                            a.href = current.url;
+                                            a.download = `${base}_${safeName(activeVideoRun.modelLabel)}_${activeVideoRun.activeIdx + 1}.mp4`;
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            a.remove();
+                                        }}
+                                        className="bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 text-xs font-medium px-3 py-1.5 rounded-lg shadow-sm transition"
+                                    >
+                                        Download MP4
+                                    </button>
+                                 </div>
                                  
                                  <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100">
                                      {activeVideoRun.videos.map((vid, idx) => (
@@ -1022,30 +1043,28 @@ export default function VideoStudioPage() {
               )}
 
               {/* Queue */}
-              <div className="h-1/3 rounded-xl border border-slate-200 bg-white p-4 overflow-y-auto shadow-sm">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Recent Runs</h3>
-                  <div className="space-y-2">
+              <div className="max-h-[200px] rounded-xl border border-slate-200 bg-white p-3 overflow-y-auto shadow-sm">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">History</h3>
+                  <div className="space-y-1">
                     {videoRuns.map(run => (
                         <div key={run.id} 
                              onClick={() => setActiveVideoRunId(run.id)}
-                             className={`group p-3 rounded-lg border cursor-pointer transition ${activeVideoRunId === run.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-100 hover:border-slate-300'}`}
+                             className={`group flex items-center justify-between p-2 rounded-md border cursor-pointer transition ${activeVideoRunId === run.id ? 'bg-slate-50 border-slate-300' : 'bg-white border-transparent hover:bg-slate-50'}`}
                         >
-                            <div className="flex justify-between items-center">
-                                <span className="font-semibold text-xs">{run.name}</span>
-                                <span className={`text-[9px] uppercase font-bold ${activeVideoRunId === run.id ? 'text-slate-400' : 'text-slate-400'}`}>{run.status}</span>
+                            <div className="flex items-center gap-2 overflow-hidden">
+                                <div className={`h-2 w-2 rounded-full ${run.status === 'running' ? 'bg-emerald-500 animate-pulse' : run.status === 'error' ? 'bg-rose-500' : 'bg-slate-300'}`} />
+                                <span className="truncate text-xs font-medium text-slate-700">{run.name}</span>
+                                <span className="text-[10px] text-slate-400">({run.videos.length})</span>
                             </div>
-                            <div className="mt-1 flex justify-between text-[10px] opacity-80">
-                                <span>{run.videos.length} vids</span>
-                                <button 
-                                    onClick={(e) => { e.stopPropagation(); deleteVideoRun(run.id); }}
-                                    className="hover:text-red-400"
-                                >
-                                    Dismiss
-                                </button>
-                            </div>
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); deleteVideoRun(run.id); }}
+                                className="opacity-0 group-hover:opacity-100 text-[10px] text-slate-400 hover:text-rose-500 px-1"
+                            >
+                                ×
+                            </button>
                         </div>
                     ))}
-                    {videoRuns.length === 0 && <p className="text-xs text-slate-400 italic">History empty.</p>}
+                    {videoRuns.length === 0 && <p className="text-[10px] text-slate-400 italic">No recent runs.</p>}
                 </div>
               </div>
           </div>
