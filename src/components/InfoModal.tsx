@@ -43,7 +43,7 @@ export function InfoModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =>
                       Prompt Engineering
                   </h3>
                   <p className="text-sm leading-relaxed text-slate-600">
-                      Use the <strong>AI Assistant</strong> (powered by Gemini 1.5 Pro) to expand simple ideas into professional photography briefs. It respects your "Brand Knowledge Base" to ensure style consistency.
+                      Use the <strong>AI Assistant</strong> (powered by Gemini 3.0 Pro) to expand simple ideas into professional photography briefs. It respects your "Brand Knowledge Base" to ensure style consistency.
                   </p>
               </div>
 

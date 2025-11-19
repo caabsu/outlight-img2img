@@ -149,7 +149,7 @@ export async function POST(req: Request) {
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         // Using 'gemini-1.5-pro' as it is generally available and reliable, but user asked for 3.0.
         // If 3.0 fails, we'll catch it.
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" }); 
+        const model = genAI.getGenerativeModel({ model: "gemini-3.0-pro-preview" }); 
 
         const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
         
