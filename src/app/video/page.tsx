@@ -139,6 +139,11 @@ export default function VideoStudioPage() {
   const [batchVideoPrompt, setBatchVideoPrompt] = useState("");
   const [batchVideoPreviews, setBatchVideoPreviews] = useState<string[]>([]);
   const [batchVideoUploading, setBatchVideoUploading] = useState(false);
+  
+  // Product Creation State
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: "", image_url: "" });
+  const [creatingProduct, setCreatingProduct] = useState(false);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === selectedId),
@@ -181,7 +186,6 @@ export default function VideoStudioPage() {
   const canStartVideo = videoPromptLines.length > 0 && (!videoNeedsImage || !!finalReferenceUrl || isVeo);
   const canStartBatch = batchVideoPrompt.trim().length > 0 && batchVideoImages.length > 0;
 
-  // ... (runWithLimit, load, useEffects, filesToDataUrls same as before)
   async function runWithLimit<T>(limit: number, tasks: Array<() => Promise<T>>) {
     const queue = [...tasks];
     const out: T[] = [];
@@ -223,12 +227,47 @@ export default function VideoStudioPage() {
     }
     load();
   }, []);
+  
+  async function handleAddProduct() {
+      if (!newProduct.name || !newProduct.image_url) return;
+      setCreatingProduct(true);
+      try {
+          const res = await fetch("/api/products", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(newProduct)
+          });
+          const json = await res.json();
+          if(!res.ok) throw new Error(json.error || "Failed to create product");
+          
+          setProducts(prev => [...prev, json.product].sort((a,b) => a.name.localeCompare(b.name)));
+          setSelectedId(json.product.id);
+          setShowProductModal(false);
+          setNewProduct({ name: "", image_url: "" });
+          setSaveToast({ message: "Product created", type: "success" });
+      } catch (e: any) {
+          setSaveToast({ message: e.message, type: "error" });
+      } finally {
+          setCreatingProduct(false);
+      }
+  }
 
   useEffect(() => {
     if (!saveToast) return;
     const timer = setTimeout(() => setSaveToast(null), 3200);
     return () => clearTimeout(timer);
   }, [saveToast]);
+  
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+          if (referenceUploadPreview) setReferenceUploadPreview(null);
+          if (showProductModal) setShowProductModal(false);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [referenceUploadPreview, showProductModal]);
 
   async function filesToDataUrls(files: FileList | null) {
     if (!files || files.length === 0) return [];
@@ -667,7 +706,7 @@ export default function VideoStudioPage() {
            </Link>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[320px_380px_minmax(0,1fr)] items-start">
+        <div className="grid gap-6 lg:grid-cols-[320px_640px_minmax(0,1fr)] items-start">
           
           {/* Column 1: Configuration */}
           <div className="space-y-6">
@@ -759,7 +798,15 @@ export default function VideoStudioPage() {
                  
                  <div className="space-y-4">
                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600">Subject / Product</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-medium text-slate-600">Subject / Product</label>
+                             <button 
+                                onClick={() => setShowProductModal(true)}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium"
+                            >
+                                + Add Product
+                            </button>
+                        </div>
                         <select
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                             value={selectedId}
@@ -773,8 +820,13 @@ export default function VideoStudioPage() {
                      {selectedId !== "custom" && selectedProduct && (
                          <div className="flex gap-3 items-center rounded-lg bg-slate-50 p-2 border border-slate-100">
                              {selectedProduct.image_url && (
-                                 // eslint-disable-next-line @next/next/no-img-element
-                                 <img src={selectedProduct.image_url} className="h-10 w-10 rounded object-cover" alt="" />
+                                 <button 
+                                    onClick={() => setReferenceUploadPreview(selectedProduct.image_url)}
+                                    className="shrink-0 h-10 w-10 rounded overflow-hidden border border-slate-200 hover:ring-2 ring-indigo-500 transition"
+                                 >
+                                     {/* eslint-disable-next-line @next/next/no-img-element */}
+                                     <img src={selectedProduct.image_url} className="h-full w-full object-cover" alt="" />
+                                 </button>
                              )}
                              <span className="text-xs font-semibold text-slate-700">{selectedProduct.name}</span>
                          </div>
@@ -803,6 +855,14 @@ export default function VideoStudioPage() {
                              <div className="relative rounded-lg overflow-hidden border border-slate-200">
                                  {/* eslint-disable-next-line @next/next/no-img-element */}
                                  <img src={referenceUploadPreview} className="w-full h-32 object-cover" alt="" />
+                                 <button 
+                                    onClick={() => setReferenceUploadPreview(null)}
+                                    className="absolute top-1 right-1 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
+                                 >
+                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                     </svg>
+                                 </button>
                              </div>
                          )}
                      </div>
@@ -993,6 +1053,74 @@ export default function VideoStudioPage() {
         </div>
       </div>
       
+      {/* Product Creation Modal */}
+      {showProductModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+              <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Add New Product</h3>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Product Name</label>
+                          <input 
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="e.g. Neon Runner 2025"
+                              value={newProduct.name}
+                              onChange={(e) => setNewProduct(prev => ({ ...prev, name: e.target.value }))}
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Image URL</label>
+                          <input 
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="https://..."
+                              value={newProduct.image_url}
+                              onChange={(e) => setNewProduct(prev => ({ ...prev, image_url: e.target.value }))}
+                          />
+                      </div>
+                      <div className="flex gap-3 pt-2">
+                          <button 
+                            onClick={() => setShowProductModal(false)}
+                            className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                            onClick={handleAddProduct}
+                            disabled={!newProduct.name || !newProduct.image_url || creatingProduct}
+                            className="flex-1 rounded-lg bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                          >
+                              {creatingProduct ? "Creating..." : "Create Product"}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Preview Modal for Reference/Product */}
+      {referenceUploadPreview && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setReferenceUploadPreview(null)}
+        >
+          <div
+            className="relative max-h-full max-w-5xl overflow-hidden rounded-xl bg-transparent"
+            onClick={(e) => e.stopPropagation()}
+          >
+             <button
+              className="absolute top-4 right-4 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              onClick={() => setReferenceUploadPreview(null)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={referenceUploadPreview} alt="Preview" className="max-h-[90vh] w-auto rounded-lg shadow-2xl" />
+          </div>
+        </div>
+      )}
+
        {/* Toast Notification */}
       {saveToast && (
         <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg transition-all transform translate-y-0 ${saveToast.type === 'success' ? 'bg-slate-900 text-white' : 'bg-rose-600 text-white'}`}>

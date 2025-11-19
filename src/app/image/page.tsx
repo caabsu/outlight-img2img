@@ -119,6 +119,11 @@ export default function ImageStudioPage() {
   const activeRun = runs.find((r) => r.id === activeRunId) ?? runs[0] ?? null;
   const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
+  
+  // Product Creation State
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: "", image_url: "" });
+  const [creatingProduct, setCreatingProduct] = useState(false);
 
   const selectedProduct = useMemo(
     () => products.find((product) => product.id === selectedId),
@@ -216,6 +221,30 @@ export default function ImageStudioPage() {
       setProductsLoading(false);
     }
   }
+  
+  async function handleAddProduct() {
+      if (!newProduct.name || !newProduct.image_url) return;
+      setCreatingProduct(true);
+      try {
+          const res = await fetch("/api/products", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(newProduct)
+          });
+          const json = await res.json();
+          if(!res.ok) throw new Error(json.error || "Failed to create product");
+          
+          setProducts(prev => [...prev, json.product].sort((a,b) => a.name.localeCompare(b.name)));
+          setSelectedId(json.product.id);
+          setShowProductModal(false);
+          setNewProduct({ name: "", image_url: "" });
+          setSaveToast({ message: "Product created", type: "success" });
+      } catch (e: any) {
+          setSaveToast({ message: e.message, type: "error" });
+      } finally {
+          setCreatingProduct(false);
+      }
+  }
 
   useEffect(() => {
     if (!saveToast) return;
@@ -225,11 +254,14 @@ export default function ImageStudioPage() {
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && refPreviewUrl) setRefPreviewUrl(null);
+      if (event.key === "Escape") {
+          if (refPreviewUrl) setRefPreviewUrl(null);
+          if (showProductModal) setShowProductModal(false);
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [refPreviewUrl]);
+  }, [refPreviewUrl, showProductModal]);
 
   useEffect(() => {
     const intent = consumeStudioIntent();
@@ -240,7 +272,6 @@ export default function ImageStudioPage() {
       });
       setSaveToast({ message: `Imported ${intent.prompts.length} prompts`, type: "success" });
     } else if (intent && intent.type === "reference") {
-      // Handle reference import logic similar to before
       void fetch(`/api/saved-images/${intent.id}`).then(async (res) => {
          if(res.ok) {
              const json = await res.json();
@@ -254,7 +285,6 @@ export default function ImageStudioPage() {
     }
   }, []);
 
-  // ... (keep saveSinglePrompt, saveImageToLibrary, zipRun logic same as before)
   async function saveSinglePrompt(prompt: string) {
     if (!prompt.trim()) return;
     try {
@@ -296,7 +326,7 @@ export default function ImageStudioPage() {
     }
   }
   
-    function toggleImageSelection(runId: string, index: number) {
+  function toggleImageSelection(runId: string, index: number) {
     setRuns((prev) =>
       prev.map((run) => {
         if (run.id !== runId) return run;
@@ -344,7 +374,6 @@ export default function ImageStudioPage() {
 
     const folderName = safeName(run.productName || "custom");
     const zip = new JSZip();
-    // ... (manifest generation same as before)
      const manifest = [
       `Run: ${run.name}`,
       `Model: ${run.modelNameDisplay}`,
@@ -369,7 +398,6 @@ export default function ImageStudioPage() {
     downloadBlob(blob, `${folderName}_${safeName(run.modelNameDisplay)}.zip`);
   }
 
-  // ... (onGenerateNewRun and runGenerator same as before)
     async function onGenerateNewRun() {
     if (!canStartRun) return;
 
@@ -507,7 +535,6 @@ export default function ImageStudioPage() {
           pushImage({ id: crypto.randomUUID(), prompt, imageDataUrl: json.imageDataUrl });
           advance();
         } catch (error: any) {
-            // ... error handling
            const abort = error?.name === "AbortError";
            setError(abort ? "Run cancelled" : error?.message || "Request failed");
            return;
@@ -529,7 +556,6 @@ export default function ImageStudioPage() {
     );
   }
 
-
   return (
     <div className="min-h-screen bg-[#fcfcfc] p-4 lg:p-6">
       <div className="mx-auto max-w-[1800px]">
@@ -548,7 +574,8 @@ export default function ImageStudioPage() {
            </Link>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[320px_380px_minmax(0,1fr)] items-start">
+        {/* Grid Layout Update: Wider Center Column */}
+        <div className="grid gap-6 lg:grid-cols-[320px_640px_minmax(0,1fr)] items-start">
           
           {/* Column 1: Configuration */}
           <div className="space-y-6">
@@ -559,8 +586,7 @@ export default function ImageStudioPage() {
                         <button
                           key={model.id}
                           onClick={() => setModelId(model.id)}
-                          className={`w-full flex items-center justify-between p-3 rounded-lg border text-left text-sm transition-all ${
-                              modelId === model.id
+                          className={`w-full flex items-center justify-between p-3 rounded-lg border text-left text-sm transition-all ${modelId === model.id
                               ? "border-indigo-600 ring-1 ring-indigo-600 bg-indigo-50/50 text-indigo-900"
                               : "border-slate-200 hover:border-slate-300 text-slate-700"
                           }`}
@@ -619,7 +645,15 @@ export default function ImageStudioPage() {
                  
                  <div className="space-y-4">
                      <div>
-                        <label className="mb-1 block text-xs font-medium text-slate-600">Subject / Product</label>
+                        <div className="flex items-center justify-between mb-1">
+                            <label className="block text-xs font-medium text-slate-600">Subject / Product</label>
+                            <button 
+                                onClick={() => setShowProductModal(true)}
+                                className="text-[10px] text-indigo-600 hover:text-indigo-700 font-medium"
+                            >
+                                + Add Product
+                            </button>
+                        </div>
                         <select
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                             value={selectedId}
@@ -633,8 +667,13 @@ export default function ImageStudioPage() {
                      {selectedProduct && selectedId !== "custom" && (
                         <div className="flex gap-3 items-start rounded-lg bg-slate-50 p-2 border border-slate-100">
                              {selectedProduct.image_url && (
-                                 // eslint-disable-next-line @next/next/no-img-element
-                                 <img src={selectedProduct.image_url} className="h-12 w-12 rounded object-cover bg-white border border-slate-200" alt="" />
+                                 <button 
+                                    onClick={() => setRefPreviewUrl(selectedProduct.image_url)}
+                                    className="shrink-0 h-12 w-12 rounded overflow-hidden border border-slate-200 hover:ring-2 ring-indigo-500 transition"
+                                 >
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img src={selectedProduct.image_url} className="h-full w-full object-cover bg-white" alt="" />
+                                 </button>
                              )}
                              <div>
                                  <p className="text-xs font-semibold text-slate-900">{selectedProduct.name}</p>
@@ -679,12 +718,15 @@ export default function ImageStudioPage() {
                                         onClick={() => {
                                              if (src.startsWith("data:")) removeUploadSrc(src);
                                              else if (selectedId === 'custom' && src === customUrl) setCustomUrl("");
-                                             // Note: Removing other URLs simpler in full UI, keeping basic here
                                         }}
                                         className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition text-white text-xs"
                                     >
                                         ✕
                                     </button>
+                                    <button 
+                                        onClick={() => setRefPreviewUrl(src)}
+                                        className="absolute inset-0"
+                                    />
                                 </div>
                             ))}
                          </div>
@@ -850,6 +892,74 @@ export default function ImageStudioPage() {
         </div>
       </div>
       
+      {/* Product Creation Modal */}
+      {showProductModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+              <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+                  <h3 className="text-lg font-semibold text-slate-900 mb-4">Add New Product</h3>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Product Name</label>
+                          <input 
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="e.g. Neon Runner 2025"
+                              value={newProduct.name}
+                              onChange={(e) => setNewProduct(prev => ({ ...prev, name: e.target.value }))}
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Image URL</label>
+                          <input 
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                              placeholder="https://..."
+                              value={newProduct.image_url}
+                              onChange={(e) => setNewProduct(prev => ({ ...prev, image_url: e.target.value }))}
+                          />
+                      </div>
+                      <div className="flex gap-3 pt-2">
+                          <button 
+                            onClick={() => setShowProductModal(false)}
+                            className="flex-1 rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                          >
+                              Cancel
+                          </button>
+                          <button 
+                            onClick={handleAddProduct}
+                            disabled={!newProduct.name || !newProduct.image_url || creatingProduct}
+                            className="flex-1 rounded-lg bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                          >
+                              {creatingProduct ? "Creating..." : "Create Product"}
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Preview Modal (Shared for Refs & Product) */}
+      {refPreviewUrl && (
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 p-4"
+          onClick={() => setRefPreviewUrl(null)}
+        >
+          <div
+            className="relative max-h-full max-w-5xl overflow-hidden rounded-xl bg-transparent"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="absolute top-4 right-4 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
+              onClick={() => setRefPreviewUrl(null)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={refPreviewUrl} alt="Preview" className="max-h-[90vh] w-auto rounded-lg shadow-2xl" />
+          </div>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {saveToast && (
         <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg transition-all transform translate-y-0 ${saveToast.type === 'success' ? 'bg-slate-900 text-white' : 'bg-rose-600 text-white'}`}>
