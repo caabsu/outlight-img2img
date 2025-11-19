@@ -745,11 +745,15 @@ export default function ImageStudioPage() {
                      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Prompt Engineering</h2>
                      <div className="flex items-center gap-2">
                         <PromptAssistant 
-                            onAccept={(newPrompts) => {
-                                setPromptsText(prev => {
-                                    const prefix = prev.trim() ? prev.trim() + "\n" : "";
-                                    return prefix + newPrompts.join("\n");
-                                });
+                            onAccept={(newPrompts, mode) => {
+                                if (mode === "replace") {
+                                    setPromptsText(newPrompts.join("\n"));
+                                } else {
+                                    setPromptsText(prev => {
+                                        const prefix = prev.trim() ? prev.trim() + "\n" : "";
+                                        return prefix + newPrompts.join("\n");
+                                    });
+                                }
                             }}
                         />
                          <div className="h-4 w-px bg-slate-200" />

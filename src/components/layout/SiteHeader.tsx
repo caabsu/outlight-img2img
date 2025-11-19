@@ -9,6 +9,7 @@ const NAV_LINKS = [
   { label: "Image Studio", href: "/image" },
   { label: "Video Studio", href: "/video" },
   { label: "Products", href: "/products" },
+  { label: "Knowledge", href: "/knowledge" },
   { label: "Library", href: "/library" },
 ];
 
@@ -21,6 +22,7 @@ export function SiteHeader() {
     if (pathname.startsWith("/image")) return "/image";
     if (pathname.startsWith("/video")) return "/video";
     if (pathname.startsWith("/products")) return "/products";
+    if (pathname.startsWith("/knowledge")) return "/knowledge";
     if (pathname.startsWith("/library")) return "/library";
     return "/image";
   }, [pathname]);

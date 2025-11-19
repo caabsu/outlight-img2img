@@ -880,11 +880,15 @@ export default function VideoStudioPage() {
                      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500">Director</h2>
                      <div className="flex items-center gap-2">
                         <PromptAssistant 
-                            onAccept={(newPrompts) => {
-                                setVideoPrompts(prev => {
-                                    const prefix = prev.trim() ? prev.trim() + "\n" : "";
-                                    return prefix + newPrompts.join("\n");
-                                });
+                            onAccept={(newPrompts, mode) => {
+                                if (mode === "replace") {
+                                    setVideoPrompts(newPrompts.join("\n"));
+                                } else {
+                                    setVideoPrompts(prev => {
+                                        const prefix = prev.trim() ? prev.trim() + "\n" : "";
+                                        return prefix + newPrompts.join("\n");
+                                    });
+                                }
                             }}
                         />
                          <div className="h-4 w-px bg-slate-200" />

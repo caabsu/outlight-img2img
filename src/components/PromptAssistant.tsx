@@ -1,27 +1,43 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 
 type PromptAssistantProps = {
-  onAccept: (prompts: string[]) => void;
+  onAccept: (prompts: string[], mode: "append" | "replace") => void;
   className?: string;
+};
+
+type KnowledgeBase = {
+  id: string;
+  name: string;
+  content: string;
 };
 
 export function PromptAssistant({ onAccept, className = "" }: PromptAssistantProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
-  const [knowledge, setKnowledge] = useState(
-    "Our brand style emphasizes clean lines, natural lighting, and authentic textures. Avoid oversaturated colors. Products should be the focal point."
-  );
+  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
+  const [selectedKbId, setSelectedKbId] = useState<string>("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem("outlight_knowledge");
-    if (saved) setKnowledge(saved);
-  }, []);
+    if (isOpen) {
+      fetchKnowledgeBases();
+    }
+  }, [isOpen]);
 
-  useEffect(() => {
-    localStorage.setItem("outlight_knowledge", knowledge);
-  }, [knowledge]);
+  async function fetchKnowledgeBases() {
+    try {
+      const res = await fetch("/api/knowledge");
+      const json = await res.json();
+      if (res.ok) {
+        setKnowledgeBases(json.items || []);
+      }
+    } catch (e) {
+      console.error("Failed to load knowledge bases", e);
+    }
+  }
 
   const [instructions, setInstructions] = useState("");
   const [count, setCount] = useState(3);
@@ -34,11 +50,16 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
     setLoading(true);
     setGenerated([]);
     setSource(null);
+    
+    // Get content from selected KB
+    const selectedKb = knowledgeBases.find(kb => kb.id === selectedKbId);
+    const knowledgeContent = selectedKb ? selectedKb.content : "";
+
     try {
       const res = await fetch("/api/prompt-assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ knowledge, instructions, count }),
+        body: JSON.stringify({ knowledge: knowledgeContent, instructions, count }),
       });
       const json = await res.json();
       if (res.ok) {
@@ -50,6 +71,13 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleCopy() {
+    const text = generated.join("\n");
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -143,19 +171,34 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                       >
                         <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
                       </svg>
-                      {showKnowledge ? "Hide Knowledge Base" : "Edit Knowledge Base"}
+                      {showKnowledge ? "Hide Knowledge Settings" : "Show Knowledge Settings"}
                     </button>
                     
                     {showKnowledge && (
-                      <div className="mt-2 animate-in slide-in-from-top-2 fade-in duration-200">
-                         <textarea
-                            className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 focus:bg-white focus:border-indigo-500"
-                            rows={4}
-                            value={knowledge}
-                            onChange={(e) => setKnowledge(e.target.value)}
-                            placeholder="Enter brand guidelines, preferred styles, or negative prompts to avoid..."
-                          />
-                          <p className="mt-1 text-[10px] text-slate-400">Automatically saved to your device.</p>
+                      <div className="mt-3 space-y-2 animate-in slide-in-from-top-2 fade-in duration-200 rounded-xl bg-slate-50 p-3 border border-slate-100">
+                          <div className="flex items-center justify-between">
+                              <label className="text-xs font-semibold text-slate-600">Active Knowledge Base</label>
+                              <Link href="/knowledge" className="text-[10px] font-medium text-indigo-600 hover:underline">
+                                  Manage &rarr;
+                              </Link>
+                          </div>
+                          <select 
+                            className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs"
+                            value={selectedKbId}
+                            onChange={(e) => setSelectedKbId(e.target.value)}
+                          >
+                              <option value="">(None)</option>
+                              {knowledgeBases.map(kb => (
+                                  <option key={kb.id} value={kb.id}>{kb.name}</option>
+                              ))}
+                          </select>
+                          {selectedKbId && (
+                              <div className="max-h-[60px] overflow-y-auto rounded border border-slate-200 bg-white p-2">
+                                  <p className="text-[10px] text-slate-500">
+                                      {knowledgeBases.find(k => k.id === selectedKbId)?.content.slice(0, 150)}...
+                                  </p>
+                              </div>
+                          )}
                       </div>
                     )}
                   </div>
@@ -209,15 +252,42 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                             </span>
                         )}
                     </div>
-                    <button
-                      onClick={() => {
-                        onAccept(generated);
-                        setIsOpen(false);
-                      }}
-                      className="text-sm font-medium text-indigo-600 hover:text-indigo-700 hover:underline"
-                    >
-                      Accept All ({generated.length})
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={handleCopy}
+                        className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      >
+                        {copied ? (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                            Copied
+                          </>
+                        ) : (
+                          "Copy All"
+                        )}
+                      </button>
+                      <div className="h-4 w-px bg-slate-200" />
+                      <button
+                        onClick={() => {
+                          onAccept(generated, "append");
+                          setIsOpen(false);
+                        }}
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                      >
+                        Append All
+                      </button>
+                      <button
+                        onClick={() => {
+                          onAccept(generated, "replace");
+                          setIsOpen(false);
+                        }}
+                        className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                      >
+                        Replace All
+                      </button>
+                    </div>
                   </div>
                   <div className="grid max-h-[300px] gap-3 overflow-y-auto pr-1">
                     {generated.map((prompt, idx) => (
@@ -229,7 +299,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                         <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                             <button
                               onClick={() => {
-                                onAccept([prompt]);
+                                onAccept([prompt], "append");
                                 // Don't close, allow picking more
                               }}
                               className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
