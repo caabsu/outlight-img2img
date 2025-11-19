@@ -145,41 +145,49 @@ export async function POST(req: Request) {
 
     // 1. Google Gemini
     if (process.env.GEMINI_API_KEY) {
-      try {
-        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        // Using 'gemini-1.5-pro' as it is generally available and reliable, but user asked for 3.0.
-        // If 3.0 fails, we'll catch it.
-        const model = genAI.getGenerativeModel({ model: "gemini-3.0-pro-preview" }); 
+      const modelsToTry = ["gemini-3-pro-preview", "gemini-2.5-flash"];
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-        const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
-        
-        USER REQUEST:
-        "${instructions}"
-        
-        BRAND KNOWLEDGE BASE (Style/Constraints):
-        "${knowledge}"
-        
-        TASK:
-        Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
-        
-        REQUIREMENTS:
-        1. BASE: Start with the core elements of the User Request.
-        2. EXPAND: Elaborate on textures, lighting, atmosphere, and composition. Make it "visual" and "evocative".
-        3. VARIANCE: Each prompt must have a distinct setting or lighting variation (e.g., one moody, one clean, one textured) while staying true to the core request.
-        4. INTEGRATION: Apply the tone and style from the Knowledge Base implicitly (do not output "(Knowledge applied: ...)").
-        5. FORMAT: Return strictly a JSON array of strings.
-        
-        Example Output Format:
-        ["Detailed prompt 1...", "Detailed prompt 2..."]`;
+      for (const modelName of modelsToTry) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
 
-        const result = await model.generateContent(systemPrompt);
-        const text = result.response.text();
-        const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        const json = JSON.parse(cleanedText);
-        if (Array.isArray(json)) return NextResponse.json({ prompts: json.slice(0, promptCount), source: "Gemini 1.5 Pro" });
-      } catch (e: any) {
-        console.error("Gemini Error:", e);
-        // Fallthrough to next provider
+          const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
+          
+          USER REQUEST:
+          "${instructions}"
+          
+          BRAND KNOWLEDGE BASE (Style/Constraints):
+          "${knowledge}"
+          
+          TASK:
+          Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
+          
+          REQUIREMENTS:
+          1. BASE: Start with the core elements of the User Request.
+          2. EXPAND: Elaborate on textures, lighting, atmosphere, and composition. Make it "visual" and "evocative".
+          3. VARIANCE: Each prompt must have a distinct setting or lighting variation (e.g., one moody, one clean, one textured) while staying true to the core request.
+          4. INTEGRATION: Apply the tone and style from the Knowledge Base implicitly (do not output "(Knowledge applied: ...)").
+          5. FORMAT: Return strictly a JSON array of strings.
+          
+          Example Output Format:
+          ["Detailed prompt 1...", "Detailed prompt 2..."]`;
+
+          const result = await model.generateContent(systemPrompt);
+          const text = result.response.text();
+          const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+          const json = JSON.parse(cleanedText);
+          
+          if (Array.isArray(json)) {
+            return NextResponse.json({ 
+              prompts: json.slice(0, promptCount), 
+              source: `Gemini (${modelName})` 
+            });
+          }
+        } catch (e: any) {
+          console.error(`Gemini (${modelName}) Error:`, e);
+          // Continue to next model in the list
+        }
       }
     }
 
