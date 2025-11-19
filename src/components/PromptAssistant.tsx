@@ -168,7 +168,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                           <input
                             type="range"
                             min="1"
-                            max="10"
+                            max="20"
                             value={count}
                             onChange={(e) => setCount(Number(e.target.value))}
                             className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-slate-200 accent-indigo-600"

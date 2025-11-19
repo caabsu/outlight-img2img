@@ -7,12 +7,12 @@ export const runtime = "nodejs";
 // --- Smart Fallback Logic (Simulates AI when no keys are present) ---
 
 const ADJECTIVES = {
-  dark: ["shadowy", "dimly lit", "nocturnal", "moody", "low-key", "dusky", "obsidian", "mysterious"],
-  bright: ["radiant", "sun-drenched", "airy", "luminous", "high-key", "vibrant", "pristine", "gleaming"],
-  modern: ["sleek", "minimalist", "contemporary", "polished", "avant-garde", "streamlined", "geometric"],
-  natural: ["organic", "earthy", "raw", "botanical", "rustic", "untouched", "biophilic", "authentic"],
-  warm: ["golden", "amber-hued", "cozy", "sun-kissed", "rich", "inviting", "sepia-toned"],
-  cool: ["glacial", "steel-blue", "cyborgian", "sterile", "frosty", "industrial", "melancholic"]
+  dark: ["shadowy", "dimly lit", "nocturnal", "moody", "low-key", "dusky", "obsidian", "mysterious", "atmospheric", "somber", "deep", "twilight"],
+  bright: ["radiant", "sun-drenched", "airy", "luminous", "high-key", "vibrant", "pristine", "gleaming", "daylit", "washed-out", "clear", "brilliant"],
+  modern: ["sleek", "minimalist", "contemporary", "polished", "avant-garde", "streamlined", "geometric", "futuristic", "clean", "industrial", "high-tech"],
+  natural: ["organic", "earthy", "raw", "botanical", "rustic", "untouched", "biophilic", "authentic", "weathered", "verdant", "floral", "stone"],
+  warm: ["golden", "amber-hued", "cozy", "sun-kissed", "rich", "inviting", "sepia-toned", "candlelit", "autumnal", "heated"],
+  cool: ["glacial", "steel-blue", "cyborgian", "sterile", "frosty", "industrial", "melancholic", "arctic", "neon-blue", "metallic"]
 };
 
 const ENVIRONMENTS = [
@@ -23,7 +23,14 @@ const ENVIRONMENTS = [
   "floating in a limitless dark studio",
   "situated in a chic minimalist living space",
   "surrounded by soft velvet drapery",
-  "framed by raw industrial steel beams"
+  "framed by raw industrial steel beams",
+  "centered in a vast, empty warehouse",
+  "positioned on a wooden podium",
+  "submerged in shallow water with ripples",
+  "against a backdrop of rolling sand dunes",
+  "in a futuristic laboratory setting",
+  "amidst a chaotic arrangement of geometric shapes",
+  "on a rooftop overlooking a city skyline"
 ];
 
 function getRandom(arr: string[]) {
@@ -64,38 +71,63 @@ function generateFallbackPrompts(instructions: string, knowledge: string, count:
     .filter(s => s.length > 3 && !s.toLowerCase().includes("instructions"));
 
   const prompts: string[] = [];
+  
+  const lightingOptionsDark = [
+    "deep shadows with rim lighting", "soft moonlight fill", "contrast chiaroscuro lighting", "minimalist spotlighting",
+    "bioluminescent glow", "flickering candlelight", "harsh silhouette backlighting", "subtle ambient occlusion"
+  ];
+  const lightingOptionsBright = [
+    "soft diffused window light", "bright studio global illumination", "warm sunlight shafts", "even commercial lighting",
+    "overexposed high-key flash", "dappled light through leaves", "clean clinical white light", "golden hour flare"
+  ];
+  const lightingOptionsNeutral = [
+      "three-point studio setup", "softbox fill", "natural overcast sky", "neutral ring light",
+      "balanced ambient light", "cinematic practical lighting", "soft butterfly lighting", "dynamic rembrandt lighting"
+  ];
+  
+  const angleOptions = [
+      "wide establishing shot", "close-up detail shot", "isometric view", "dynamic 3/4 angle",
+      "dutch angle for tension", "macro lens focus", "panoramic wide view", "worms-eye view"
+  ];
 
   for (let i = 0; i < count; i++) {
     // Select varied descriptors based on mood
     let moodWords = [...(isModern ? ADJECTIVES.modern : [])];
     if (isDark) moodWords = [...moodWords, ...ADJECTIVES.dark];
     else if (isBright) moodWords = [...moodWords, ...ADJECTIVES.bright];
-    else moodWords = [...moodWords, ...ADJECTIVES.natural, ...ADJECTIVES.warm]; // default mix
+    else moodWords = [...moodWords, ...ADJECTIVES.natural, ...ADJECTIVES.warm, ...ADJECTIVES.cool]; // default mix
 
     const adj1 = getRandom(moodWords) || "detailed";
     const adj2 = getRandom(moodWords) || "cinematic";
     const env = getRandom(ENVIRONMENTS);
     
     // Determine lighting for this variation
-    const lighting = isDark 
-        ? ["deep shadows with rim lighting", "soft moonlight fill", "contrast chiaroscuro lighting", "minimalist spotlighting"][i % 4]
-        : ["soft diffused window light", "bright studio global illumination", "warm sunlight shafts", "even commercial lighting"][i % 4];
+    let lightingPool = lightingOptionsNeutral;
+    if (isDark) lightingPool = lightingOptionsDark;
+    else if (isBright) lightingPool = lightingOptionsBright;
+    
+    const lighting = getRandom(lightingPool);
 
     // Determine angle (use forced if exists, else vary)
-    const angle = forcedAngle || ["wide establishing shot", "close-up detail shot", "isometric view", "dynamic 3/4 angle"][i % 4];
+    const angle = forcedAngle || getRandom(angleOptions);
 
     // Assemble the description
-    // Structure: [Prefix] + [Adjectives] + [User Subject] + [Environment] + [Lighting] + [Angle] + [Style Suffix]
-    
     let core = instructions;
-    // Attempt to make the user prompt flow better if it's just a list of keywords
     if (!core.endsWith(".")) core += ".";
     
-    const styleInjection = styleKeywords.slice(0, 3).join(", ");
+    const styleInjection = styleKeywords.slice(0, Math.min(3, styleKeywords.length)).join(", ");
     
-    const narrative = `The scene depicts ${core.toLowerCase().replace(/\.$/, "")}, characterized by a ${adj1} and ${adj2} atmosphere. It is ${env}. Lighting is provided by ${lighting}. Captured as a ${angle}.`;
+    // Vary sentence structure slightly
+    let narrative = "";
+    if (i % 3 === 0) {
+         narrative = `The scene depicts ${core.toLowerCase().replace(/\.$/, "")}, characterized by a ${adj1} and ${adj2} atmosphere. It is ${env}. Lighting is provided by ${lighting}. Captured as a ${angle}.`;
+    } else if (i % 3 === 1) {
+         narrative = `A ${adj1} interpretation of ${core.toLowerCase().replace(/\.$/, "")}. The setting is ${env}, illuminated by ${lighting}. Camera angle is a ${angle} for a ${adj2} look.`;
+    } else {
+         narrative = `Visualizing ${core.toLowerCase().replace(/\.$/, "")} with a ${adj2} vibe. Placed ${env}. The lighting features ${lighting}, emphasizing the ${adj1} details. Shot with a ${angle}.`;
+    }
     
-    const technical = `8k resolution, photorealistic, highly detailed texture, ${styleInjection}`;
+    const technical = `8k resolution, photorealistic, highly detailed texture${styleInjection ? ", " + styleInjection : ""}`;
 
     prompts.push(`${prefix}${narrative} ${technical}${suffix}`);
   }
@@ -108,7 +140,8 @@ function generateFallbackPrompts(instructions: string, knowledge: string, count:
 export async function POST(req: Request) {
   try {
     const { knowledge, instructions, count } = await req.json();
-    const promptCount = Math.max(1, Math.min(10, Number(count) || 3));
+    // Allow up to 20 prompts
+    const promptCount = Math.max(1, Math.min(20, Number(count) || 3));
 
     // 1. Google Gemini
     if (process.env.GEMINI_API_KEY) {
