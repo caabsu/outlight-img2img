@@ -20,11 +20,19 @@ export type ModelDef = {
 
 export const MODEL_LIST: ModelDef[] = [
   {
-    id: "nanobanana-v1",
+    id: "nanobanana-2",
     label: "Nano Banana",
-    version: "v1",
+    version: "v2.5",
     provider: "nanobanana",
-    providerName: process.env.NEXT_PUBLIC_NANO_BANANA_MODEL_NAME || "model",
+    providerName: "gemini-2.5-flash-image",
+    requiresReference: false,
+  },
+  {
+    id: "nanobanana-3-pro",
+    label: "Nano Banana Pro",
+    version: "v3-pro",
+    provider: "nanobanana",
+    providerName: "gemini-3-pro-image-preview",
     requiresReference: false,
   },
   {

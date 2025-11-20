@@ -14,6 +14,9 @@ const getGeminiApiUrl = (modelId: string) => {
   if (modelId === "nanobanana-3-pro") {
     return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
   }
+  if (modelId === "nanobanana-1" || modelId === "nanobanana-2") {
+    return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+  }
   return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
 };
 const NB_API_KEY = process.env.NANO_BANANA_API_KEY!;
@@ -25,7 +28,7 @@ const KIE_KEY = process.env.KIE_API_KEY;
 
 /* ========================= TYPES ========================= */
 type PostBody = {
-  modelId: string; // "nanobanana-v1", "nanobanana-3-pro" or startsWith("seedream")
+  modelId: string; // "nanobanana-1", "nanobanana-2", "nanobanana-3-pro" or startsWith("seedream")
   productId: string | null;
   // legacy single custom url
   customUrl?: string | null;
