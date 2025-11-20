@@ -18,9 +18,9 @@ type Run = {
   startedAt: number;
   modelId: string;
   modelNameDisplay: string;
-  productId: string | null;
-  productName: string;
-  referenceUrl: string;
+  // productId: string | null; // Removed, as we're handling all references as custom
+  // productName: string;     // Removed
+  // referenceUrl: string;    // Removed
   prompts: string[];
   status: RunStatus;
   error: string | null;
@@ -95,12 +95,12 @@ function statusColor(status: RunStatus) {
 export default function ImageStudioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>("custom");
+  // const [selectedId, setSelectedId] = useState<string>("custom"); // Removed
   const [customUrl, setCustomUrl] = useState("");
   const [customUrls, setCustomUrls] = useState<string[]>([]);
   const [customUploads, setCustomUploads] = useState<string[]>([]);
-  const [extraRefUrls, setExtraRefUrls] = useState<string[]>([]);
-  const [extraRefUploads, setExtraRefUploads] = useState<string[]>([]);
+  // const [extraRefUrls, setExtraRefUrls] = useState<string[]>([]); // Removed
+  // const [extraRefUploads, setExtraRefUploads] = useState<string[]>([]); // Removed
   const [modelId, setModelId] = useState<string>("nanobanana-2");
   const modelDef = useMemo(() => getModelById(modelId)!, [modelId]);
   const modelNameDisplay = `${modelDef.label}`;
@@ -120,27 +120,20 @@ export default function ImageStudioPage() {
   const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
   
-  // Product Creation State
-  const [showProductModal, setShowProductModal] = useState(false);
-  const [showRefProductModal, setShowRefProductModal] = useState(false);
-  const [refSearchQuery, setRefSearchQuery] = useState("");
-  const [newProduct, setNewProduct] = useState({ name: "", image_url: "" });
-  const [creatingProduct, setCreatingProduct] = useState(false);
+  // const [newProduct, setNewProduct] = useState({ name: "", image_url: "" }); // Removed
+  // const [creatingProduct, setCreatingProduct] = useState(false); // Removed
 
-  const selectedProduct = useMemo(
-    () => products.find((product) => product.id === selectedId),
-    [products, selectedId]
-  );
-  const productName = selectedProduct ? selectedProduct.name : "Custom";
-  const referenceUrl =
-    selectedId === "custom" ? customUrl.trim() : (selectedProduct?.image_url?.trim() ?? "");
+  // const selectedProduct = useMemo(
+  //   () => products.find((product) => product.id === selectedId),
+  //   [products, selectedId]
+  // );
+  const productName = "Custom"; // Simplified
+
+  // const [selectedProduct, setSelectedProduct] = useState<Product | undefined>(undefined); // Removed
+  // const productName = "Custom"; // Simplified
+  // const referenceUrl = customUrl.trim(); // Simplified
   const modelRequiresReference = modelDef.requiresReference !== false;
-  const hasCustomRefs =
-    selectedId === "custom" &&
-    (customUrl.trim().length > 0 ||
-      customUploads.length > 0 ||
-      customUrls.some((url) => (url || "").trim().length > 0));
-  const hasRefs = selectedId === "custom" ? hasCustomRefs : referenceUrl.length > 0;
+  const hasRefs = customUrl.trim().length > 0 || customUploads.length > 0 || customUrls.some((url) => (url || "").trim().length > 0);
   const canStartRun = promptLines.length > 0 && (modelRequiresReference ? hasRefs : true);
   const somethingRunning = runs.some((run) => run.status === "running");
   const overallPct =
@@ -166,24 +159,10 @@ export default function ImageStudioPage() {
   }
 
   const refSources = useMemo(() => {
-    if (selectedId === "custom") {
-      const list = [
-        ...customUploads,
-        ...(customUrl.trim() ? [customUrl.trim()] : []),
-        ...customUrls.map((u) => u.trim()).filter(Boolean),
-      ];
-      const seen = new Set<string>();
-      return list.filter((src) => {
-        if (seen.has(src)) return false;
-        seen.add(src);
-        return true;
-      });
-    }
-    const base = (selectedProduct?.image_url || "").trim();
     const list = [
-      ...(base ? [base] : []),
-      ...extraRefUploads,
-      ...extraRefUrls.map((url) => url.trim()).filter(Boolean),
+      ...customUploads,
+      ...(customUrl.trim() ? [customUrl.trim()] : []),
+      ...customUrls.map((u) => u.trim()).filter(Boolean),
     ];
     const seen = new Set<string>();
     return list.filter((src) => {
@@ -191,29 +170,16 @@ export default function ImageStudioPage() {
       seen.add(src);
       return true;
     });
-  }, [
-    selectedId,
-    selectedProduct,
-    customUploads,
-    customUrl,
-    customUrls,
-    extraRefUploads,
-    extraRefUrls,
-  ]);
+  }, [customUploads, customUrl, customUrls]);
 
   function removeUploadSrc(src: string) {
-    if (selectedId === "custom") {
-      setCustomUploads((prev) => prev.filter((u) => u !== src));
-      setCustomUrls((prev) => prev.filter((u) => u !== src));
-    } else {
-      setExtraRefUploads((prev) => prev.filter((u) => u !== src));
-      setExtraRefUrls((prev) => prev.filter((u) => u !== src));
-    }
+    setCustomUploads((prev) => prev.filter((u) => u !== src));
+    setCustomUrls((prev) => prev.filter((u) => u !== src));
   }
 
-  useEffect(() => {
-    loadProducts();
-  }, []);
+  // useEffect(() => {
+  //   loadProducts();
+  // }, []);
 
   async function loadProducts() {
     try {
@@ -226,29 +192,29 @@ export default function ImageStudioPage() {
     }
   }
   
-  async function handleAddProduct() {
-      if (!newProduct.name || !newProduct.image_url) return;
-      setCreatingProduct(true);
-      try {
-          const res = await fetch("/api/products", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(newProduct)
-          });
-          const json = await res.json();
-          if(!res.ok) throw new Error(json.error || "Failed to create product");
+  // async function handleAddProduct() {
+  //     if (!newProduct.name || !newProduct.image_url) return;
+  //     setCreatingProduct(true);
+  //     try {
+  //         const res = await fetch("/api/products", {
+  //             method: "POST",
+  //             headers: { "Content-Type": "application/json" },
+  //             body: JSON.stringify(newProduct)
+  //         });
+  //         const json = await res.json();
+  //         if(!res.ok) throw new Error(json.error || "Failed to create product");
           
-          setProducts(prev => [...prev, json.product].sort((a,b) => a.name.localeCompare(b.name)));
-          setSelectedId(json.product.id);
-          setShowProductModal(false);
-          setNewProduct({ name: "", image_url: "" });
-          setSaveToast({ message: "Product created", type: "success" });
-      } catch (e: any) {
-          setSaveToast({ message: e.message, type: "error" });
-      } finally {
-          setCreatingProduct(false);
-      }
-  }
+  //         setProducts(prev => [...prev, json.product].sort((a,b) => a.name.localeCompare(b.name)));
+  //         setSelectedId(json.product.id);
+  //         setShowProductModal(false);
+  //         setNewProduct({ name: "", image_url: "" });
+  //         setSaveToast({ message: "Product created", type: "success" });
+  //     } catch (e: any) {
+  //         setSaveToast({ message: e.message, type: "error" });
+  //     } finally {
+  //         setCreatingProduct(false);
+  //     }
+  // }
 
   useEffect(() => {
     if (!saveToast) return;
@@ -260,13 +226,13 @@ export default function ImageStudioPage() {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
           if (refPreviewUrl) setRefPreviewUrl(null);
-          if (showProductModal) setShowProductModal(false);
+          // if (showProductModal) setShowProductModal(false); // Removed
           if (showRefProductModal) setShowRefProductModal(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [refPreviewUrl, showProductModal]);
+  }, [refPreviewUrl, showRefProductModal]);
 
   useEffect(() => {
     const intent = consumeStudioIntent();
@@ -297,8 +263,8 @@ export default function ImageStudioPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productId: selectedId !== "custom" ? selectedId : null,
-          productName,
+          productId: null,
+          productName: "Custom",
           modelName: modelNameDisplay,
           prompts: [prompt],
         }),
@@ -319,9 +285,9 @@ export default function ImageStudioPage() {
           imageData: imageDataUrl,
           prompt,
           modelName: modelNameDisplay,
-          productId: selectedId !== "custom" ? selectedId : null,
-          productName,
-          referenceUrl: selectedId === "custom" ? null : referenceUrl || null,
+          productId: null,
+          productName: "Custom",
+          referenceUrl: refSources[0] || null,
         }),
       });
       if (!res.ok) throw new Error("Failed to save image");
@@ -418,10 +384,7 @@ export default function ImageStudioPage() {
     const ordinal = runs.length > 0 ? Math.max(...runs.map((run) => Number(run.name.replace(/\D/g, "")) || 0)) + 1 : 1;
     const runName = `Run #${ordinal}`;
     const controller = new AbortController();
-    const primaryRef =
-      selectedId === "custom"
-        ? customUploads[0] || customUrl.trim() || customUrls.find((u) => (u || "").trim().length > 0) || ""
-        : referenceUrl || "";
+    const primaryRef = refSources[0] || "";
 
     const newRun: Run = {
       id,
@@ -429,9 +392,9 @@ export default function ImageStudioPage() {
       startedAt: Date.now(),
       modelId,
       modelNameDisplay,
-      productId: selectedId !== "custom" ? selectedId : null,
-      productName,
-      referenceUrl: primaryRef,
+      // productId: null, // No longer tracked in Run type
+      // productName: "Custom", // No longer tracked in Run type
+      // referenceUrl: primaryRef, // No longer tracked in Run type
       prompts: [...promptLines],
       status: "running",
       error: null,
@@ -450,10 +413,10 @@ export default function ImageStudioPage() {
       return next;
     });
 
-    void runGenerator(newRun);
+    void runGenerator(newRun, refSources);
   }
   
-    async function runGenerator(run: Run) {
+    async function runGenerator(run: Run, currentRefSources: string[]) {
     let cursor = 0;
     const total = run.prompts.length;
 
@@ -500,22 +463,7 @@ export default function ImageStudioPage() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               modelId: run.modelId,
-              productId: run.productId,
-              customUrl: run.productId ? null : run.referenceUrl || null,
-              ...(run.productId
-                ? {
-                    additionalUrls: [
-                      ...extraRefUrls.map((url) => url.trim()).filter(Boolean),
-                      ...extraRefUploads,
-                    ],
-                  }
-                : {
-                    customUrls: [
-                      ...(run.referenceUrl ? [run.referenceUrl] : []),
-                      ...customUrls.map((u) => u.trim()).filter(Boolean),
-                      ...customUploads,
-                    ],
-                  }),
+              customUrls: currentRefSources,
               prompt,
               options:
                 getModelById(run.modelId)?.provider === "seedream"
@@ -649,43 +597,7 @@ export default function ImageStudioPage() {
                  </div>
                  
                  <div className="space-y-4">
-                     <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Subject / Product</label>
-                            <button 
-                                onClick={() => setShowProductModal(true)}
-                                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
-                            >
-                                + Add Product
-                            </button>
-                        </div>
-                        <select
-                            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                            value={selectedId}
-                            onChange={(e) => setSelectedId(e.target.value)}
-                        >
-                            <option value="custom">Custom (Ad-hoc)</option>
-                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                     </div>
-
-                     {selectedProduct && selectedId !== "custom" && (
-                        <div className="flex gap-3 items-start rounded-lg bg-slate-50 dark:bg-slate-950/50 p-2 border border-slate-100 dark:border-slate-800">
-                             {selectedProduct.image_url && (
-                                 <button 
-                                    onClick={() => setRefPreviewUrl(selectedProduct.image_url)}
-                                    className="shrink-0 h-12 w-12 rounded overflow-hidden border border-slate-200 dark:border-slate-700 hover:ring-2 ring-indigo-500 transition"
-                                 >
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={selectedProduct.image_url} className="h-full w-full object-cover bg-white dark:bg-slate-800" alt="" />
-                                 </button>
-                             )}
-                             <div>
-                                 <p className="text-xs font-semibold text-slate-900 dark:text-slate-100">{selectedProduct.name}</p>
-                                 <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase">{selectedProduct.slug}</p>
-                             </div>
-                        </div>
-                     )}
+                     {/* Removed Subject / Product section */} 
 
                      {/* References Section */}
                      <div className="space-y-3">
@@ -710,8 +622,7 @@ export default function ImageStudioPage() {
                                     accept="image/*"
                                     onChange={async (e) => {
                                         const urls = await filesToDataUrls(e.target.files);
-                                        if(selectedId === 'custom') setCustomUploads(prev => [...prev, ...urls]);
-                                        else setExtraRefUploads(prev => [...prev, ...urls]);
+                                        setCustomUploads(prev => [...prev, ...urls]);
                                     }}
                                 />
                             </label>
@@ -913,48 +824,7 @@ export default function ImageStudioPage() {
       </div>
       
       {/* Product Creation Modal */}
-      {showProductModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/80 p-4 backdrop-blur-sm">
-              <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 p-6 shadow-xl ring-1 ring-slate-900/5 dark:ring-slate-50/10">
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-4">Add New Product</h3>
-                  <div className="space-y-4">
-                      <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Product Name</label>
-                          <input 
-                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                              placeholder="e.g. Neon Runner 2025"
-                              value={newProduct.name}
-                              onChange={(e) => setNewProduct(prev => ({ ...prev, name: e.target.value }))}
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Image URL</label>
-                          <input 
-                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                              placeholder="https://..."
-                              value={newProduct.image_url}
-                              onChange={(e) => setNewProduct(prev => ({ ...prev, image_url: e.target.value }))}
-                          />
-                      </div>
-                      <div className="flex gap-3 pt-2">
-                          <button 
-                            onClick={() => setShowProductModal(false)}
-                            className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                          >
-                              Cancel
-                          </button>
-                          <button 
-                            onClick={handleAddProduct}
-                            disabled={!newProduct.name || !newProduct.image_url || creatingProduct}
-                            className="flex-1 rounded-lg bg-slate-900 dark:bg-slate-50 py-2 text-sm font-medium text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50"
-                          >
-                              {creatingProduct ? "Creating..." : "Create Product"}
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
+      {/* Removed Product Creation Modal */}
 
       {/* Reference Selection Modal (Select Products) */}
       {showRefProductModal && (
@@ -1000,11 +870,7 @@ export default function ImageStudioPage() {
                                     key={product.id}
                                     onClick={() => {
                                         if (product.image_url) {
-                                            if (selectedId === "custom") {
-                                                setCustomUrls(prev => [...prev, product.image_url]);
-                                            } else {
-                                                setExtraRefUrls(prev => [...prev, product.image_url]);
-                                            }
+                                            setCustomUrls(prev => [...prev, product.image_url]);
                                             setShowRefProductModal(false);
                                             setRefSearchQuery(""); // Clear search on selection
                                         }
