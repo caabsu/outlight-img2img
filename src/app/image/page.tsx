@@ -122,6 +122,7 @@ export default function ImageStudioPage() {
   
   // Product Creation State
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showRefProductModal, setShowRefProductModal] = useState(false);
   const [newProduct, setNewProduct] = useState({ name: "", image_url: "" });
   const [creatingProduct, setCreatingProduct] = useState(false);
 
@@ -202,8 +203,10 @@ export default function ImageStudioPage() {
   function removeUploadSrc(src: string) {
     if (selectedId === "custom") {
       setCustomUploads((prev) => prev.filter((u) => u !== src));
+      setCustomUrls((prev) => prev.filter((u) => u !== src));
     } else {
       setExtraRefUploads((prev) => prev.filter((u) => u !== src));
+      setExtraRefUrls((prev) => prev.filter((u) => u !== src));
     }
   }
 
@@ -257,6 +260,7 @@ export default function ImageStudioPage() {
       if (event.key === "Escape") {
           if (refPreviewUrl) setRefPreviewUrl(null);
           if (showProductModal) setShowProductModal(false);
+          if (showRefProductModal) setShowRefProductModal(false);
       }
     };
     window.addEventListener("keydown", handler);
@@ -696,7 +700,7 @@ export default function ImageStudioPage() {
                         )}
 
                          <div className="grid grid-cols-4 gap-2">
-                            <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition">
+                            <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition" title="Upload Images">
                                 <span className="text-2xl text-slate-300 dark:text-slate-600">+</span>
                                 <input 
                                     type="file" 
@@ -710,14 +714,25 @@ export default function ImageStudioPage() {
                                     }}
                                 />
                             </label>
+                            <button 
+                                onClick={() => setShowRefProductModal(true)}
+                                className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition"
+                                title="Select from Products"
+                            >
+                                <span className="text-xl text-slate-300 dark:text-slate-600">🔍</span>
+                                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase">Product</span>
+                            </button>
                             {refSources.map((src, i) => (
                                 <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={src} className="h-full w-full object-cover" alt="" />
                                     <button 
                                         onClick={() => {
-                                             if (src.startsWith("data:")) removeUploadSrc(src);
-                                             else if (selectedId === 'custom' && src === customUrl) setCustomUrl("");
+                                             if (selectedId === 'custom' && src === customUrl) {
+                                                 setCustomUrl("");
+                                             } else {
+                                                 removeUploadSrc(src);
+                                             }
                                         }}
                                         className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition text-white text-xs"
                                     >
@@ -936,6 +951,43 @@ export default function ImageStudioPage() {
                   </div>
               </div>
           </div>
+      )}
+
+      {/* Reference Selection Modal (Select Products) */}
+      {showRefProductModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/80 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-2xl flex flex-col max-h-[80vh] rounded-xl bg-white dark:bg-slate-900 shadow-xl ring-1 ring-slate-900/5 dark:ring-slate-50/10 overflow-hidden">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Select Reference Product</h3>
+                    <button onClick={() => setShowRefProductModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-4">
+                    {products.map(product => (
+                        <button
+                            key={product.id}
+                            onClick={() => {
+                                if (product.image_url) {
+                                    if (selectedId === "custom") {
+                                        setCustomUrls(prev => [...prev, product.image_url]);
+                                    } else {
+                                        setExtraRefUrls(prev => [...prev, product.image_url]);
+                                    }
+                                    setShowRefProductModal(false);
+                                }
+                            }}
+                            className="group relative aspect-[4/3] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition text-left"
+                        >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={product.image_url} className="h-full w-full object-cover bg-slate-100 dark:bg-slate-800" alt="" />
+                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+                                <p className="text-xs font-semibold text-white truncate">{product.name}</p>
+                            </div>
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition" />
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
       )}
 
       {/* Preview Modal (Shared for Refs & Product) */}
