@@ -123,6 +123,7 @@ export default function ImageStudioPage() {
   // Product Creation State
   const [showProductModal, setShowProductModal] = useState(false);
   const [showRefProductModal, setShowRefProductModal] = useState(false);
+  const [refSearchQuery, setRefSearchQuery] = useState("");
   const [newProduct, setNewProduct] = useState({ name: "", image_url: "" });
   const [creatingProduct, setCreatingProduct] = useState(false);
 
@@ -716,11 +717,13 @@ export default function ImageStudioPage() {
                             </label>
                             <button 
                                 onClick={() => setShowRefProductModal(true)}
-                                className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition"
-                                title="Select from Products"
+                                className="group flex aspect-square flex-col items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-500 dark:hover:border-indigo-500 hover:ring-1 hover:ring-indigo-500 transition shadow-sm"
+                                title="Browse Product Library"
                             >
-                                <span className="text-xl text-slate-300 dark:text-slate-600">🔍</span>
-                                <span className="text-[9px] font-medium text-slate-400 dark:text-slate-500 uppercase">Product</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-slate-400 group-hover:text-indigo-500 transition">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+                                </svg>
+                                <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide group-hover:text-indigo-600 dark:group-hover:text-indigo-400">Library</span>
                             </button>
                             {refSources.map((src, i) => (
                                 <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
@@ -955,36 +958,99 @@ export default function ImageStudioPage() {
 
       {/* Reference Selection Modal (Select Products) */}
       {showRefProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/80 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-2xl flex flex-col max-h-[80vh] rounded-xl bg-white dark:bg-slate-900 shadow-xl ring-1 ring-slate-900/5 dark:ring-slate-50/10 overflow-hidden">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">Select Reference Product</h3>
-                    <button onClick={() => setShowRefProductModal(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">✕</button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-4xl flex flex-col max-h-[85vh] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/10 dark:ring-slate-50/10 overflow-hidden">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50">
+                    <div className="flex items-center gap-4 flex-1">
+                         <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Product Library</h3>
+                         <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+                         <div className="relative flex-1 max-w-md">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400">
+                                <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+                            </svg>
+                            <input 
+                                type="text"
+                                placeholder="Search products..."
+                                className="w-full bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-white pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 placeholder:text-slate-500"
+                                autoFocus
+                                value={refSearchQuery}
+                                onChange={(e) => setRefSearchQuery(e.target.value)}
+                            />
+                         </div>
+                    </div>
+                    <button 
+                        onClick={() => setShowRefProductModal(false)} 
+                        className="ml-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                          <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
+                        </svg>
+                    </button>
                 </div>
-                <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-4">
-                    {products.map(product => (
-                        <button
-                            key={product.id}
-                            onClick={() => {
-                                if (product.image_url) {
-                                    if (selectedId === "custom") {
-                                        setCustomUrls(prev => [...prev, product.image_url]);
-                                    } else {
-                                        setExtraRefUrls(prev => [...prev, product.image_url]);
-                                    }
-                                    setShowRefProductModal(false);
-                                }
-                            }}
-                            className="group relative aspect-[4/3] rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 transition text-left"
-                        >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={product.image_url} className="h-full w-full object-cover bg-slate-100 dark:bg-slate-800" alt="" />
-                            <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
-                                <p className="text-xs font-semibold text-white truncate">{product.name}</p>
+
+                {/* Modal Body (Grid) */}
+                <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-950/50">
+                    {products.filter(p => !refSearchQuery || p.name.toLowerCase().includes(refSearchQuery.toLowerCase())).length > 0 ? (
+                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+                            {products
+                                .filter(p => !refSearchQuery || p.name.toLowerCase().includes(refSearchQuery.toLowerCase()))
+                                .map(product => (
+                                <button
+                                    key={product.id}
+                                    onClick={() => {
+                                        if (product.image_url) {
+                                            if (selectedId === "custom") {
+                                                setCustomUrls(prev => [...prev, product.image_url]);
+                                            } else {
+                                                setExtraRefUrls(prev => [...prev, product.image_url]);
+                                            }
+                                            setShowRefProductModal(false);
+                                            setRefSearchQuery(""); // Clear search on selection
+                                        }
+                                    }}
+                                    className="group flex flex-col gap-2 text-left outline-none"
+                                >
+                                    <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-sm transition-all group-hover:border-indigo-500 dark:group-hover:border-indigo-500 group-hover:shadow-md group-hover:ring-2 group-hover:ring-indigo-500/20">
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img 
+                                            src={product.image_url} 
+                                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" 
+                                            alt="" 
+                                            loading="lazy"
+                                        />
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                                        {/* Selection Indicator Overlay */}
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="bg-white/90 dark:bg-black/80 text-indigo-600 dark:text-indigo-400 rounded-full p-1.5 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                                                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="px-1">
+                                        <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                            {product.name}
+                                        </p>
+                                        <p className="truncate text-[10px] text-slate-400">
+                                            {product.slug}
+                                        </p>
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex h-64 flex-col items-center justify-center text-center">
+                            <div className="mb-4 rounded-full bg-slate-100 dark:bg-slate-800 p-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-slate-400">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                                </svg>
                             </div>
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition" />
-                        </button>
-                    ))}
+                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No products found</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">Try searching for something else.</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
