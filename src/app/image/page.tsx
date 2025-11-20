@@ -347,12 +347,12 @@ export default function ImageStudioPage() {
     const indexes = selectedOnly ? Array.from(run.selectedIdx) : run.images.map((_, idx) => idx);
     if (indexes.length === 0) return;
 
-    const folderName = safeName(run.productName || "custom");
+    const folderName = safeName(run.name);
     const zip = new JSZip();
      const manifest = [
       `Run: ${run.name}`,
       `Model: ${run.modelNameDisplay}`,
-      `Product: ${run.productName}`,
+      `Product: Custom References`,
       `Started: ${new Date(run.startedAt).toLocaleString()}`,
       "",
       "Index, Prompt",
