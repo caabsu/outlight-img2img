@@ -120,8 +120,12 @@ export default function ImageStudioPage() {
   const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
   
+  // Product Creation State
   // const [newProduct, setNewProduct] = useState({ name: "", image_url: "" }); // Removed
   // const [creatingProduct, setCreatingProduct] = useState(false); // Removed
+  
+  const [showRefProductModal, setShowRefProductModal] = useState(false);
+  const [refSearchQuery, setRefSearchQuery] = useState("");
 
   // const selectedProduct = useMemo(
   //   () => products.find((product) => product.id === selectedId),
@@ -177,9 +181,9 @@ export default function ImageStudioPage() {
     setCustomUrls((prev) => prev.filter((u) => u !== src));
   }
 
-  // useEffect(() => {
-  //   loadProducts();
-  // }, []);
+  useEffect(() => {
+    loadProducts();
+  }, []);
 
   async function loadProducts() {
     try {
@@ -247,7 +251,7 @@ export default function ImageStudioPage() {
          if(res.ok) {
              const json = await res.json();
              if(json.image?.image_data) {
-                 setSelectedId("custom");
+                 // setSelectedId("custom"); // Removed
                  setCustomUploads(prev => [json.image.image_data, ...prev]);
                  setSaveToast({ message: "Reference imported", type: "success" });
              }
