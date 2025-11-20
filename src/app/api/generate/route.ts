@@ -9,9 +9,13 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Gemini (Google AI Studio) — image endpoint
-const NB_API_URL =
-  process.env.NANO_BANANA_API_URL ||
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+const getGeminiApiUrl = (modelId: string) => {
+  if (process.env.NANO_BANANA_API_URL) return process.env.NANO_BANANA_API_URL;
+  if (modelId === "nanobanana-3-pro") {
+    return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
+  }
+  return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+};
 const NB_API_KEY = process.env.NANO_BANANA_API_KEY!;
 const NB_AUTH_HEADER = process.env.NANO_BANANA_AUTH_HEADER || "x-goog-api-key";
 
@@ -21,7 +25,7 @@ const KIE_KEY = process.env.KIE_API_KEY;
 
 /* ========================= TYPES ========================= */
 type PostBody = {
-  modelId: string; // "nanobanana-v1" or startsWith("seedream")
+  modelId: string; // "nanobanana-v1", "nanobanana-3-pro" or startsWith("seedream")
   productId: string | null;
   // legacy single custom url
   customUrl?: string | null;
@@ -164,9 +168,11 @@ function extractGeminiImage(json: any): {
 async function callGeminiImageEdit({
   images,
   text,
+  modelId,
 }: {
   images: Array<{ mime: string; base64: string }>;
   text: string;
+  modelId: string;
 }) {
   const payload = {
     contents: [
@@ -187,7 +193,7 @@ async function callGeminiImageEdit({
     generationConfig: { temperature: 0.6 },
   };
 
-  const nbRes = await fetch(NB_API_URL, {
+  const nbRes = await fetch(getGeminiApiUrl(modelId), {
     method: "POST",
     headers: { "Content-Type": "application/json", [NB_AUTH_HEADER]: NB_API_KEY },
     body: JSON.stringify(payload),
@@ -196,7 +202,7 @@ async function callGeminiImageEdit({
   return { nbRes, nbJson };
 }
 
-async function callGeminiTextToImage(text: string) {
+async function callGeminiTextToImage(text: string, modelId: string) {
   const payload = {
     contents: [
       {
@@ -211,7 +217,7 @@ async function callGeminiTextToImage(text: string) {
     },
   };
 
-  const nbRes = await fetch(NB_API_URL, {
+  const nbRes = await fetch(getGeminiApiUrl(modelId), {
     method: "POST",
     headers: { "Content-Type": "application/json", [NB_AUTH_HEADER]: NB_API_KEY },
     body: JSON.stringify(payload),
@@ -337,7 +343,7 @@ export async function POST(req: Request) {
     if (!NB_API_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
     if (referenceUrls.length === 0) {
-      const { nbRes, nbJson } = await callGeminiTextToImage(prompt);
+      const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId);
       if (!nbRes.ok) {
         const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
         return NextResponse.json({ error: msg }, { status: nbRes.status || 502 });
@@ -362,7 +368,7 @@ export async function POST(req: Request) {
     }
 
     // 2) single-turn (IMAGES first, then TEXT)
-    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt });
+    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt, modelId });
 
     if (!nbRes.ok) {
       const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
