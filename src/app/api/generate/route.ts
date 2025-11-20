@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Gemini (Google AI Studio) — image endpoint
+// Gemini (Google AI Studio) image endpoint
 const getGeminiApiUrl = (modelId: string) => {
   if (process.env.NANO_BANANA_API_URL) return process.env.NANO_BANANA_API_URL;
   if (modelId === "nanobanana-3-pro") {
@@ -38,10 +38,13 @@ type PostBody = {
   additionalUrls?: string[];
   prompt: string;
   options?: {
-    image_size?: string;       // seedream-only
+    image_size?: string;       // used by Seedream & Nano Banana (Gemini)
     image_resolution?: string; // seedream-only
     max_images?: number;       // seedream-only
     seed?: number | null;      // seedream-only
+    // nano banana (Gemini) image config
+    aspect_ratio?: string;
+    response_modalities?: string[];
   };
 };
 
@@ -72,7 +75,7 @@ async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: 
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Failed to fetch image: ${res.status} ${res.statusText} — ${text.slice(0, 200)}`);
+    throw new Error(`Failed to fetch image: ${res.status} ${res.statusText} - ${text.slice(0, 200)}`);
   }
   const buf = Buffer.from(await res.arrayBuffer());
   let mime = res.headers.get("content-type") || "image/png";
@@ -167,16 +170,31 @@ function extractGeminiImage(json: any): {
   };
 }
 
+function buildGeminiGenerationConfig(options?: PostBody["options"]) {
+  const generationConfig: Record<string, any> = {
+    temperature: 0.6,
+  };
+  const imageConfig: Record<string, any> = {};
+  if (options?.aspect_ratio) imageConfig.aspectRatio = options.aspect_ratio;
+  if (options?.image_size) imageConfig.imageSize = options.image_size;
+  if (Object.keys(imageConfig).length > 0) generationConfig.imageConfig = imageConfig;
+  if (options?.response_modalities?.length) generationConfig.responseModalities = options.response_modalities;
+  return generationConfig;
+}
+
 /** Single-turn image edit: one or more IMAGES first, then TEXT (v1beta REST) */
 async function callGeminiImageEdit({
   images,
   text,
   modelId,
+  options,
 }: {
   images: Array<{ mime: string; base64: string }>;
   text: string;
   modelId: string;
+  options?: PostBody["options"];
 }) {
+  const generationConfig = buildGeminiGenerationConfig(options);
   const payload = {
     contents: [
       {
@@ -192,8 +210,8 @@ async function callGeminiImageEdit({
       },
     ],
     // DO NOT set response_mime_type (text-only values are accepted; images come via inline_data/file_data)
-    // DO NOT send "tools" (image_editing) — not supported on v1beta REST for this model
-    generationConfig: { temperature: 0.6 },
+    // DO NOT send "tools" (image_editing) -- not supported on v1beta REST for this model
+    generationConfig,
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -205,7 +223,8 @@ async function callGeminiImageEdit({
   return { nbRes, nbJson };
 }
 
-async function callGeminiTextToImage(text: string, modelId: string) {
+async function callGeminiTextToImage(text: string, modelId: string, options?: PostBody["options"]) {
+  const generationConfig = buildGeminiGenerationConfig(options);
   const payload = {
     contents: [
       {
@@ -215,9 +234,7 @@ async function callGeminiTextToImage(text: string, modelId: string) {
     ],
     // Leave response_mime_type unset: the Gemini image endpoint only accepts text/application values here but still
     // returns inline image data when omitted, so we can parse it via extractGeminiImage.
-    generationConfig: {
-      temperature: 0.6,
-    },
+    generationConfig,
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -346,7 +363,7 @@ export async function POST(req: Request) {
     if (!NB_API_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
     if (referenceUrls.length === 0) {
-      const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId);
+      const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
       if (!nbRes.ok) {
         const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
         return NextResponse.json({ error: msg }, { status: nbRes.status || 502 });
@@ -371,7 +388,7 @@ export async function POST(req: Request) {
     }
 
     // 2) single-turn (IMAGES first, then TEXT)
-    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt, modelId });
+    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt, modelId, options });
 
     if (!nbRes.ok) {
       const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
@@ -395,3 +412,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
 }
+
+
