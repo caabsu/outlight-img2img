@@ -607,14 +607,12 @@ export default function ImageStudioPage() {
                      <div className="space-y-3">
                         <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
                         
-                        {selectedId === "custom" && (
                              <input 
                                 className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
                                 placeholder="Paste image URL..."
                                 value={customUrl}
                                 onChange={(e) => setCustomUrl(e.target.value)}
                              />
-                        )}
 
                          <div className="grid grid-cols-4 gap-2">
                             <label className="flex aspect-square cursor-pointer items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-600 transition" title="Upload Images">
@@ -646,7 +644,7 @@ export default function ImageStudioPage() {
                                     <img src={src} className="h-full w-full object-cover" alt="" />
                                     <button 
                                         onClick={() => {
-                                             if (selectedId === 'custom' && src === customUrl) {
+                                             if (src === customUrl) {
                                                  setCustomUrl("");
                                              } else {
                                                  removeUploadSrc(src);
@@ -748,7 +746,7 @@ export default function ImageStudioPage() {
                                      
                                      <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition flex justify-center gap-3">
                                          <button onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)} className="bg-white/90 dark:bg-black/90 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-medium px-3 py-1.5 rounded-full shadow">Save</button>
-                                         <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, `${safeName(activeRun.productName || "custom")}_${safeName(modelNameDisplay)}_${Date.now()}.png`)} className="bg-white/90 dark:bg-black/90 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-medium px-3 py-1.5 rounded-full shadow">Download</button>
+                                        <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, `${safeName(productName)}_${safeName(modelNameDisplay)}_${Date.now()}.png`)} className="bg-white/90 dark:bg-black/90 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-medium px-3 py-1.5 rounded-full shadow">Download</button>
                                      </div>
                                  </div>
                                  
