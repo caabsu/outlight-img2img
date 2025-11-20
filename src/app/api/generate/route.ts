@@ -170,16 +170,21 @@ function extractGeminiImage(json: any): {
   };
 }
 
-function buildGeminiGenerationConfig(options?: PostBody["options"]) {
+function buildGeminiConfigs(options?: PostBody["options"]) {
   const generationConfig: Record<string, any> = {
     temperature: 0.6,
   };
   const imageConfig: Record<string, any> = {};
   if (options?.aspect_ratio) imageConfig.aspectRatio = options.aspect_ratio;
   if (options?.image_size) imageConfig.imageSize = options.image_size;
-  if (Object.keys(imageConfig).length > 0) generationConfig.imageConfig = imageConfig;
-  if (options?.response_modalities?.length) generationConfig.responseModalities = options.response_modalities;
-  return generationConfig;
+
+  const responseModalities = options?.response_modalities?.length ? options.response_modalities : undefined;
+
+  return {
+    generationConfig,
+    imageConfig: Object.keys(imageConfig).length ? imageConfig : undefined,
+    responseModalities,
+  };
 }
 
 /** Single-turn image edit: one or more IMAGES first, then TEXT (v1beta REST) */
@@ -194,7 +199,7 @@ async function callGeminiImageEdit({
   modelId: string;
   options?: PostBody["options"];
 }) {
-  const generationConfig = buildGeminiGenerationConfig(options);
+  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options);
   const payload = {
     contents: [
       {
@@ -212,6 +217,8 @@ async function callGeminiImageEdit({
     // DO NOT set response_mime_type (text-only values are accepted; images come via inline_data/file_data)
     // DO NOT send "tools" (image_editing) -- not supported on v1beta REST for this model
     generationConfig,
+    ...(imageConfig ? { imageConfig } : {}),
+    ...(responseModalities ? { responseModalities } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -224,7 +231,7 @@ async function callGeminiImageEdit({
 }
 
 async function callGeminiTextToImage(text: string, modelId: string, options?: PostBody["options"]) {
-  const generationConfig = buildGeminiGenerationConfig(options);
+  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options);
   const payload = {
     contents: [
       {
@@ -235,6 +242,8 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
     // Leave response_mime_type unset: the Gemini image endpoint only accepts text/application values here but still
     // returns inline image data when omitted, so we can parse it via extractGeminiImage.
     generationConfig,
+    ...(imageConfig ? { imageConfig } : {}),
+    ...(responseModalities ? { responseModalities } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
