@@ -123,19 +123,19 @@ export default function LibraryPage() {
   return (
     <div className="px-4 py-10 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl space-y-10">
-        <section className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-sky-50 p-10 shadow-sm">
+        <section className="rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-slate-50 via-white to-sky-50 dark:from-slate-950 dark:via-slate-900 dark:to-sky-950/20 p-10 shadow-sm">
           <div className="grid gap-8 lg:grid-cols-2">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-sky-500">Creative Library</p>
-              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900">
+              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-sky-500 dark:text-sky-400">Creative Library</p>
+              <h1 className="mt-4 text-4xl font-semibold tracking-tight text-slate-900 dark:text-white">
                 Central prompts and approved visuals.
               </h1>
-              <p className="mt-4 text-base text-slate-600">
+              <p className="mt-4 text-base text-slate-600 dark:text-slate-300">
                 Push prompts and references directly into Image Studio. Clear filters to see entire history or drill down per product.
               </p>
             </div>
-            <div className="rounded-2xl border border-slate-100 bg-white/80 p-5 text-sm text-slate-600 shadow-inner">
-              <p className="text-xs uppercase tracking-wide text-slate-400">Usage tips</p>
+            <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white/80 dark:bg-slate-900/50 p-5 text-sm text-slate-600 dark:text-slate-400 shadow-inner">
+              <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Usage tips</p>
               <ul className="mt-2 list-disc space-y-1 pl-4">
                 <li>Use "Send to Studio" to preload prompts or references.</li>
                 <li>Filter by product to prep seasonal campaigns.</li>
@@ -146,15 +146,15 @@ export default function LibraryPage() {
         </section>
 
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr),minmax(0,1fr)]">
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Prompt Library</h2>
-                <p className="text-sm text-slate-500">Saved instructions with product context.</p>
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Prompt Library</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Saved instructions with product context.</p>
               </div>
               <div className="flex gap-2">
                 <select
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm"
+                  className="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-1 text-sm text-slate-900 dark:text-slate-100"
                   value={promptProduct}
                   onChange={(e) => {
                     setPromptProduct(e.target.value);
@@ -169,7 +169,7 @@ export default function LibraryPage() {
                   ))}
                 </select>
                 <input
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm"
+                  className="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-1 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
                   placeholder="Search..."
                   value={promptSearch}
                   onChange={(e) => setPromptSearch(e.target.value)}
@@ -178,33 +178,33 @@ export default function LibraryPage() {
               </div>
             </div>
             {promptsLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading prompts...</p>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Loading prompts...</p>
             ) : prompts.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">No prompts saved.</p>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No prompts saved.</p>
             ) : (
               <div className="mt-6 space-y-3">
                 {prompts.map((item) => (
-                  <div key={item.id} className="rounded-xl border border-slate-200 p-4 text-sm text-slate-600 shadow-sm">
-                    <div className="flex items-center justify-between text-xs text-slate-500">
+                  <div key={item.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm text-slate-600 dark:text-slate-300 shadow-sm">
+                    <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
                       <span>{item.product_name || "Custom"}</span>
                       <span>{item.model_name}</span>
                     </div>
-                    <p className="mt-2 text-slate-900">{item.prompt}</p>
+                    <p className="mt-2 text-slate-900 dark:text-slate-100">{item.prompt}</p>
                     <div className="mt-3 flex gap-2">
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => sendPromptToStudio(item.prompt)}
                       >
                         Send to Studio
                       </button>
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => navigator.clipboard.writeText(item.prompt)}
                       >
                         Copy
                       </button>
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                         onClick={() => deletePrompt(item.id)}
                       >
                         Delete
@@ -216,15 +216,15 @@ export default function LibraryPage() {
             )}
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-xl font-semibold text-slate-900">Saved Images</h2>
-                <p className="text-sm text-slate-500">Approved references and results.</p>
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Saved Images</h2>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Approved references and results.</p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <select
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm"
+                  className="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-1 text-sm text-slate-900 dark:text-slate-100"
                   value={imageProduct}
                   onChange={(e) => {
                     setImageProduct(e.target.value);
@@ -239,7 +239,7 @@ export default function LibraryPage() {
                   ))}
                 </select>
                 <select
-                  className="rounded-full border border-slate-200 px-3 py-1 text-sm"
+                  className="rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-1 text-sm text-slate-900 dark:text-slate-100"
                   value={imageModel}
                   onChange={(e) => {
                     setImageModel(e.target.value);
@@ -256,38 +256,38 @@ export default function LibraryPage() {
               </div>
             </div>
             {imagesLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading images...</p>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Loading images...</p>
             ) : images.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">No images saved yet.</p>
+              <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No images saved yet.</p>
             ) : (
               <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {images.map((image) => (
-                  <div key={image.id} className="rounded-xl border border-slate-200 p-3 text-sm text-slate-600 shadow-sm">
-                    <div className="overflow-hidden rounded-lg border border-slate-100">
+                  <div key={image.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-600 dark:text-slate-300 shadow-sm">
+                    <div className="overflow-hidden rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={image.image_data} alt={image.prompt} className="h-40 w-full object-cover" />
                     </div>
-                    <p className="mt-3 text-slate-900 line-clamp-2" title={image.prompt}>
+                    <p className="mt-3 text-slate-900 dark:text-slate-100 line-clamp-2" title={image.prompt}>
                       {image.prompt}
                     </p>
-                    <div className="mt-2 text-xs text-slate-500">
+                    <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                       <span>{image.product_name || "Custom"}</span> - <span>{image.model_name}</span>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => sendImageToStudio(image.id)}
                       >
                         Send to Studio
                       </button>
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => navigator.clipboard.writeText(image.prompt)}
                       >
                         Copy Prompt
                       </button>
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => {
                           const a = document.createElement("a");
                           a.href = image.image_data;
@@ -300,7 +300,7 @@ export default function LibraryPage() {
                         Download
                       </button>
                       <button
-                        className="rounded-full border border-slate-200 px-3 py-1 text-xs text-rose-600 hover:bg-rose-50"
+                        className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                         onClick={() => deleteImage(image.id)}
                       >
                         Delete
@@ -314,7 +314,7 @@ export default function LibraryPage() {
         </div>
       </div>
       {toast && (
-        <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 shadow-lg">
+        <div className="fixed bottom-6 right-6 z-50 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 text-sm text-slate-900 dark:text-slate-100 shadow-lg">
           {toast.message}
         </div>
       )}

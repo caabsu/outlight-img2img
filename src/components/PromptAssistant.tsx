@@ -84,7 +84,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
     <>
       <button
         onClick={() => setIsOpen(true)}
-        className={`flex items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100 ${className}`}
+        className={`flex items-center gap-2 rounded-full border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/30 px-4 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-300 transition hover:bg-indigo-100 dark:hover:bg-indigo-900/50 ${className}`}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -102,14 +102,14 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm transition-all">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm transition-all">
           <div
-            className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl ring-1 ring-slate-900/5"
+            className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-50/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 20 20"
@@ -120,13 +120,13 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                   </svg>
                 </div>
                 <div>
-                  <h3 className="text-base font-semibold text-slate-900">AI Prompt Engineer</h3>
-                  <p className="text-xs text-slate-500">Generate creative variations from your instructions.</p>
+                  <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">AI Prompt Engineer</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Generate creative variations from your instructions.</p>
                 </div>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-600 dark:hover:text-slate-300 transition"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -145,11 +145,11 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
               <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
                 <div className="space-y-4">
                   <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                    <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
                       Scene Description
                     </label>
                     <textarea
-                      className="w-full rounded-xl border border-slate-200 p-3 text-sm shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
                       rows={4}
                       placeholder="Describe the product, environment, lighting, and mood..."
                       value={instructions}
@@ -161,7 +161,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                   <div>
                     <button
                       onClick={() => setShowKnowledge(!showKnowledge)}
-                      className="flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-slate-800"
+                      className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition"
                     >
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -175,15 +175,15 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                     </button>
                     
                     {showKnowledge && (
-                      <div className="mt-3 space-y-2 animate-in slide-in-from-top-2 fade-in duration-200 rounded-xl bg-slate-50 p-3 border border-slate-100">
+                      <div className="mt-3 space-y-2 animate-in slide-in-from-top-2 fade-in duration-200 rounded-xl bg-slate-50 dark:bg-slate-950/50 p-3 border border-slate-100 dark:border-slate-800">
                           <div className="flex items-center justify-between">
-                              <label className="text-xs font-semibold text-slate-600">Active Knowledge Base</label>
-                              <Link href="/knowledge" className="text-[10px] font-medium text-indigo-600 hover:underline">
+                              <label className="text-xs font-semibold text-slate-600 dark:text-slate-300">Active Knowledge Base</label>
+                              <Link href="/knowledge" className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
                                   Manage &rarr;
                               </Link>
                           </div>
                           <select 
-                            className="w-full rounded-lg border border-slate-200 px-2 py-2 text-xs"
+                            className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-2 text-xs text-slate-900 dark:text-slate-100"
                             value={selectedKbId}
                             onChange={(e) => setSelectedKbId(e.target.value)}
                           >
@@ -193,8 +193,8 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                               ))}
                           </select>
                           {selectedKbId && (
-                              <div className="max-h-[60px] overflow-y-auto rounded border border-slate-200 bg-white p-2">
-                                  <p className="text-[10px] text-slate-500">
+                              <div className="max-h-[60px] overflow-y-auto rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2">
+                                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
                                       {knowledgeBases.find(k => k.id === selectedKbId)?.content.slice(0, 150)}...
                                   </p>
                               </div>
@@ -204,29 +204,29 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                   </div>
                 </div>
 
-                <div className="space-y-6 rounded-xl bg-slate-50 p-4 border border-slate-100">
+                <div className="space-y-6 rounded-xl bg-slate-50 dark:bg-slate-950/50 p-4 border border-slate-100 dark:border-slate-800">
                    <div>
-                      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                         Variations
                       </label>
                       <div className="flex items-center justify-between gap-4">
-                          <span className="text-sm font-medium text-slate-900">{count}</span>
+                          <span className="text-sm font-medium text-slate-900 dark:text-slate-100">{count}</span>
                           <input
                             type="range"
                             min="1"
                             max="20"
                             value={count}
                             onChange={(e) => setCount(Number(e.target.value))}
-                            className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-slate-200 accent-indigo-600"
+                            className="h-2 flex-1 cursor-pointer rounded-lg appearance-none bg-slate-200 dark:bg-slate-700 accent-indigo-600"
                           />
                       </div>
                    </div>
                    
-                   <div className="pt-4 border-t border-slate-200">
+                   <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
                        <button
                         onClick={handleGenerate}
                         disabled={loading || !instructions.trim()}
-                        className="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-slate-800 disabled:opacity-50 transition-all"
+                        className="w-full rounded-xl bg-slate-900 dark:bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50 transition-all"
                       >
                         {loading ? (
                           <div className="flex items-center justify-center gap-2">
@@ -242,12 +242,15 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
               </div>
 
               {generated.length > 0 && (
-                <div className="mt-6 space-y-3 border-t border-slate-100 pt-6">
+                <div className="mt-6 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <h4 className="text-sm font-semibold text-slate-900">Generated Results</h4>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-50">Generated Results</h4>
                         {source && (
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${source.includes("Fallback") ? "bg-amber-50 border-amber-200 text-amber-700" : "bg-emerald-50 border-emerald-200 text-emerald-700"}`}>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full border ${source.includes("Fallback") 
+                              ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400" 
+                              : "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400"
+                            }`}>
                                 via {source}
                             </span>
                         )}
@@ -255,7 +258,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                     <div className="flex items-center gap-2">
                       <button
                         onClick={handleCopy}
-                        className="flex items-center gap-1 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                        className="flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 transition"
                       >
                         {copied ? (
                           <>
@@ -268,13 +271,13 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                           "Copy All"
                         )}
                       </button>
-                      <div className="h-4 w-px bg-slate-200" />
+                      <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
                       <button
                         onClick={() => {
                           onAccept(generated, "append");
                           setIsOpen(false);
                         }}
-                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                        className="rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition"
                       >
                         Append All
                       </button>
@@ -283,7 +286,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                           onAccept(generated, "replace");
                           setIsOpen(false);
                         }}
-                        className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                        className="rounded-lg bg-indigo-50 dark:bg-indigo-950/30 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition"
                       >
                         Replace All
                       </button>
@@ -293,7 +296,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                     {generated.map((prompt, idx) => (
                       <div
                         key={idx}
-                        className="group relative rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-600 shadow-sm hover:border-indigo-200 hover:shadow-md transition-all"
+                        className="group relative rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/50 p-3 text-sm text-slate-600 dark:text-slate-300 shadow-sm hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-md transition-all"
                       >
                         <p className="pr-16">{prompt}</p>
                         <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -302,7 +305,7 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                                 onAccept([prompt], "append");
                                 // Don't close, allow picking more
                               }}
-                              className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100"
+                              className="rounded-lg bg-indigo-50 dark:bg-indigo-900 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800 transition"
                             >
                               Add
                             </button>

@@ -123,26 +123,26 @@ export default function KnowledgePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] p-4 lg:p-6">
+    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black p-4 lg:p-6">
       <div className="mx-auto max-w-[1600px]">
         <div className="mb-6 flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Knowledge Base</h1>
-            <p className="text-sm text-slate-500">Manage brand guidelines and style contexts.</p>
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Knowledge Base</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Manage brand guidelines and style contexts.</p>
           </div>
-          <Link href="/image" className="text-xs font-medium text-indigo-600 hover:text-indigo-700">
+          <Link href="/image" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
             &larr; Back to Studio
           </Link>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[300px_1fr] h-[calc(100vh-140px)]">
           {/* Sidebar List */}
-          <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
-              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Saved Contexts</h2>
+          <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex items-center justify-between">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Saved Contexts</h2>
               <button
                 onClick={handleCreateNew}
-                className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100"
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/30 px-2 py-1 rounded-md border border-indigo-100 dark:border-indigo-900"
               >
                 + New
               </button>
@@ -159,12 +159,12 @@ export default function KnowledgePage() {
                     onClick={() => handleSelect(item)}
                     className={`w-full text-left p-3 rounded-lg text-sm transition-all border ${
                       selectedId === item.id
-                        ? "bg-indigo-50 border-indigo-200 text-indigo-900 font-medium"
-                        : "bg-transparent border-transparent hover:bg-slate-50 text-slate-600"
+                        ? "bg-indigo-50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 text-indigo-900 dark:text-indigo-300 font-medium"
+                        : "bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
                     }`}
                   >
                     <div className="truncate">{item.name}</div>
-                    {item.description && <div className="truncate text-[10px] text-slate-400 mt-0.5">{item.description}</div>}
+                    {item.description && <div className="truncate text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{item.description}</div>}
                   </button>
                 ))
               )}
@@ -172,17 +172,17 @@ export default function KnowledgePage() {
           </div>
 
           {/* Editor Area */}
-          <div className="flex flex-col rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          <div className="flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
             {selectedId ? (
               <>
-                <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                     <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                        {selectedId === "new" ? "Creating New Knowledge Base" : "Editing Knowledge Base"}
                      </span>
                   </div>
                   {selectedId !== "new" && (
-                    <button onClick={handleDelete} className="text-xs font-medium text-rose-600 hover:text-rose-700 px-3 py-1">
+                    <button onClick={handleDelete} className="text-xs font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 px-3 py-1">
                       Delete
                     </button>
                   )}
@@ -191,18 +191,18 @@ export default function KnowledgePage() {
                 <div className="flex-1 overflow-y-auto p-6 space-y-6">
                     <div className="grid grid-cols-2 gap-6">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Name</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Name</label>
                             <input 
-                                className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
                                 placeholder="e.g. Summer Campaign 2025"
                                 value={editForm.name}
                                 onChange={(e) => setEditForm(prev => ({ ...prev, name: e.target.value }))}
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Description (Optional)</label>
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Description (Optional)</label>
                             <input 
-                                className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500"
+                                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
                                 placeholder="Brief context about usage..."
                                 value={editForm.description}
                                 onChange={(e) => setEditForm(prev => ({ ...prev, description: e.target.value }))}
@@ -211,12 +211,12 @@ export default function KnowledgePage() {
                     </div>
                     
                     <div className="flex-1 flex flex-col min-h-[400px]">
-                        <label className="block text-sm font-medium text-slate-700 mb-2">Content / Instructions</label>
-                        <p className="text-xs text-slate-500 mb-2">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Content / Instructions</label>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
                             This text will be fed to the AI Prompt Engineer as context. Include brand voice, lighting preferences, negative prompts, or specific compositional rules.
                         </p>
                         <textarea 
-                            className="flex-1 w-full rounded-xl border border-slate-200 p-4 text-sm font-mono leading-relaxed focus:border-indigo-500 focus:ring-indigo-500"
+                            className="flex-1 w-full rounded-xl border border-slate-200 dark:border-slate-700 p-4 text-sm font-mono leading-relaxed focus:border-indigo-500 focus:ring-indigo-500 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
                             placeholder="Example: Always use soft, natural lighting. Our brand colors are pastel. Avoid harsh shadows. Products should be centered."
                             value={editForm.content}
                             onChange={(e) => setEditForm(prev => ({ ...prev, content: e.target.value }))}
@@ -224,11 +224,11 @@ export default function KnowledgePage() {
                     </div>
                 </div>
 
-                <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <div className="p-4 bg-slate-50 dark:bg-slate-950/50 border-t border-slate-100 dark:border-slate-800 flex justify-end">
                     <button
                         onClick={handleSave}
                         disabled={isSaving}
-                        className="bg-slate-900 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 disabled:opacity-50 transition-all shadow-sm"
+                        className="bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 px-6 py-2 rounded-lg text-sm font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 transition-all shadow-sm"
                     >
                         {isSaving ? "Saving..." : "Save Knowledge Base"}
                     </button>
@@ -236,14 +236,14 @@ export default function KnowledgePage() {
               </>
             ) : (
               <div className="flex-1 flex flex-col items-center justify-center text-slate-400 p-8 text-center">
-                <div className="h-12 w-12 rounded-xl bg-slate-50 flex items-center justify-center mb-4 text-slate-300">
+                <div className="h-12 w-12 rounded-xl bg-slate-50 dark:bg-slate-800 flex items-center justify-center mb-4 text-slate-300 dark:text-slate-500">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
                     </svg>
                 </div>
-                <h3 className="text-lg font-medium text-slate-600 mb-1">Select a Knowledge Base</h3>
-                <p className="text-sm max-w-xs">Choose an existing context from the sidebar or create a new one to guide your AI generations.</p>
-                <button onClick={handleCreateNew} className="mt-6 text-indigo-600 font-medium text-sm hover:underline">Create New</button>
+                <h3 className="text-lg font-medium text-slate-600 dark:text-slate-300 mb-1">Select a Knowledge Base</h3>
+                <p className="text-sm max-w-xs dark:text-slate-500">Choose an existing context from the sidebar or create a new one to guide your AI generations.</p>
+                <button onClick={handleCreateNew} className="mt-6 text-indigo-600 dark:text-indigo-400 font-medium text-sm hover:underline">Create New</button>
               </div>
             )}
           </div>
@@ -251,7 +251,7 @@ export default function KnowledgePage() {
       </div>
       
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg transition-all ${toast.type === 'success' ? 'bg-slate-900 text-white' : 'bg-rose-600 text-white'}`}>
+        <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg transition-all ${toast.type === 'success' ? 'bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900' : 'bg-rose-600 text-white'}`}>
           {toast.msg}
         </div>
       )}
