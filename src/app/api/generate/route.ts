@@ -367,57 +367,77 @@ export async function POST(req: Request) {
       return NextResponse.json({ imageDataUrl: resultUrl });
     }
 
-    /* -------- Gemini (Google AI Studio) -------- */
-    if (!NB_API_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
+    /* -------- Nano Banana via KIE -------- */
+    if (modelId.startsWith("nanobanana")) {
+      if (!KIE_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
-    if (referenceUrls.length === 0) {
-      const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
-    if (!nbRes.ok) {
-        const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
-        console.error("Gemini text-to-image error", { status: nbRes.status, error: nbJson });
-        return NextResponse.json({ error: msg, debug: nbJson || null }, { status: nbRes.status || 502 });
+      const nanoModel = modelId === "nanobanana-3-pro" ? "nano-banana-pro" : "nano-banana";
+      const payload = {
+        model: nanoModel,
+        callBackUrl: "",
+        input: {
+          prompt,
+          image_input: referenceUrls,
+          aspect_ratio: options?.aspect_ratio || undefined,
+          resolution: options?.image_size || "1K",
+          output_format: "png",
+        },
+      };
+
+      const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
+        body: JSON.stringify(payload),
+      });
+      const createJson = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || createJson?.code !== 200) {
+        const msg = createJson?.message || createJson?.msg || "Nano Banana createTask failed";
+        return NextResponse.json({ error: msg, debug: createJson || null }, { status: 502 });
       }
-      const out = extractGeminiImage(nbJson);
-      if (out.dataUrl) return NextResponse.json({ imageDataUrl: out.dataUrl });
-      if (out.url) return NextResponse.json({ imageDataUrl: out.url });
-      return NextResponse.json(
-        { error: out.reason || "Gemini returned no image data", debug: out.debug ?? null },
-        { status: 502 }
-      );
-    }
+      const taskId: string | undefined = createJson?.data?.taskId;
+      if (!taskId) return NextResponse.json({ error: "Nano Banana taskId missing" }, { status: 502 });
 
-    // 1) load reference image(s)
-    const imgBlobs: Array<{ mime: string; base64: string }> = [];
-    for (const u of referenceUrls) {
-      const { mime, base64 } = await fetchImageAsBase64(u);
-      if (!mime.startsWith("image/")) {
-        return NextResponse.json({ error: `Reference URL is not an image (mime=${mime})` }, { status: 400 });
+      const started = Date.now();
+      const MAX_MS = 180_000;
+      let resultUrl: string | null = null;
+      let lastState = "waiting";
+
+      while (Date.now() - started < MAX_MS) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${KIE_KEY}` },
+        });
+        const qJson = await qRes.json().catch(() => ({}));
+        if (!qRes.ok || qJson?.code !== 200) {
+          const msg = qJson?.message || qJson?.msg || "Nano Banana query failed";
+          return NextResponse.json({ error: msg, debug: qJson || null }, { status: 502 });
+        }
+
+        lastState = qJson?.data?.state as string;
+        if (lastState === "success") {
+          try {
+            const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
+            const urls: string[] = parsed?.resultUrls || [];
+            if (!urls.length) return NextResponse.json({ error: "Nano Banana returned no result URLs" }, { status: 502 });
+            resultUrl = urls[0];
+            break;
+          } catch {
+            return NextResponse.json({ error: "Malformed Nano Banana resultJson" }, { status: 502 });
+          }
+        }
+        if (lastState === "fail") {
+          const failMsg = qJson?.data?.failMsg || "Nano Banana reported failure";
+          return NextResponse.json({ error: failMsg }, { status: 502 });
+        }
       }
-      imgBlobs.push({ mime, base64 });
+
+      if (!resultUrl) {
+        return NextResponse.json({ error: `Nano Banana generation timed out (last state: ${lastState})` }, { status: 504 });
+      }
+      return NextResponse.json({ imageDataUrl: resultUrl });
     }
 
-    // 2) single-turn (IMAGES first, then TEXT)
-    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt, modelId, options });
-
-    if (!nbRes.ok) {
-      const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
-      console.error("Gemini image-edit error", { status: nbRes.status, error: nbJson });
-      return NextResponse.json({ error: msg, debug: nbJson || null }, { status: nbRes.status || 502 });
-    }
-
-    // 3) extract image
-    const out = extractGeminiImage(nbJson);
-    if (out.dataUrl) return NextResponse.json({ imageDataUrl: out.dataUrl });
-    if (out.url) return NextResponse.json({ imageDataUrl: out.url });
-
-    // Return concise debug to help diagnose (safe in prod too; it's compact)
-    return NextResponse.json(
-      {
-        error: out.reason || "Gemini returned no image data",
-        debug: out.debug ?? null,
-      },
-      { status: 502 }
-    );
+    return NextResponse.json({ error: "Unsupported model" }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
