@@ -180,7 +180,10 @@ function extractGeminiImage(json: any): {
 function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: string) {
   // Gemini image endpoint rejects unknown fields; keep config minimal.
   const generationConfig: Record<string, any> = { temperature: 0.6 };
-  return { generationConfig };
+  const image_config: Record<string, any> = {};
+  if (options?.aspect_ratio) image_config.aspect_ratio = options.aspect_ratio;
+  if (options?.image_size && modelId === "nanobanana-3-pro") image_config.image_size = options.image_size;
+  return { generationConfig, image_config: Object.keys(image_config).length ? image_config : undefined };
 }
 
 /** Single-turn image edit: one or more IMAGES first, then TEXT (v1beta REST) */
@@ -195,7 +198,7 @@ async function callGeminiImageEdit({
   modelId: string;
   options?: PostBody["options"];
 }) {
-  const { generationConfig } = buildGeminiConfigs(options, modelId);
+  const { generationConfig, image_config } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -214,6 +217,7 @@ async function callGeminiImageEdit({
     // DO NOT send "tools" (image_editing) -- not supported on v1beta REST for this model
     safetySettings: SAFETY_OFF,
     generationConfig,
+    ...(image_config ? { image_config } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -226,7 +230,7 @@ async function callGeminiImageEdit({
 }
 
 async function callGeminiTextToImage(text: string, modelId: string, options?: PostBody["options"]) {
-  const { generationConfig } = buildGeminiConfigs(options, modelId);
+  const { generationConfig, image_config } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -238,6 +242,7 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
     // returns inline image data when omitted, so we can parse it via extractGeminiImage.
     safetySettings: SAFETY_OFF,
     generationConfig,
+    ...(image_config ? { image_config } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
