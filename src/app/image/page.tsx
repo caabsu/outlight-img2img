@@ -172,6 +172,7 @@ export default function ImageStudioPage() {
     activeRun && activeRun.progress.total > 0
       ? Math.round((activeRun.progress.done / activeRun.progress.total) * 100)
       : 0;
+  const activeRunDebugText = activeRun?.debug ? stringifyDebug(activeRun.debug) : "";
 
   async function filesToDataUrls(files: FileList | null): Promise<string[]> {
     if (!files || files.length === 0) return [];
@@ -840,10 +841,10 @@ export default function ImageStudioPage() {
                           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
                             <div className="font-semibold">Generation failed</div>
                             <div className="mt-0.5">{activeRun.error || "Unknown error"}</div>
-                            {activeRun.debug && (
+                            {activeRunDebugText && (
                               <details className="mt-2 rounded border border-rose-200/80 bg-white/70 px-2 py-1 text-[11px] leading-relaxed text-rose-800 dark:border-rose-500/30 dark:bg-black/40 dark:text-rose-100">
                                 <summary className="cursor-pointer select-none text-[10px] font-semibold uppercase tracking-wide text-rose-500 dark:text-rose-200">Response details</summary>
-                                <pre className="mt-1 whitespace-pre-wrap break-words">{stringifyDebug(activeRun.debug)}</pre>
+                                <pre className="mt-1 whitespace-pre-wrap break-words">{activeRunDebugText}</pre>
                               </details>
                             )}
                           </div>
