@@ -5,6 +5,11 @@ import Link from "next/link";
 
 type PromptAssistantProps = {
   onAccept: (prompts: string[], mode: "append" | "replace") => void;
+  onStartRun?: (prompts: string[], references: string[]) => void;
+  availableReferences?: string[];
+  modelLabel?: string;
+  productName?: string;
+  requiresReference?: boolean;
   className?: string;
 };
 
@@ -14,7 +19,15 @@ type KnowledgeBase = {
   content: string;
 };
 
-export function PromptAssistant({ onAccept, className = "" }: PromptAssistantProps) {
+export function PromptAssistant({
+  onAccept,
+  onStartRun,
+  availableReferences = [],
+  modelLabel = "",
+  productName = "Custom",
+  requiresReference = false,
+  className = "",
+}: PromptAssistantProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -44,22 +57,33 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
   const [generated, setGenerated] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<string | null>(null);
+  const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
 
   async function handleGenerate() {
     if (!instructions.trim()) return;
     setLoading(true);
     setGenerated([]);
     setSource(null);
-    
-    // Get content from selected KB
     const selectedKb = knowledgeBases.find(kb => kb.id === selectedKbId);
     const knowledgeContent = selectedKb ? selectedKb.content : "";
+
+    const payload = {
+      knowledge: knowledgeContent,
+      instructions,
+      count,
+      references: selectedRefs,
+      context: {
+        model: modelLabel,
+        product: productName,
+        requiresReference,
+      },
+    };
 
     try {
       const res = await fetch("/api/prompt-assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ knowledge: knowledgeContent, instructions, count }),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (res.ok) {
@@ -79,6 +103,11 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
+  useEffect(() => {
+    if (availableReferences.length === 0) return;
+    setSelectedRefs(availableReferences.slice(0, 6));
+  }, [availableReferences]);
 
   return (
     <>
@@ -202,6 +231,59 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                       </div>
                     )}
                   </div>
+
+                  <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Reference context</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">Feed the assistant the same images used for generation.</p>
+                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {selectedRefs.length} selected
+                      </span>
+                    </div>
+                    {availableReferences.length === 0 ? (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">No reference images available yet.</p>
+                    ) : (
+                      <div className="flex gap-2 overflow-x-auto pb-1">
+                        {availableReferences.map((src) => {
+                          const selected = selectedRefs.includes(src);
+                          return (
+                            <button
+                              key={src}
+                              onClick={() => {
+                                setSelectedRefs((prev) =>
+                                  prev.includes(src) ? prev.filter((s) => s !== src) : [...prev, src].slice(0, 8)
+                                );
+                              }}
+                              className={`relative h-16 w-16 flex-none rounded-lg overflow-hidden border transition ${
+                                selected
+                                  ? "border-indigo-500 ring-1 ring-indigo-500"
+                                  : "border-slate-200 dark:border-slate-700 hover:border-indigo-200"
+                              }`}
+                              title={selected ? "Remove from context" : "Include as context"}
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={src} alt="" className="h-full w-full object-cover" />
+                              {selected && (
+                                <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-xs font-semibold">
+                                  Use
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                    <div className="rounded-lg bg-slate-50 dark:bg-slate-900 p-2 text-[11px] text-slate-500 dark:text-slate-400 border border-slate-100 dark:border-slate-800">
+                      <p className="font-semibold text-slate-600 dark:text-slate-300">AI instructions</p>
+                      <p>
+                        {`Model: ${modelLabel || "Current selection"}. Product: ${productName}. ${
+                          requiresReference ? "References required for best results." : "References optional but recommended."
+                        }`}
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-6 rounded-xl bg-slate-50 dark:bg-slate-950/50 p-4 border border-slate-100 dark:border-slate-800">
@@ -290,6 +372,19 @@ export function PromptAssistant({ onAccept, className = "" }: PromptAssistantPro
                       >
                         Replace All
                       </button>
+                      {onStartRun && (
+                        <button
+                          onClick={() => {
+                            onAccept(generated, "replace");
+                            onStartRun(generated, selectedRefs);
+                            setIsOpen(false);
+                          }}
+                          disabled={generated.length === 0 || (requiresReference && selectedRefs.length === 0)}
+                          className="rounded-lg bg-slate-900 dark:bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                        >
+                          Apply & Start Generation
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div className="grid max-h-[300px] gap-3 overflow-y-auto pr-1">

@@ -139,9 +139,29 @@ function generateFallbackPrompts(instructions: string, knowledge: string, count:
 
 export async function POST(req: Request) {
   try {
-    const { knowledge, instructions, count } = await req.json();
+    const { knowledge, instructions, count, references = [], context } = await req.json();
     // Allow up to 20 prompts
     const promptCount = Math.max(1, Math.min(20, Number(count) || 3));
+    const referenceImages = Array.isArray(references) ? references.filter((r) => typeof r === "string" && r.trim().length > 0).slice(0, 6) : [];
+    const contextNote = [
+      context?.product ? `Product: ${context.product}` : null,
+      context?.model ? `Model: ${context.model}` : null,
+      context?.requiresReference ? "Model requires a visual reference." : null,
+    ]
+      .filter(Boolean)
+      .join(" | ");
+
+    const parsedReferences = referenceImages
+      .map((src) => {
+        const match = /^data:([^;]+);base64,(.*)$/i.exec(src);
+        if (!match) return null;
+        return {
+          mime: match[1],
+          base64: match[2],
+          asDataUrl: src,
+        };
+      })
+      .filter(Boolean) as { mime: string; base64: string; asDataUrl: string }[];
 
     // 1. Google Gemini
     if (process.env.GEMINI_API_KEY) {
@@ -152,28 +172,48 @@ export async function POST(req: Request) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName });
 
-          const systemPrompt = `You are a professional Prompt Engineer for high-end commercial photography AI generation.
-          
-          USER REQUEST:
-          "${instructions}"
-          
-          BRAND KNOWLEDGE BASE (Style/Constraints):
-          "${knowledge}"
-          
-          TASK:
-          Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
-          
-          REQUIREMENTS:
-          1. BASE: Start with the core elements of the User Request.
-          2. EXPAND: Elaborate on textures, lighting, atmosphere, and composition. Make it "visual" and "evocative".
-          3. VARIANCE: Each prompt must have a distinct setting or lighting variation (e.g., one moody, one clean, one textured) while staying true to the core request.
-          4. INTEGRATION: Apply the tone and style from the Knowledge Base implicitly (do not output "(Knowledge applied: ...)").
-          5. FORMAT: Return strictly a JSON array of strings.
-          
-          Example Output Format:
-          ["Detailed prompt 1...", "Detailed prompt 2..."]`;
+          const textPrompt = `You are a professional Prompt Engineer for commercial image generation.
 
-          const result = await model.generateContent(systemPrompt);
+USER REQUEST:
+"${instructions}"
+
+BRAND KNOWLEDGE BASE (Style/Constraints):
+"${knowledge}"
+
+CONTEXT:
+${contextNote || "N/A"}
+
+REFERENCE IMAGES:
+${parsedReferences.length > 0 ? "Provided below as inline image data. Analyze and align the prompts to match the product look & feel. Call out materials, colors, and structure inferred from the references." : "None provided."}
+
+TASK:
+Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
+
+REQUIREMENTS:
+1. BASE: Start with the core elements of the User Request.
+2. EXPAND: Add textures, lighting, atmosphere, and composition. Make it "visual" and "evocative".
+3. VARIANCE: Each prompt must have a distinct setting or lighting variation while staying true to the core request.
+4. INTEGRATION: Apply the tone and style from the Knowledge Base implicitly.
+5. FORMAT: Return strictly a JSON array of strings.`;
+
+          const parts: any[] = [{ text: textPrompt }];
+          parsedReferences.forEach((img) =>
+            parts.push({
+              inlineData: {
+                data: img.base64,
+                mimeType: img.mime,
+              },
+            })
+          );
+
+          const result = await model.generateContent({
+            contents: [
+              {
+                role: "user",
+                parts,
+              },
+            ],
+          });
           const text = result.response.text();
           const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
           const json = JSON.parse(cleanedText);
@@ -195,18 +235,36 @@ export async function POST(req: Request) {
     if (process.env.OPENAI_API_KEY) {
       try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const textPrompt = `You are a professional Prompt Engineer. Generate ${promptCount} distinct, detailed, and descriptive image prompts based on the user's description.
+
+STYLE GUIDE / KNOWLEDGE (apply implicitly):
+"${knowledge}"
+
+CONTEXT:
+${contextNote || "N/A"}
+
+REFERENCE IMAGES:
+${parsedReferences.length > 0 ? "Provided in the same message. Infer materials, color, shape, and brand cues from them and reflect those in the prompts." : "None provided."}
+
+Return ONLY a JSON array of strings.`;
+
+        const userParts: any[] = [{ type: "text", text: instructions || "Describe the desired scene" }];
+        parsedReferences.forEach((img) => {
+          userParts.push({
+            type: "image_url",
+            image_url: { url: img.asDataUrl },
+          });
+        });
+
         const completion = await openai.chat.completions.create({
           messages: [
-            { 
-                role: "system", 
-                content: `You are a professional Prompt Engineer. Generate ${promptCount} distinct, detailed, and descriptive image prompts based on the user's description. 
-                Incorporate the following style guide naturally: "${knowledge}". 
-                Ensure specific constraints (like 'dark', 'front view') are strictly respected. 
-                Return ONLY a JSON array of strings.` 
+            {
+              role: "system",
+              content: textPrompt,
             },
-            { role: "user", content: instructions },
+            { role: "user", content: userParts },
           ],
-          model: "gpt-4-turbo", // Upgrade to 4-turbo for better results if available
+          model: "gpt-4o",
         });
         const content = completion.choices[0].message.content || "[]";
         const parsed = JSON.parse(content);
@@ -217,7 +275,8 @@ export async function POST(req: Request) {
     }
 
     // 3. Fallback
-    const prompts = generateFallbackPrompts(instructions, knowledge || "", promptCount);
+    const referenceHint = parsedReferences.length > 0 ? `There are ${parsedReferences.length} reference images. Align prompts to the depicted product.` : "";
+    const prompts = generateFallbackPrompts(`${instructions} ${referenceHint}`.trim(), knowledge || "", promptCount);
     // Artificial delay to simulate "work" if it's too fast (helps UX perception sometimes)
     await new Promise(r => setTimeout(r, 600)); 
     

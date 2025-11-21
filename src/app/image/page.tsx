@@ -422,52 +422,67 @@ export default function ImageStudioPage() {
     downloadBlob(blob, `${folderName}_${safeName(run.modelNameDisplay)}.zip`);
   }
 
+    function startRunWithPrompts(prompts: string[], references: string[]) {
+      const effectiveRefs = references.length > 0 ? references : refSources;
+      if (prompts.length === 0) {
+        setSaveToast({ message: "Add at least one prompt to start a run", type: "error" });
+        return;
+      }
+      if (modelRequiresReference && effectiveRefs.length === 0) {
+        setSaveToast({ message: "Reference image required for this model", type: "error" });
+        return;
+      }
+
+      setRuns((prev) => {
+        if (prev.length < MAX_CONCURRENT_RUNS) return prev;
+        const sorted = [...prev].sort((a, b) => a.startedAt - b.startedAt);
+        const oldest = sorted[0];
+        oldest.controller?.abort();
+        return prev.filter((run) => run.id !== oldest.id);
+      });
+
+      const id = crypto.randomUUID();
+      const ordinal = runs.length > 0 ? Math.max(...runs.map((run) => Number(run.name.replace(/\D/g, "")) || 0)) + 1 : 1;
+      const runName = `Run #${ordinal}`;
+      const controller = new AbortController();
+
+      const newRun: Run = {
+        id,
+        name: runName,
+        startedAt: Date.now(),
+        modelId,
+        modelNameDisplay,
+        prompts: [...prompts],
+        status: "running",
+        error: null,
+        debug: null,
+        images: [],
+        activeIdx: 0,
+        selectedIdx: new Set<number>(),
+        progress: { done: 0, total: prompts.length },
+        speed,
+        controller,
+      };
+
+      setRuns((prev) => {
+        const next = [...prev, newRun];
+        setActiveRunId(id);
+        return next;
+      });
+
+      void runGenerator(newRun, references.length > 0 ? references : refSources);
+    }
+
     async function onGenerateNewRun() {
-    if (!canStartRun) return;
+      if (!canStartRun) return;
+      startRunWithPrompts(promptLines, refSources);
+    }
 
-    setRuns((prev) => {
-      if (prev.length < MAX_CONCURRENT_RUNS) return prev;
-      const sorted = [...prev].sort((a, b) => a.startedAt - b.startedAt);
-      const oldest = sorted[0];
-      oldest.controller?.abort();
-      return prev.filter((run) => run.id !== oldest.id);
-    });
-
-    const id = crypto.randomUUID();
-    const ordinal = runs.length > 0 ? Math.max(...runs.map((run) => Number(run.name.replace(/\D/g, "")) || 0)) + 1 : 1;
-    const runName = `Run #${ordinal}`;
-    const controller = new AbortController();
-    const primaryRef = refSources[0] || "";
-
-    const newRun: Run = {
-      id,
-      name: runName,
-      startedAt: Date.now(),
-      modelId,
-      modelNameDisplay,
-      // productId: null, // No longer tracked in Run type
-      // productName: "Custom", // No longer tracked in Run type
-      // referenceUrl: primaryRef, // No longer tracked in Run type
-      prompts: [...promptLines],
-      status: "running",
-      error: null,
-      debug: null,
-      images: [],
-      activeIdx: 0,
-      selectedIdx: new Set<number>(),
-      progress: { done: 0, total: promptLines.length },
-      speed,
-      controller,
-    };
-
-    setRuns((prev) => {
-      const next = [...prev, newRun];
-      setActiveRunId(id);
-      return next;
-    });
-
-    void runGenerator(newRun, refSources);
-  }
+    function onAssistantStart(prompts: string[], references: string[]) {
+      if (prompts.length === 0) return;
+      setPromptsText(prompts.join("\n"));
+      startRunWithPrompts(prompts, references);
+    }
   
     async function runGenerator(run: Run, currentRefSources: string[]) {
     let cursor = 0;
@@ -795,6 +810,11 @@ export default function ImageStudioPage() {
                                     });
                                 }
                             }}
+                            onStartRun={onAssistantStart}
+                            availableReferences={refSources}
+                            modelLabel={modelNameDisplay}
+                            productName={productName}
+                            requiresReference={modelRequiresReference}
                         />
                          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
                          <select 
