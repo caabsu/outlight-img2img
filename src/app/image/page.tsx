@@ -67,12 +67,23 @@ async function fetchImageBytes(src: string): Promise<{ bytes: Uint8Array; mime: 
     const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
     return { bytes, mime, ext };
   }
-  const res = await fetch(src);
-  if (!res.ok) throw new Error(`Failed to fetch ${src}`);
-  const mime = res.headers.get("content-type") || "image/png";
-  const buf = new Uint8Array(await res.arrayBuffer());
-  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
-  return { bytes: buf, mime, ext };
+  // Try direct fetch first; if CORS blocks, fall back to server-side proxy.
+  const tryFetch = async (url: string) => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to fetch ${url}`);
+    const mime = res.headers.get("content-type") || "image/png";
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+    return { bytes: buf, mime, ext };
+  };
+
+  try {
+    return await tryFetch(src);
+  } catch (directErr) {
+    // Proxy through our API to avoid CORS/navigation issues.
+    const proxyUrl = `/api/download-image?url=${encodeURIComponent(src)}`;
+    return await tryFetch(proxyUrl);
+  }
 }
 
 async function downloadImage(src: string, filename: string) {
