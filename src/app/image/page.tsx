@@ -731,22 +731,26 @@ export default function ImageStudioPage() {
                                 <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={src} className="h-full w-full object-cover" alt="" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setRefPreviewUrl(src)}
+                                        className="absolute inset-0"
+                                        aria-label="Preview reference"
+                                    />
                                     <button 
-                                        onClick={() => {
+                                        type="button"
+                                        onClick={(e) => {
+                                             e.stopPropagation();
                                              if (src === customUrl) {
                                                  setCustomUrl("");
                                              } else {
                                                  removeUploadSrc(src);
                                              }
                                         }}
-                                        className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition text-white text-xs"
+                                        className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition text-white text-xs"
                                     >
                                         Remove
                                     </button>
-                                    <button 
-                                        onClick={() => setRefPreviewUrl(src)}
-                                        className="absolute inset-0"
-                                    />
                                 </div>
                             ))}
                          </div>
