@@ -106,12 +106,13 @@ export function PromptAssistant({
       const json = await res.json();
       if (res.ok) {
         const prompts = json.prompts || [];
+        const sourceLabel = json.source || "AI";
         setGenerated(prompts);
         setSource(json.source || null);
         setThreadMessages((prev) => [
           ...prev,
           { role: "user", content: text },
-          { role: "assistant", content: prompts.join("\n") || "No prompts returned." },
+          { role: "assistant", content: prompts.length ? `Generated ${prompts.length} prompts via ${sourceLabel}. Want tweaks?` : "No prompts returned." },
         ]);
         setMessage("");
       }
@@ -141,7 +142,7 @@ export function PromptAssistant({
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm transition-all">
           <div
-            className="w-full max-w-5xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-50/10"
+            className="w-full max-w-6xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-50/10"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
@@ -377,4 +378,3 @@ export function PromptAssistant({
     </>
   );
 }
-
