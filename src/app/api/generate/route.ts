@@ -170,13 +170,14 @@ function extractGeminiImage(json: any): {
   };
 }
 
-function buildGeminiConfigs(options?: PostBody["options"]) {
+function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: string) {
   const generationConfig: Record<string, any> = {
     temperature: 0.6,
   };
   const imageConfig: Record<string, any> = {};
   if (options?.aspect_ratio) imageConfig.aspectRatio = options.aspect_ratio;
-  if (options?.image_size) imageConfig.imageSize = options.image_size;
+  // Only Pro supports image_size; 2.5 Flash is fixed 1K.
+  if (options?.image_size && modelId === "nanobanana-3-pro") imageConfig.imageSize = options.image_size;
 
   const responseModalities = options?.response_modalities?.length ? options.response_modalities : undefined;
 
@@ -199,7 +200,7 @@ async function callGeminiImageEdit({
   modelId: string;
   options?: PostBody["options"];
 }) {
-  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options);
+  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -231,7 +232,7 @@ async function callGeminiImageEdit({
 }
 
 async function callGeminiTextToImage(text: string, modelId: string, options?: PostBody["options"]) {
-  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options);
+  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
