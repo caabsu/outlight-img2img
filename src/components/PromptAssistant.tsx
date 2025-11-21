@@ -26,6 +26,16 @@ type ThreadMessage = {
   content: string;
 };
 
+type SavedSession = {
+  id: string;
+  name: string;
+  base: string;
+  thread: ThreadMessage[];
+  prompts: string[];
+  source: string | null;
+  updatedAt: number;
+};
+
 export function PromptAssistant({
   onAccept,
   onStartRun,
@@ -66,6 +76,9 @@ export function PromptAssistant({
   const [generated, setGenerated] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<string | null>(null);
+  const [sessionName, setSessionName] = useState("Session 1");
+  const [sessionId, setSessionId] = useState<string>(() => crypto.randomUUID());
+  const [sessions, setSessions] = useState<SavedSession[]>([]);
   const [followUp, setFollowUp] = useState("");
   const [sessionInstructions, setSessionInstructions] = useState("");
   const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
@@ -128,6 +141,50 @@ export function PromptAssistant({
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  function resetSession() {
+    setSessionInstructions("");
+    setInstructions("");
+    setFollowUp("");
+    setGenerated([]);
+    setSource(null);
+    setThreadMessages([]);
+    const nextId = crypto.randomUUID();
+    setSessionId(nextId);
+    setSessionName(`Session ${sessions.length + 2}`);
+  }
+
+  function saveSession() {
+    const snapshot: SavedSession = {
+      id: sessionId,
+      name: sessionName || "Untitled session",
+      base: sessionInstructions || instructions,
+      thread: threadMessages,
+      prompts: generated,
+      source,
+      updatedAt: Date.now(),
+    };
+    setSessions((prev) => {
+      const existing = prev.find((s) => s.id === sessionId);
+      if (existing) {
+        return prev.map((s) => (s.id === sessionId ? snapshot : s));
+      }
+      return [...prev, snapshot];
+    });
+  }
+
+  function loadSession(id: string) {
+    const target = sessions.find((s) => s.id === id);
+    if (!target) return;
+    setSessionId(target.id);
+    setSessionName(target.name);
+    setSessionInstructions(target.base);
+    setInstructions(target.base);
+    setThreadMessages(target.thread);
+    setGenerated(target.prompts);
+    setSource(target.source);
+    setFollowUp("");
   }
 
 
@@ -193,6 +250,55 @@ export function PromptAssistant({
             </div>
 
             <div className="p-6 space-y-6">
+              <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Session</span>
+                  <input
+                    value={sessionName}
+                    onChange={(e) => setSessionName(e.target.value)}
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      saveSession();
+                      resetSession();
+                    }}
+                    className="rounded-lg bg-slate-900 dark:bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm hover:bg-slate-800 dark:hover:bg-indigo-500"
+                  >
+                    New session
+                  </button>
+                  <button
+                    onClick={saveSession}
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Save snapshot
+                  </button>
+                  <button
+                    onClick={resetSession}
+                    className="rounded-lg border border-rose-200 dark:border-rose-700/50 px-3 py-1.5 text-[11px] font-semibold text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/30"
+                  >
+                    Reset
+                  </button>
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Saved</span>
+                  <select
+                    className="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 py-1 text-xs text-slate-900 dark:text-slate-100"
+                    value={sessionId}
+                    onChange={(e) => loadSession(e.target.value)}
+                  >
+                    <option value={sessionId}>Current</option>
+                    {sessions.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} — {new Date(s.updatedAt).toLocaleTimeString()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
                 <div className="space-y-4">
                   <div>
