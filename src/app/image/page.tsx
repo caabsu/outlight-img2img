@@ -99,6 +99,16 @@ function statusColor(status: RunStatus) {
   }
 }
 
+function stringifyDebug(payload: unknown) {
+  if (payload == null) return "";
+  if (typeof payload === "string") return payload;
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch (err: any) {
+    return String(payload);
+  }
+}
+
 export default function ImageStudioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
@@ -826,6 +836,18 @@ export default function ImageStudioPage() {
                                  {activeRun.status}
                              </span>
                         </div>
+                        {activeRun.status === "error" && (
+                          <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                            <div className="font-semibold">Generation failed</div>
+                            <div className="mt-0.5">{activeRun.error || "Unknown error"}</div>
+                            {activeRun.debug && (
+                              <details className="mt-2 rounded border border-rose-200/80 bg-white/70 px-2 py-1 text-[11px] leading-relaxed text-rose-800 dark:border-rose-500/30 dark:bg-black/40 dark:text-rose-100">
+                                <summary className="cursor-pointer select-none text-[10px] font-semibold uppercase tracking-wide text-rose-500 dark:text-rose-200">Response details</summary>
+                                <pre className="mt-1 whitespace-pre-wrap break-words">{stringifyDebug(activeRun.debug)}</pre>
+                              </details>
+                            )}
+                          </div>
+                        )}
                         <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                              <div className="h-full bg-slate-900 dark:bg-slate-50 transition-all duration-500" style={{ width: `${overallPct}%` }} />
                         </div>
