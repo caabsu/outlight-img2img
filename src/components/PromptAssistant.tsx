@@ -106,13 +106,18 @@ export function PromptAssistant({
       const json = await res.json();
       if (res.ok) {
         const prompts = json.prompts || [];
-        const sourceLabel = json.source || "AI";
         setGenerated(prompts);
         setSource(json.source || null);
+        const responseCopy =
+          prompts.length === 0
+            ? "I couldn’t produce prompts this round—want to try a different request or add a reference?"
+            : prompts.length < 3
+            ? `Got it. I’ve drafted ${prompts.length} focused prompts. Want me to push toward a new angle or adjust lighting?`
+            : `All set. I’ve generated a small batch of prompts covering varied scenes. Need me to tighten style, lighting, or camera notes?`;
         setThreadMessages((prev) => [
           ...prev,
           { role: "user", content: text },
-          { role: "assistant", content: prompts.length ? `Generated ${prompts.length} prompts via ${sourceLabel}. Want tweaks?` : "No prompts returned." },
+          { role: "assistant", content: responseCopy },
         ]);
         setMessage("");
       }
