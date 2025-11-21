@@ -487,13 +487,6 @@ export default function ImageStudioPage() {
       startRunWithPrompts(promptLines, selectedRefs);
     }
 
-    function onAssistantStart(prompts: string[], references: string[]) {
-      if (prompts.length === 0) return;
-      if (references.length) setSelectedRefs(references);
-      setPromptsText(prompts.join("\n"));
-      startRunWithPrompts(prompts, references);
-    }
-  
     async function runGenerator(run: Run, currentRefSources: string[]) {
     let cursor = 0;
     const total = run.prompts.length;
@@ -837,10 +830,9 @@ export default function ImageStudioPage() {
                                     });
                                 }
                             }}
+                            availableReferences={refSources}
                             selectedReferences={selectedRefs}
                             onUpdateReferences={setSelectedRefs}
-                            onStartRun={onAssistantStart}
-                            availableReferences={refSources}
                             modelLabel={modelNameDisplay}
                             productName={productName}
                             requiresReference={modelRequiresReference}

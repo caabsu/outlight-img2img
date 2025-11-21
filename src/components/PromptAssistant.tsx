@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type PromptAssistantProps = {
   onAccept: (prompts: string[], mode: "append" | "replace") => void;
-  onStartRun?: (prompts: string[], references: string[]) => void;
   availableReferences?: string[];
   selectedReferences?: string[];
   onUpdateReferences?: (next: string[]) => void;
@@ -28,7 +27,6 @@ type ThreadMessage = {
 
 export function PromptAssistant({
   onAccept,
-  onStartRun,
   availableReferences = [],
   selectedReferences = [],
   onUpdateReferences,
@@ -42,13 +40,12 @@ export function PromptAssistant({
   const [selectedKbId, setSelectedKbId] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
-  const [instructions, setInstructions] = useState("");
-  const [followUp, setFollowUp] = useState("");
+  const [message, setMessage] = useState("");
   const [count, setCount] = useState(3);
-  const [generated, setGenerated] = useState<string[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [source, setSource] = useState<string | null>(null);
   const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
+  const [generated, setGenerated] = useState<string[]>([]);
+  const [source, setSource] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -60,9 +57,7 @@ export function PromptAssistant({
     try {
       const res = await fetch("/api/knowledge");
       const json = await res.json();
-      if (res.ok) {
-        setKnowledgeBases(json.items || []);
-      }
+      if (res.ok) setKnowledgeBases(json.items || []);
     } catch (e) {
       console.error("Failed to load knowledge bases", e);
     }
@@ -75,32 +70,23 @@ export function PromptAssistant({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  function resetThread() {
-    setInstructions("");
-    setFollowUp("");
+  function resetChat() {
+    setMessage("");
     setGenerated([]);
     setSource(null);
     setThreadMessages([]);
   }
 
-  const hasBaseInstructions = instructions.trim().length > 0;
-
-  async function handleGenerate(opts?: { mode?: "fresh" | "refine" }) {
-    const base = instructions.trim();
-    const tail = followUp.trim();
-    if (!base && !tail) return;
-    const effectiveInstructions =
-      opts?.mode === "refine" && tail ? `${base || ""}\nFollow-up: ${tail}` : base || tail;
-
+  async function sendMessage() {
+    const text = message.trim();
+    if (!text) return;
     setLoading(true);
-    setGenerated([]);
-    setSource(null);
-    const selectedKb = knowledgeBases.find((kb) => kb.id === selectedKbId);
-    const knowledgeContent = selectedKb ? selectedKb.content : "";
+    const kb = knowledgeBases.find((k) => k.id === selectedKbId);
+    const knowledgeContent = kb ? kb.content : "";
 
     const payload = {
       knowledge: knowledgeContent,
-      instructions: effectiveInstructions,
+      instructions: text,
       count,
       references: selectedReferences,
       context: {
@@ -108,7 +94,7 @@ export function PromptAssistant({
         product: productName,
         requiresReference,
       },
-      thread: [...threadMessages, { role: "user", content: effectiveInstructions }],
+      thread: [...threadMessages, { role: "user", content: text }],
     };
 
     try {
@@ -119,16 +105,18 @@ export function PromptAssistant({
       });
       const json = await res.json();
       if (res.ok) {
-        setGenerated(json.prompts || []);
+        const prompts = json.prompts || [];
+        setGenerated(prompts);
         setSource(json.source || null);
         setThreadMessages((prev) => [
           ...prev,
-          { role: "user", content: effectiveInstructions },
-          { role: "assistant", content: (json.prompts || []).join("\n") || "No prompts returned." },
+          { role: "user", content: text },
+          { role: "assistant", content: prompts.join("\n") || "No prompts returned." },
         ]);
+        setMessage("");
       }
-    } catch (error) {
-      console.error("Failed to generate prompts", error);
+    } catch (e) {
+      console.error("Failed to generate prompts", e);
     } finally {
       setLoading(false);
     }
@@ -153,19 +141,19 @@ export function PromptAssistant({
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm transition-all">
           <div
-            className="w-full max-w-4xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-50/10"
+            className="w-full max-w-5xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-50/10"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-                    <path d="M15.98 1.804a1 1 0 00-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 000 1.96l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.96 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.96l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 00-1.898 0l-.683 2.051a1 1 0 01-.918.918l-2.051.683a1 1 0 000 1.898l2.051.683a1 1 0 01.918.918l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.918-.918l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.918-.918l-.683-2.051z" />
+                    <path d="M15.98 1.804a1 1 0 10-1.96 0l-.24 1.192a1 1 0 01-.784.785l-1.192.238a1 1 0 100 1.96l1.192.238a1 1 0 01.785.785l.238 1.192a1 1 0 001.96 0l.238-1.192a1 1 0 01.785-.785l1.192-.238a1 1 0 000-1.96l-1.192-.238a1 1 0 01-.785-.785l-.238-1.192zM6.949 5.684a1 1 0 10-1.898 0l-.683 2.051a1 1 0 01-.918.918l-2.051.683a1 1 0 000 1.898l2.051.683a1 1 0 01.918.918l.683 2.051a1 1 0 001.898 0l.683-2.051a1 1 0 01.918-.918l2.051-.683a1 1 0 000-1.898l-2.051-.683a1 1 0 01-.918-.918l-.683-2.051z" />
                   </svg>
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-slate-900 dark:text-slate-50">AI Prompt Engineer</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Chat, refine, and launch generations.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Chat, refine, and launch prompt updates.</p>
                 </div>
               </div>
               <button
@@ -178,20 +166,8 @@ export function PromptAssistant({
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="grid gap-6 p-6 lg:grid-cols-[320px_1fr]">
               <div className="space-y-4">
-                <div>
-                  <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Base Objective</label>
-                  <textarea
-                    className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-4 text-sm text-slate-900 dark:text-slate-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
-                    rows={4}
-                    placeholder="Describe the product, environment, lighting, and mood..."
-                    value={instructions}
-                    onChange={(e) => setInstructions(e.target.value)}
-                    autoFocus
-                  />
-                </div>
-
                 <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Knowledge base</p>
@@ -220,7 +196,7 @@ export function PromptAssistant({
 
                 <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Reference context</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">References</p>
                     <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       {selectedReferences?.length || 0} used
                     </span>
@@ -237,9 +213,7 @@ export function PromptAssistant({
                             onClick={() => {
                               if (!onUpdateReferences) return;
                               onUpdateReferences(
-                                selected
-                                  ? selectedReferences.filter((s) => s !== src)
-                                  : [...selectedReferences, src].slice(0, 8)
+                                selected ? selectedReferences.filter((s) => s !== src) : [...selectedReferences, src].slice(0, 8)
                               );
                             }}
                             className={`relative h-16 w-16 flex-none rounded-lg overflow-hidden border transition ${
@@ -250,9 +224,7 @@ export function PromptAssistant({
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={src} alt="" className="h-full w-full object-cover" />
                             {selected && (
-                              <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-xs font-semibold">
-                                Use
-                              </span>
+                              <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-xs font-semibold">Use</span>
                             )}
                           </button>
                         );
@@ -263,28 +235,33 @@ export function PromptAssistant({
 
                 <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Chat</p>
-                    <div className="flex items-center gap-2">
-                      <label className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Variations</label>
-                      <input
-                        type="range"
-                        min="1"
-                        max="20"
-                        value={count}
-                        onChange={(e) => setCount(Number(e.target.value))}
-                        className="h-2 w-32 cursor-pointer rounded-lg appearance-none bg-slate-200 dark:bg-slate-700 accent-indigo-600"
-                      />
-                      <span className="text-xs text-slate-600 dark:text-slate-300">{count}</span>
-                    </div>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Variations</p>
+                    <span className="text-xs text-slate-600 dark:text-slate-300">{count}</span>
                   </div>
-                  <div className="max-h-64 overflow-y-auto space-y-2 pr-1 rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-2">
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={count}
+                    onChange={(e) => setCount(Number(e.target.value))}
+                    className="h-2 w-full cursor-pointer rounded-lg appearance-none bg-slate-200 dark:bg-slate-700 accent-indigo-600"
+                  />
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {modelLabel || "Current model"} · {productName} · {requiresReference ? "Reference required" : "Reference optional"}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 flex flex-col gap-3 h-[520px]">
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                     {threadMessages.length === 0 && (
-                      <p className="text-[12px] text-slate-500 dark:text-slate-400">No conversation yet. Generate once, then refine here.</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No conversation yet. Send a message to get started.</p>
                     )}
                     {threadMessages.map((msg, idx) => (
                       <div
                         key={idx}
-                        className={`rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                        className={`rounded-xl px-3 py-2 text-sm leading-relaxed ${
                           msg.role === "user"
                             ? "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 border border-indigo-100 dark:border-indigo-900/50"
                             : "bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800"
@@ -297,38 +274,33 @@ export function PromptAssistant({
                       </div>
                     ))}
                   </div>
+
                   <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      className="flex-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:ring-indigo-500"
-                      placeholder="Tell the assistant what to tweak..."
-                      value={followUp}
-                      onChange={(e) => setFollowUp(e.target.value)}
+                    <textarea
+                      rows={2}
+                      className="flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:ring-indigo-500 resize-none"
+                      placeholder="Describe what to generate or refine..."
+                      value={message}
+                      onChange={(e) => setMessage(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && !loading) handleGenerate({ mode: "refine" });
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          void sendMessage();
+                        }
                       }}
                     />
                     <button
-                      onClick={() => handleGenerate({ mode: "refine" })}
-                      disabled={loading || (!hasBaseInstructions && !followUp.trim())}
+                      onClick={sendMessage}
+                      disabled={loading || (!message.trim() && threadMessages.length === 0)}
                       className="rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-indigo-500 disabled:opacity-50"
                     >
-                      Send
-                    </button>
-                  </div>
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-2">
-                    <button
-                      onClick={() => handleGenerate({ mode: followUp.trim() ? "refine" : "fresh" })}
-                      disabled={loading || (!hasBaseInstructions && !followUp.trim())}
-                      className="rounded-lg bg-slate-900 dark:bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50"
-                    >
-                      {loading ? "Working..." : "Generate / Update"}
+                      {loading ? "Working..." : "Send"}
                     </button>
                     <button
-                      onClick={resetThread}
+                      onClick={resetChat}
                       className="rounded-lg border border-rose-200 dark:border-rose-700/50 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/30"
                     >
-                      Clear chat
+                      Clear
                     </button>
                   </div>
                 </div>
@@ -359,18 +331,25 @@ export function PromptAssistant({
                         </button>
                         <button
                           onClick={() => {
-                            onAccept(generated, "replace");
-                            onStartRun?.(generated, selectedReferences);
+                            onAccept(generated, "append");
                             setIsOpen(false);
                           }}
-                          disabled={generated.length === 0 || (requiresReference && selectedReferences.length === 0)}
-                          className="rounded-lg bg-slate-900 dark:bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                          className="rounded-lg px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition"
                         >
-                          Apply & Start
+                          Append
+                        </button>
+                        <button
+                          onClick={() => {
+                            onAccept(generated, "replace");
+                            setIsOpen(false);
+                          }}
+                          className="rounded-lg bg-indigo-50 dark:bg-indigo-950/30 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition"
+                        >
+                          Replace
                         </button>
                       </div>
                     </div>
-                    <div className="grid max-h-[300px] gap-3 overflow-y-auto pr-1">
+                    <div className="grid max-h-[260px] gap-3 overflow-y-auto pr-1">
                       {generated.map((prompt, idx) => (
                         <div
                           key={idx}
@@ -379,9 +358,7 @@ export function PromptAssistant({
                           <p className="pr-16">{prompt}</p>
                           <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                             <button
-                              onClick={() => {
-                                onAccept([prompt], "append");
-                              }}
+                              onClick={() => onAccept([prompt], "append")}
                               className="rounded-lg bg-indigo-50 dark:bg-indigo-900 px-3 py-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-800 transition"
                             >
                               Add
