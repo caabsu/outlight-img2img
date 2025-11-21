@@ -108,12 +108,12 @@ export function PromptAssistant({
         const prompts = json.prompts || [];
         setGenerated(prompts);
         setSource(json.source || null);
-        const responseCopy =
-          prompts.length === 0
+        const responseCopy = json.assistantReply
+          || (prompts.length === 0
             ? "I couldn’t produce prompts this round—want to try a different request or add a reference?"
             : prompts.length < 3
             ? `Got it. I’ve drafted ${prompts.length} focused prompts. Want me to push toward a new angle or adjust lighting?`
-            : `All set. I’ve generated a small batch of prompts covering varied scenes. Need me to tighten style, lighting, or camera notes?`;
+            : `All set. I’ve generated a small batch of prompts covering varied scenes. Need me to tighten style, lighting, or camera notes?`);
         setThreadMessages((prev) => [
           ...prev,
           { role: "user", content: text },

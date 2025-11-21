@@ -234,9 +234,16 @@ REQUIREMENTS:
           const json = JSON.parse(cleanedText);
           
           if (Array.isArray(json)) {
+            const reply = await makeAssistantReply({
+              provider: "gemini",
+              prompts: json.slice(0, promptCount),
+              instructions,
+              knowledge,
+            });
             return NextResponse.json({ 
               prompts: json.slice(0, promptCount), 
-              source: `Gemini (${modelName})` 
+              source: `Gemini (${modelName})`,
+              assistantReply: reply,
             });
           }
         } catch (e: any) {
@@ -286,7 +293,15 @@ Return ONLY a JSON array of strings.`;
         });
         const content = completion.choices[0].message.content || "[]";
         const parsed = JSON.parse(content);
-        if(Array.isArray(parsed)) return NextResponse.json({ prompts: parsed, source: "GPT-4 Turbo" });
+        if(Array.isArray(parsed)) {
+          const reply = await makeAssistantReply({
+            provider: "openai",
+            prompts: parsed,
+            instructions,
+            knowledge,
+          });
+          return NextResponse.json({ prompts: parsed, source: "GPT-4 Turbo", assistantReply: reply });
+        }
       } catch (e) {
         console.error("OpenAI Error:", e);
       }
@@ -296,16 +311,78 @@ Return ONLY a JSON array of strings.`;
     const referenceHint = parsedReferences.length > 0 ? `There are ${parsedReferences.length} reference images. Align prompts to the depicted product.` : "";
     const historyHint = threadNote ? `Thread: ${threadNote}` : "";
     const prompts = generateFallbackPrompts(`${instructions} ${referenceHint} ${historyHint}`.trim(), knowledge || "", promptCount);
+    const assistantReply = await makeAssistantReply({
+      provider: "local",
+      prompts,
+      instructions,
+      knowledge,
+    });
     // Artificial delay to simulate "work" if it's too fast (helps UX perception sometimes)
     await new Promise(r => setTimeout(r, 600)); 
     
     return NextResponse.json({ 
         prompts, 
         source: "Offline Logic (Fallback)", 
+        assistantReply,
         warning: "AI keys invalid or unreachable. Using local generation." 
     });
 
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+async function makeAssistantReply({
+  provider,
+  prompts,
+  instructions,
+  knowledge,
+}: {
+  provider: "gemini" | "openai" | "local";
+  prompts: string[];
+  instructions: string;
+  knowledge: string;
+}) {
+  const shortSystem = `You are a concise creative prompt assistant. Respond in 1–2 sentences max. Confirm that prompts were produced and offer a helpful next step (e.g., tweak lighting, angle, or styling). Do not list the prompts. Do not mention model names.`;
+
+  if (provider === "gemini" && process.env.GEMINI_API_KEY) {
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
+      const result = await model.generateContent({
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: `${shortSystem}\nInstructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}` },
+            ],
+          },
+        ],
+      });
+      const text = result.response.text().trim();
+      if (text) return text;
+    } catch (e) {
+      console.error("Gemini assistant reply failed", e);
+    }
+  }
+
+  if (provider === "openai" && process.env.OPENAI_API_KEY) {
+    try {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: shortSystem },
+          { role: "user", content: `Instructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}` },
+        ],
+      });
+      const text = completion.choices[0].message.content?.trim();
+      if (text) return text;
+    } catch (e) {
+      console.error("OpenAI assistant reply failed", e);
+    }
+  }
+
+  if (prompts.length === 0) return "I couldn’t produce prompts this round—want to try a different request or add a reference?";
+  if (prompts.length < 3) return `Drafted ${prompts.length} focused prompts. Want me to push a new angle or adjust lighting?`;
+  return `Generated a small batch of prompts covering varied scenes. Want them tighter on style, camera, or lighting?`;
 }
