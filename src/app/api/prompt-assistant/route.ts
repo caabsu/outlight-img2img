@@ -349,7 +349,19 @@ async function makeAssistantReply({
   knowledge: string;
   references: ParsedRef[];
 }) {
-  const shortSystem = `You are a concise creative prompt assistant. Respond in 1–2 sentences max. Confirm that prompts were produced and offer a helpful next step (e.g., tweak lighting, angle, or styling). Do not list the prompts. Do not mention model names.`;
+  const shortSystem = `You are a concise creative prompt assistant. Respond in 1–2 sentences max. Confirm that prompts were produced and offer a helpful next step (e.g., tweak lighting, angle, or styling). Never list the prompts, never enumerate or bullet, and do not mention model names or providers. Keep it short and direct.`;
+
+  const sanitizeReply = (text: string) => {
+    if (!text) return "";
+    // Strip out numbered lists or bullets if model tries to include them.
+    const cleaned = text
+      .replace(/^\s*[\d]+\.\s*/gm, "")
+      .replace(/^\s*[-•]\s*/gm, "")
+      .trim();
+    // Keep only first two sentences.
+    const sentences = cleaned.split(/(?<=[.!?])\s+/).filter(Boolean);
+    return sentences.slice(0, 2).join(" ").trim();
+  };
 
   if (provider === "gemini" && process.env.GEMINI_API_KEY) {
     try {
@@ -377,7 +389,7 @@ async function makeAssistantReply({
           },
         ],
       });
-      const text = result.response.text().trim();
+      const text = sanitizeReply(result.response.text().trim());
       if (text) return text;
     } catch (e) {
       console.error("Gemini assistant reply failed", e);
@@ -404,7 +416,7 @@ async function makeAssistantReply({
           { role: "user", content: userParts },
         ],
       });
-      const text = completion.choices[0].message.content?.trim();
+      const text = sanitizeReply(completion.choices[0].message.content?.trim() || "");
       if (text) return text;
     } catch (e) {
       console.error("OpenAI assistant reply failed", e);
@@ -412,7 +424,7 @@ async function makeAssistantReply({
   }
 
   const refNote = references.length ? ` I used ${references.length} reference image(s).` : "";
-  if (prompts.length === 0) return `I couldn’t produce prompts this round${refNote}. Want to try a different request or add another reference?`;
-  if (prompts.length < 3) return `Drafted ${prompts.length} focused prompts.${refNote} Want me to push a new angle or adjust lighting?`;
-  return `Generated a small batch of prompts covering varied scenes.${refNote} Want them tighter on style, camera, or lighting?`;
+  if (prompts.length === 0) return sanitizeReply(`I couldn’t produce prompts this round.${refNote} Suggest a tweak or add another reference.`);
+  if (prompts.length < 3) return sanitizeReply(`Drafted ${prompts.length} focused prompts.${refNote} Want me to push a new angle or adjust lighting?`);
+  return sanitizeReply(`Generated a small batch of prompts.${refNote} Want them tighter on style, camera, or lighting?`);
 }

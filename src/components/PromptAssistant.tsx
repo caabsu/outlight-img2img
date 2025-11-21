@@ -259,7 +259,7 @@ export function PromptAssistant({
               </div>
 
               <div className="space-y-4">
-                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 flex flex-col gap-3 h-[520px]">
+                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/60 p-4 flex flex-col gap-3 h-[620px]">
                   <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                     {threadMessages.length === 0 && (
                       <p className="text-sm text-slate-500 dark:text-slate-400">No conversation yet. Send a message to get started.</p>
