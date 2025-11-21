@@ -152,6 +152,7 @@ export default function ImageStudioPage() {
   // const referenceUrl = customUrl.trim(); // Simplified
   const modelRequiresReference = modelDef.requiresReference !== false;
   const isNanoBanana = modelDef.provider === "nanobanana";
+  const isNanoBananaPro = modelDef.id === "nanobanana-3-pro";
   const nanoAspectOptions = modelDef.aspectRatioOptions || Array.from(NANOBANANA_ASPECT_RATIOS);
   const nanoResolutionOptions = modelDef.resolutionOptions || Array.from(NANOBANANA_RESOLUTIONS);
   const hasRefs = customUrl.trim().length > 0 || customUploads.length > 0 || customUrls.some((url) => (url || "").trim().length > 0);
@@ -512,7 +513,7 @@ export default function ImageStudioPage() {
                     seed: sdSeed === "" ? null : sdSeed,
                   };
                 }
-                if (runModel.provider === "nanobanana") {
+                if (runModel.id === "nanobanana-3-pro") {
                   return {
                     aspect_ratio: nbAspectRatio,
                     image_size: nbResolution,
@@ -581,7 +582,7 @@ export default function ImageStudioPage() {
              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
                  <div className="mb-4 flex items-center justify-between gap-2">
                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
-                   {isNanoBanana && (
+                   {isNanoBananaPro && (
                      <button
                        onClick={() => setShowNanoGuide(true)}
                        className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
@@ -608,7 +609,7 @@ export default function ImageStudioPage() {
                     ))}
                  </div>
 
-                  {isNanoBanana && (
+                  {isNanoBananaPro && (
                 <div className="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -913,7 +914,7 @@ export default function ImageStudioPage() {
         </div>
       </div>
       
-      {showNanoGuide && (
+      {showNanoGuide && isNanoBananaPro && (
         <div
           className="fixed inset-0 z-[60] flex items-start justify-end bg-black/30 p-4 backdrop-blur-sm"
           onClick={() => setShowNanoGuide(false)}
