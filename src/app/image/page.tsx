@@ -615,8 +615,8 @@ export default function ImageStudioPage() {
            </Link>
         </div>
 
-        {/* Grid Layout Update: Wider Center Column */}
-        <div className="grid gap-6 lg:grid-cols-[320px_640px_minmax(0,1fr)] items-start">
+        {/* Grid Layout Update: Wider Center Column & Prompt Zone */}
+        <div className="grid gap-6 lg:grid-cols-[340px_700px_minmax(0,1fr)] items-start">
           
           {/* Column 1: Configuration */}
           <div className="space-y-6">
@@ -822,8 +822,8 @@ export default function ImageStudioPage() {
 
           {/* Column 2: Creation */}
           <div className="flex flex-col gap-6 h-[calc(100vh-120px)]">
-             <div className="flex-1 flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+             <div className="flex-1 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm overflow-hidden">
+                <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/50 rounded-xl">
                      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Prompt Engineering</h2>
                      <div className="flex items-center gap-2">
                         <PromptAssistant 
@@ -856,17 +856,17 @@ export default function ImageStudioPage() {
                      </div>
                 </div>
                 <textarea 
-                    className="flex-1 w-full resize-none p-4 text-sm outline-none text-slate-700 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-slate-600 font-mono leading-relaxed bg-white dark:bg-slate-900"
+                    className="flex-1 w-full resize-none p-5 text-base outline-none text-slate-700 dark:text-slate-200 placeholder:text-slate-300 dark:placeholder:text-slate-600 font-mono leading-relaxed bg-white dark:bg-slate-900 rounded-lg"
                     placeholder={`Describe your image generation tasks here.\nOne prompt per line.\n\nExample:\nplace this exact light source top-left, creating soft shadows on the product.`}
                     value={promptsText}
                     onChange={(e) => setPromptsText(e.target.value)}
                 />
-                <div className="p-3 bg-slate-50 dark:bg-slate-950/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                    <span className="text-xs text-slate-400 dark:text-slate-500 font-medium">{promptLines.length} prompt{promptLines.length !== 1 ? 's' : ''} ready</span>
+                <div className="p-4 bg-slate-50 dark:bg-slate-950/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between rounded-b-xl">
+                    <span className="text-sm text-slate-500 dark:text-slate-500 font-medium">{promptLines.length} prompt{promptLines.length !== 1 ? 's' : ''} ready</span>
                     <button
                         onClick={onGenerateNewRun}
                         disabled={!canStartRun}
-                        className="px-6 py-2 bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 text-sm font-semibold rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+                        className="px-7 py-2.5 bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 text-sm font-semibold rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
                     >
                         Start Generation
                     </button>
