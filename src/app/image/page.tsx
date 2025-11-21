@@ -78,8 +78,9 @@ async function fetchImageBytes(src: string): Promise<{ bytes: Uint8Array; mime: 
 async function downloadImage(src: string, filename: string) {
   const { bytes, mime } = await fetchImageBytes(src);
   // Slice the underlying ArrayBuffer to avoid DOM type incompatibility in some runtimes.
-  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-  const blob = new Blob([buffer], { type: mime });
+  const copy = new Uint8Array(bytes.length);
+  copy.set(bytes);
+  const blob = new Blob([copy.buffer], { type: mime });
   downloadBlob(blob, filename);
 }
 
