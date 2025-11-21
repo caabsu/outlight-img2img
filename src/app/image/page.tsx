@@ -108,7 +108,7 @@ export default function ImageStudioPage() {
   const [customUploads, setCustomUploads] = useState<string[]>([]);
   // const [extraRefUrls, setExtraRefUrls] = useState<string[]>([]); // Removed
   // const [extraRefUploads, setExtraRefUploads] = useState<string[]>([]); // Removed
-  const [modelId, setModelId] = useState<string>("nanobanana-2");
+  const [modelId, setModelId] = useState<string>("nanobanana-3-pro");
   const modelDef = useMemo(() => getModelById(modelId)!, [modelId]);
   const modelNameDisplay = `${modelDef.label}`;
   const [nbAspectRatio, setNbAspectRatio] = useState<string>(

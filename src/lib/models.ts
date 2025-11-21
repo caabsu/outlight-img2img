@@ -24,7 +24,7 @@ export type ModelDef = {
 export const MODEL_LIST: ModelDef[] = [
   {
     id: "nanobanana-2",
-    label: "Nano Banana",
+    label: "Nano Banana (Legacy)",
     version: "v2.5",
     provider: "nanobanana",
     providerName: "gemini-2.5-flash-image",
