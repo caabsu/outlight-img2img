@@ -365,6 +365,11 @@ export default function ImageStudioPage() {
     });
   }
 
+  function clearRuns() {
+    setRuns([]);
+    setActiveRunId(null);
+  }
+
   function cancelRun(runId: string) {
     setRuns((prev) =>
       prev.map((run) => {
@@ -888,8 +893,18 @@ export default function ImageStudioPage() {
             )}
             
             {/* Run Queue / History List (Mini) */}
-            <div className="max-h-[200px] rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 overflow-y-auto shadow-sm">
-                <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">History</h3>
+            <div className="h-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 overflow-y-auto shadow-sm">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">History</h3>
+                  <button
+                    onClick={clearRuns}
+                    disabled={runs.length === 0}
+                    className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Clear all history"
+                  >
+                    Clear all
+                  </button>
+                </div>
                 <div className="space-y-1">
                     {runs.map(run => (
                         <div key={run.id} 
