@@ -139,10 +139,18 @@ function generateFallbackPrompts(instructions: string, knowledge: string, count:
 
 export async function POST(req: Request) {
   try {
-    const { knowledge, instructions, count, references = [], context } = await req.json();
+    const { knowledge, instructions, count, references = [], context, thread = [] } = await req.json();
     // Allow up to 20 prompts
     const promptCount = Math.max(1, Math.min(20, Number(count) || 3));
     const referenceImages = Array.isArray(references) ? references.filter((r) => typeof r === "string" && r.trim().length > 0).slice(0, 6) : [];
+    const safeThread = Array.isArray(thread)
+      ? thread
+          .map((t) => (t && typeof t === "object" ? { role: t.role, content: t.content } : null))
+          .filter((t) => (t?.role === "user" || t?.role === "assistant") && typeof t?.content === "string") as {
+          role: "user" | "assistant";
+          content: string;
+        }[]
+      : [];
     const contextNote = [
       context?.product ? `Product: ${context.product}` : null,
       context?.model ? `Model: ${context.model}` : null,
@@ -150,6 +158,10 @@ export async function POST(req: Request) {
     ]
       .filter(Boolean)
       .join(" | ");
+    const threadNote =
+      safeThread.length > 0
+        ? safeThread.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n---\n")
+        : "No prior conversation.";
 
     const parsedReferences = referenceImages
       .map((src) => {
@@ -182,6 +194,9 @@ BRAND KNOWLEDGE BASE (Style/Constraints):
 
 CONTEXT:
 ${contextNote || "N/A"}
+
+CONVERSATION HISTORY (keep consistent):
+${threadNote}
 
 REFERENCE IMAGES:
 ${parsedReferences.length > 0 ? "Provided below as inline image data. Analyze and align the prompts to match the product look & feel. Call out materials, colors, and structure inferred from the references." : "None provided."}
@@ -243,6 +258,9 @@ STYLE GUIDE / KNOWLEDGE (apply implicitly):
 CONTEXT:
 ${contextNote || "N/A"}
 
+CONVERSATION HISTORY (keep consistent):
+${threadNote}
+
 REFERENCE IMAGES:
 ${parsedReferences.length > 0 ? "Provided in the same message. Infer materials, color, shape, and brand cues from them and reflect those in the prompts." : "None provided."}
 
@@ -276,7 +294,8 @@ Return ONLY a JSON array of strings.`;
 
     // 3. Fallback
     const referenceHint = parsedReferences.length > 0 ? `There are ${parsedReferences.length} reference images. Align prompts to the depicted product.` : "";
-    const prompts = generateFallbackPrompts(`${instructions} ${referenceHint}`.trim(), knowledge || "", promptCount);
+    const historyHint = threadNote ? `Thread: ${threadNote}` : "";
+    const prompts = generateFallbackPrompts(`${instructions} ${referenceHint} ${historyHint}`.trim(), knowledge || "", promptCount);
     // Artificial delay to simulate "work" if it's too fast (helps UX perception sometimes)
     await new Promise(r => setTimeout(r, 600)); 
     

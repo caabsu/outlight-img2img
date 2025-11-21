@@ -19,6 +19,11 @@ type KnowledgeBase = {
   content: string;
 };
 
+type ThreadMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
 export function PromptAssistant({
   onAccept,
   onStartRun,
@@ -58,18 +63,40 @@ export function PromptAssistant({
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<string | null>(null);
   const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
+  const [followUp, setFollowUp] = useState("");
+  const [carryThread, setCarryThread] = useState(true);
+  const [sessionInstructions, setSessionInstructions] = useState("");
 
-  async function handleGenerate() {
-    if (!instructions.trim()) return;
+  const hasBaseInstructions = instructions.trim().length > 0 || sessionInstructions.trim().length > 0;
+
+  function buildThread(): ThreadMessage[] {
+    if (!carryThread) return [];
+    const thread: ThreadMessage[] = [];
+    const base = sessionInstructions.trim() || instructions.trim();
+    if (base) thread.push({ role: "user", content: base });
+    if (generated.length > 0) thread.push({ role: "assistant", content: generated.join("\n") });
+    if (followUp.trim()) thread.push({ role: "user", content: followUp.trim() });
+    return thread;
+  }
+
+  async function handleGenerate(opts?: { mode?: "fresh" | "refine" }) {
+    const base = instructions.trim() || sessionInstructions.trim();
+    if (!base && !followUp.trim()) return;
+    const effectiveInstructions =
+      opts?.mode === "refine" && followUp.trim()
+        ? `${base || ""}\nFollow-up: ${followUp.trim()}`
+        : base || followUp.trim();
+
     setLoading(true);
     setGenerated([]);
     setSource(null);
     const selectedKb = knowledgeBases.find(kb => kb.id === selectedKbId);
     const knowledgeContent = selectedKb ? selectedKb.content : "";
+    if (instructions.trim()) setSessionInstructions(instructions.trim());
 
     const payload = {
       knowledge: knowledgeContent,
-      instructions,
+      instructions: effectiveInstructions,
       count,
       references: selectedRefs,
       context: {
@@ -77,6 +104,7 @@ export function PromptAssistant({
         product: productName,
         requiresReference,
       },
+      thread: buildThread(),
     };
 
     try {
@@ -136,11 +164,11 @@ export function PromptAssistant({
             className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/5 dark:ring-slate-50/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
+           <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4">
+             <div className="flex items-center gap-3">
+               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                 <svg
+                   xmlns="http://www.w3.org/2000/svg"
                     viewBox="0 0 20 20"
                     fill="currentColor"
                     className="h-5 w-5"
@@ -175,7 +203,7 @@ export function PromptAssistant({
                 <div className="space-y-4">
                   <div>
                     <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Scene Description
+                      Base Objective
                     </label>
                     <textarea
                       className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 p-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
@@ -186,7 +214,47 @@ export function PromptAssistant({
                       autoFocus
                     />
                   </div>
-                  
+
+                  <div className="flex flex-col gap-2 rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Follow-up direction</label>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                        <input
+                          type="checkbox"
+                          checked={carryThread}
+                          onChange={(e) => setCarryThread(e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <span>Carry previous context</span>
+                      </div>
+                    </div>
+                    <textarea
+                      className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 p-3 text-sm text-slate-900 dark:text-slate-100 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
+                      rows={3}
+                      placeholder="e.g., I like these prompts—swap to daytime, add soft skylight, keep camera angle the same."
+                      value={followUp}
+                      onChange={(e) => setFollowUp(e.target.value)}
+                    />
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="font-semibold text-slate-600 dark:text-slate-300">Session memory</span>
+                      <span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[10px] uppercase tracking-wide">
+                        {hasBaseInstructions ? "Active" : "Empty"}
+                      </span>
+                      <span>{sessionInstructions ? "Using previous base brief" : "Waiting for first brief"}</span>
+                      <button
+                        onClick={() => {
+                          setFollowUp("");
+                          setGenerated([]);
+                          setSessionInstructions("");
+                          setInstructions("");
+                        }}
+                        className="ml-auto text-[11px] font-semibold text-rose-500 hover:underline"
+                      >
+                        Reset session
+                      </button>
+                    </div>
+                  </div>
+
                   <div>
                     <button
                       onClick={() => setShowKnowledge(!showKnowledge)}
@@ -304,20 +372,27 @@ export function PromptAssistant({
                       </div>
                    </div>
                    
-                   <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-                       <button
-                        onClick={handleGenerate}
-                        disabled={loading || !instructions.trim()}
+                   <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                     <button
+                        onClick={() => handleGenerate({ mode: "fresh" })}
+                        disabled={loading || !hasBaseInstructions}
                         className="w-full rounded-xl bg-slate-900 dark:bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50 transition-all"
                       >
                         {loading ? (
                           <div className="flex items-center justify-center gap-2">
                             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                            Generating...
+                            Working...
                           </div>
                         ) : (
-                          "Generate Prompts"
+                          "Generate Fresh Set"
                         )}
+                      </button>
+                      <button
+                        onClick={() => handleGenerate({ mode: "refine" })}
+                        disabled={loading || (!hasBaseInstructions && !followUp.trim())}
+                        className="w-full rounded-xl bg-indigo-50 dark:bg-indigo-950/30 py-2.5 text-sm font-semibold text-indigo-700 dark:text-indigo-200 shadow-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-50 transition-all border border-indigo-100 dark:border-indigo-900/50"
+                      >
+                        Refine with Follow-up
                       </button>
                    </div>
                 </div>
