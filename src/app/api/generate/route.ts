@@ -422,6 +422,56 @@ export async function POST(req: Request) {
 
       const httpRefs = referenceUrls.filter((u) => /^https?:\/\//i.test(u));
       const hasDataRefs = referenceUrls.length > httpRefs.length;
+      const isPro = modelId === "nanobanana-3-pro";
+
+      // Nano Banana Pro: route everything through Gemini so image_config (aspect/resolution) is respected.
+      if (isPro) {
+        const nanoOpts = normalizeNano(modelId, true);
+        if (referenceUrls.length > 0) {
+          const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
+          const { nbRes, nbJson } = await callGeminiImageEdit({
+            images,
+            text: prompt,
+            modelId,
+            options: nanoOpts,
+          });
+          if (!nbRes.ok) {
+            const msg =
+              nbJson?.error?.message ||
+              nbJson?.error?.status ||
+              nbJson?.error?.code ||
+              "Nano Banana Pro edit failed";
+            return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
+          }
+          const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
+          if (!dataUrl && !url) {
+            return NextResponse.json(
+              { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
+              { status: 502 }
+            );
+          }
+          return NextResponse.json({ imageDataUrl: dataUrl || url });
+        }
+
+        // No references: text-to-image
+        const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, nanoOpts);
+        if (!nbRes.ok) {
+          const msg =
+            nbJson?.error?.message ||
+            nbJson?.error?.status ||
+            nbJson?.error?.code ||
+            "Nano Banana Pro generation failed";
+          return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
+        }
+        const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
+        if (!dataUrl && !url) {
+          return NextResponse.json(
+            { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
+            { status: 502 }
+          );
+        }
+        return NextResponse.json({ imageDataUrl: dataUrl || url });
+      }
 
       // If any refs are data: URIs/uploads, fall back to direct Gemini with inline_data support.
       if (hasDataRefs) {
