@@ -835,50 +835,56 @@ export default function ImageStudioPage() {
                         </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-950/30">
+                    <div className="flex-1 min-h-0 flex flex-col gap-4 p-4 bg-slate-50/30 dark:bg-slate-950/30 overflow-y-auto">
                         {activeRun.images.length > 0 ? (
-                             <div className="space-y-3">
-                                 <div className="relative aspect-square rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm group">
-                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                     <img src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" alt="" />
-                                     
-                                     <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition flex justify-center gap-3">
-                                         <button onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)} className="bg-white/90 dark:bg-black/90 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-medium px-3 py-1.5 rounded-full shadow">Save</button>
-                                        <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, `${safeName(productName)}_${safeName(modelNameDisplay)}_${Date.now()}.png`)} className="bg-white/90 dark:bg-black/90 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-medium px-3 py-1.5 rounded-full shadow">Download</button>
-                                     </div>
-                                 </div>
-                                 
-                                 <div className="flex items-center justify-between px-1">
-                                     <button onClick={() => stepActiveImage(activeRun.id, -1)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500">&lt;</button>
-                                     <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{activeRun.activeIdx + 1} of {activeRun.images.length}</span>
-                                     <button onClick={() => stepActiveImage(activeRun.id, 1)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500">&gt;</button>
-                                 </div>
-                                 
-                                 <div className="bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                                     {activeRun.images[activeRun.activeIdx].prompt}
-                                 </div>
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Generated gallery</span>
+                              <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{activeRun.activeIdx + 1} of {activeRun.images.length}</span>
+                            </div>
 
-                                 {/* Thumbnails Grid */}
-                                 <div className="grid grid-cols-5 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                                     {activeRun.images.map((img, idx) => (
-                                         <button 
-                                            key={img.id}
-                                            onClick={() => {
-                                                setRuns(prev => prev.map(r => r.id === activeRun.id ? { ...r, activeIdx: idx } : r));
-                                            }}
-                                            className={`aspect-square rounded overflow-hidden border ${activeRun.activeIdx === idx ? 'border-slate-900 dark:border-slate-50 ring-1 ring-slate-900 dark:ring-slate-50' : 'border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100'}`}
-                                         >
-                                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                                             <img src={img.imageDataUrl} className="h-full w-full object-cover" alt="" />
-                                         </button>
-                                     ))}
-                                 </div>
-                             </div>
+                            <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 border-b border-slate-100 dark:border-slate-800">
+                              {activeRun.images.map((img, idx) => (
+                                <button
+                                  key={img.id}
+                                  onClick={() => {
+                                    setRuns(prev => prev.map(r => r.id === activeRun.id ? { ...r, activeIdx: idx } : r));
+                                  }}
+                                  className={`relative flex-none h-20 w-20 rounded-md overflow-hidden border transition ${activeRun.activeIdx === idx
+                                    ? "border-slate-900 dark:border-slate-50 ring-1 ring-slate-900 dark:ring-slate-50"
+                                    : "border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100"}`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={img.imageDataUrl} className="h-full w-full object-cover" alt="" />
+                                </button>
+                              ))}
+                            </div>
+
+                            <div className="flex items-center justify-end gap-2">
+                              <button onClick={() => stepActiveImage(activeRun.id, -1)} className="p-2 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition">&larr; Prev</button>
+                              <button onClick={() => stepActiveImage(activeRun.id, 1)} className="p-2 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition">Next &rarr;</button>
+                            </div>
+
+                            <div className="flex-1 min-h-0 flex flex-col gap-3">
+                              <div className="relative flex-1 min-h-[340px] rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" alt="" />
+                                <div className="absolute top-3 right-3 flex flex-wrap gap-2">
+                                  <button onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)} className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-semibold px-3 py-1.5 rounded-full shadow">Save</button>
+                                  <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, `${safeName(productName)}_${safeName(modelNameDisplay)}_${Date.now()}.png`)} className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-semibold px-3 py-1.5 rounded-full shadow">Download</button>
+                                </div>
+                              </div>
+
+                              <div className="max-h-24 overflow-y-auto bg-white dark:bg-slate-800 p-3 rounded-lg border border-slate-100 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                                {activeRun.images[activeRun.activeIdx].prompt}
+                              </div>
+                            </div>
+                          </>
                         ) : (
-                             <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
-                                 <div className="h-8 w-8 border-2 border-slate-200 dark:border-slate-700 border-t-slate-400 dark:border-t-slate-500 rounded-full animate-spin" />
-                                 <span className="text-xs">Processing...</span>
-                             </div>
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                            <div className="h-8 w-8 border-2 border-slate-200 dark:border-slate-700 border-t-slate-400 dark:border-t-slate-500 rounded-full animate-spin" />
+                            <span className="text-xs">Processing...</span>
+                          </div>
                         )}
                     </div>
                     
