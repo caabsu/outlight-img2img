@@ -409,7 +409,8 @@ export async function POST(req: Request) {
       };
       if (httpRefs.length) inputPayload.image_urls = httpRefs;
       const ar = options?.aspect_ratio || undefined;
-      if (ar) inputPayload.image_size = ar;
+      if (ar) inputPayload.aspect_ratio = ar;
+      if (options?.image_size) inputPayload.image_size = options.image_size;
 
       const payload = {
         model: nanoModel,
