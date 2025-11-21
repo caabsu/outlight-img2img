@@ -371,17 +371,27 @@ export async function POST(req: Request) {
     if (modelId.startsWith("nanobanana")) {
       if (!KIE_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
+      const httpRefs = referenceUrls.filter((u) => /^https?:\/\//i.test(u));
+      if (referenceUrls.length && httpRefs.length !== referenceUrls.length) {
+        return NextResponse.json(
+          { error: "Nano Banana (KIE) requires HTTP/HTTPS image URLs (no data: uploads). Please provide public URLs." },
+          { status: 400 }
+        );
+      }
+
       const nanoModel = modelId === "nanobanana-3-pro" ? "nano-banana-pro" : "nano-banana";
+      const inputPayload: Record<string, any> = {
+        prompt,
+        output_format: "png",
+      };
+      if (httpRefs.length) inputPayload.image_input = httpRefs;
+      if (options?.aspect_ratio) inputPayload.aspect_ratio = options.aspect_ratio;
+      if (options?.image_size) inputPayload.resolution = options.image_size;
+
       const payload = {
         model: nanoModel,
         callBackUrl: "",
-        input: {
-          prompt,
-          image_input: referenceUrls,
-          aspect_ratio: options?.aspect_ratio || undefined,
-          resolution: options?.image_size || "1K",
-          output_format: "png",
-        },
+        input: inputPayload,
       };
 
       const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
@@ -392,6 +402,7 @@ export async function POST(req: Request) {
       const createJson = await createRes.json().catch(() => ({}));
       if (!createRes.ok || createJson?.code !== 200) {
         const msg = createJson?.message || createJson?.msg || "Nano Banana createTask failed";
+        console.error("Nano Banana createTask error", { status: createRes.status, body: createJson });
         return NextResponse.json({ error: msg, debug: createJson || null }, { status: 502 });
       }
       const taskId: string | undefined = createJson?.data?.taskId;
@@ -410,6 +421,7 @@ export async function POST(req: Request) {
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
           const msg = qJson?.message || qJson?.msg || "Nano Banana query failed";
+          console.error("Nano Banana recordInfo error", { status: qRes.status, body: qJson });
           return NextResponse.json({ error: msg, debug: qJson || null }, { status: 502 });
         }
 
