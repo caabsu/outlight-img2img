@@ -38,13 +38,12 @@ type PostBody = {
   additionalUrls?: string[];
   prompt: string;
   options?: {
-    image_size?: string;       // used by Seedream & Nano Banana (Gemini)
+    image_size?: string;       // seedream-only (resolution)
     image_resolution?: string; // seedream-only
     max_images?: number;       // seedream-only
     seed?: number | null;      // seedream-only
-    // nano banana (Gemini) image config
-    aspect_ratio?: string;
-    response_modalities?: string[];
+    // nano banana (KIE) image config
+    aspect_ratio?: string;     // mapped to image_size for KIE
   };
 };
 
@@ -379,14 +378,15 @@ export async function POST(req: Request) {
         );
       }
 
-      const nanoModel = modelId === "nanobanana-3-pro" ? "nano-banana-pro" : "nano-banana";
+      const nanoModel =
+        referenceUrls.length > 0 ? "google/nano-banana-edit" : "google/nano-banana";
       const inputPayload: Record<string, any> = {
         prompt,
         output_format: "png",
       };
-      if (httpRefs.length) inputPayload.image_input = httpRefs;
-      if (options?.aspect_ratio) inputPayload.aspect_ratio = options.aspect_ratio;
-      if (options?.image_size) inputPayload.resolution = options.image_size;
+      if (httpRefs.length) inputPayload.image_urls = httpRefs;
+      const ar = options?.aspect_ratio || undefined;
+      if (ar) inputPayload.image_size = ar;
 
       const payload = {
         model: nanoModel,
