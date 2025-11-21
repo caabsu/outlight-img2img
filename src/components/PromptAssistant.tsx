@@ -7,6 +7,8 @@ type PromptAssistantProps = {
   onAccept: (prompts: string[], mode: "append" | "replace") => void;
   onStartRun?: (prompts: string[], references: string[]) => void;
   availableReferences?: string[];
+  selectedReferences?: string[];
+  onUpdateReferences?: (next: string[]) => void;
   modelLabel?: string;
   productName?: string;
   requiresReference?: boolean;
@@ -28,6 +30,8 @@ export function PromptAssistant({
   onAccept,
   onStartRun,
   availableReferences = [],
+  selectedReferences = [],
+  onUpdateReferences,
   modelLabel = "",
   productName = "Custom",
   requiresReference = false,
@@ -62,7 +66,6 @@ export function PromptAssistant({
   const [generated, setGenerated] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [source, setSource] = useState<string | null>(null);
-  const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
   const [followUp, setFollowUp] = useState("");
   const [sessionInstructions, setSessionInstructions] = useState("");
   const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
@@ -88,7 +91,7 @@ export function PromptAssistant({
       knowledge: knowledgeContent,
       instructions: effectiveInstructions,
       count,
-      references: selectedRefs,
+      references: selectedReferences,
       context: {
         model: modelLabel,
         product: productName,
@@ -127,13 +130,6 @@ export function PromptAssistant({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  useEffect(() => {
-    setSelectedRefs((prev) => {
-      if (availableReferences.length === 0) return [];
-      const next = prev.filter((p) => availableReferences.includes(p));
-      return next.length ? next : availableReferences.slice(0, 6);
-    });
-  }, [availableReferences]);
 
   return (
     <>
@@ -319,38 +315,27 @@ export function PromptAssistant({
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Reference context</p>
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400">Feed the assistant the same images used for generation.</p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400">These are the same references used in Image Studio.</p>
                       </div>
-                      <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        <button
-                          className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
-                          onClick={() => setSelectedRefs(availableReferences.slice(0, 8))}
-                          disabled={availableReferences.length === 0}
-                        >
-                          Use all
-                        </button>
-                        <button
-                          className="rounded border border-slate-200 dark:border-slate-700 px-2 py-1 text-[10px] font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
-                          onClick={() => setSelectedRefs([])}
-                          disabled={availableReferences.length === 0}
-                        >
-                          Clear
-                        </button>
-                        <span>{selectedRefs.length} selected</span>
-                      </div>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {selectedReferences?.length || 0} used
+                      </span>
                     </div>
                     {availableReferences.length === 0 ? (
                       <p className="text-xs text-slate-500 dark:text-slate-400">No reference images available yet.</p>
                     ) : (
                       <div className="flex gap-2 overflow-x-auto pb-1">
                         {availableReferences.map((src) => {
-                          const selected = selectedRefs.includes(src);
+                          const selected = selectedReferences?.includes(src);
                           return (
                             <button
                               key={src}
                               onClick={() => {
-                                setSelectedRefs((prev) =>
-                                  prev.includes(src) ? prev.filter((s) => s !== src) : [...prev, src].slice(0, 8)
+                                if (!onUpdateReferences) return;
+                                onUpdateReferences(
+                                  selected
+                                    ? selectedReferences.filter((s) => s !== src)
+                                    : [...selectedReferences, src].slice(0, 8)
                                 );
                               }}
                               className={`relative h-16 w-16 flex-none rounded-lg overflow-hidden border transition ${
@@ -403,8 +388,8 @@ export function PromptAssistant({
                    
                    <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
                      <button
-                        onClick={() => handleGenerate({ mode: "fresh" })}
-                        disabled={loading || !hasBaseInstructions}
+                        onClick={() => handleGenerate({ mode: followUp.trim() ? "refine" : "fresh" })}
+                        disabled={loading || (!hasBaseInstructions && !followUp.trim())}
                         className="w-full rounded-xl bg-slate-900 dark:bg-indigo-600 py-2.5 text-sm font-semibold text-white shadow-md hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50 transition-all"
                       >
                         {loading ? (
@@ -413,15 +398,8 @@ export function PromptAssistant({
                             Working...
                           </div>
                         ) : (
-                          "Generate Fresh Set"
+                          "Generate / Update Prompts"
                         )}
-                      </button>
-                      <button
-                        onClick={() => handleGenerate({ mode: "refine" })}
-                        disabled={loading || (!hasBaseInstructions && !followUp.trim())}
-                        className="w-full rounded-xl bg-indigo-50 dark:bg-indigo-950/30 py-2.5 text-sm font-semibold text-indigo-700 dark:text-indigo-200 shadow-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-50 transition-all border border-indigo-100 dark:border-indigo-900/50"
-                      >
-                        Refine with Follow-up
                       </button>
                    </div>
                 </div>
@@ -480,10 +458,10 @@ export function PromptAssistant({
                         <button
                           onClick={() => {
                             onAccept(generated, "replace");
-                            onStartRun(generated, selectedRefs);
+                            onStartRun(generated, selectedReferences);
                             setIsOpen(false);
                           }}
-                          disabled={generated.length === 0 || (requiresReference && selectedRefs.length === 0)}
+                          disabled={generated.length === 0 || (requiresReference && selectedReferences.length === 0)}
                           className="rounded-lg bg-slate-900 dark:bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-slate-800 dark:hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition"
                         >
                           Apply & Start Generation

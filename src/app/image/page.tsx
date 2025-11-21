@@ -165,8 +165,9 @@ export default function ImageStudioPage() {
   const isNanoBananaPro = modelDef.id === "nanobanana-3-pro";
   const nanoAspectOptions = modelDef.aspectRatioOptions || Array.from(NANOBANANA_ASPECT_RATIOS);
   const nanoResolutionOptions = modelDef.resolutionOptions || Array.from(NANOBANANA_RESOLUTIONS);
-  const hasRefs = customUrl.trim().length > 0 || customUploads.length > 0 || customUrls.some((url) => (url || "").trim().length > 0);
-  const canStartRun = promptLines.length > 0 && (modelRequiresReference ? hasRefs : true);
+  const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
+  const hasRefs = selectedRefs.length > 0 || customUrl.trim().length > 0 || customUploads.length > 0 || customUrls.some((url) => (url || "").trim().length > 0);
+  const canStartRun = promptLines.length > 0 && (modelRequiresReference ? selectedRefs.length > 0 : true);
   const somethingRunning = runs.some((run) => run.status === "running");
   const overallPct =
     activeRun && activeRun.progress.total > 0
@@ -204,6 +205,14 @@ export default function ImageStudioPage() {
       return true;
     });
   }, [customUploads, customUrl, customUrls]);
+
+  useEffect(() => {
+    setSelectedRefs((prev) => {
+      const filtered = prev.filter((src) => refSources.includes(src));
+      if (filtered.length > 0) return filtered;
+      return refSources.slice(0, 6);
+    });
+  }, [refSources]);
 
   function removeUploadSrc(src: string) {
     setCustomUploads((prev) => prev.filter((u) => u !== src));
@@ -423,7 +432,7 @@ export default function ImageStudioPage() {
   }
 
     function startRunWithPrompts(prompts: string[], references: string[]) {
-      const effectiveRefs = references.length > 0 ? references : refSources;
+      const effectiveRefs = references.length > 0 ? references : selectedRefs;
       if (prompts.length === 0) {
         setSaveToast({ message: "Add at least one prompt to start a run", type: "error" });
         return;
@@ -470,16 +479,17 @@ export default function ImageStudioPage() {
         return next;
       });
 
-      void runGenerator(newRun, references.length > 0 ? references : refSources);
+      void runGenerator(newRun, effectiveRefs);
     }
 
     async function onGenerateNewRun() {
       if (!canStartRun) return;
-      startRunWithPrompts(promptLines, refSources);
+      startRunWithPrompts(promptLines, selectedRefs);
     }
 
     function onAssistantStart(prompts: string[], references: string[]) {
       if (prompts.length === 0) return;
+      if (references.length) setSelectedRefs(references);
       setPromptsText(prompts.join("\n"));
       startRunWithPrompts(prompts, references);
     }
@@ -759,12 +769,24 @@ export default function ImageStudioPage() {
                                 <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide group-hover:text-indigo-600 dark:group-hover:text-indigo-400">Library</span>
                             </button>
                             {refSources.map((src, i) => (
-                                <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
+                                <button
+                                    key={i}
+                                    type="button"
+                                    className={`relative group aspect-square rounded-lg overflow-hidden border ${selectedRefs.includes(src) ? "border-indigo-500 ring-2 ring-indigo-500" : "border-slate-200 dark:border-slate-700"}`}
+                                    onClick={() => {
+                                        setSelectedRefs((prev) =>
+                                            prev.includes(src) ? prev.filter((s) => s !== src) : [...prev, src]
+                                        );
+                                    }}
+                                >
                                     {/* eslint-disable-next-line @next/next/no-img-element */}
                                     <img src={src} className="h-full w-full object-cover" alt="" />
                                     <button
                                         type="button"
-                                        onClick={() => setRefPreviewUrl(src)}
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setRefPreviewUrl(src);
+                                        }}
                                         className="absolute inset-0"
                                         aria-label="Preview reference"
                                     />
@@ -778,13 +800,18 @@ export default function ImageStudioPage() {
                                                  removeUploadSrc(src);
                                              }
                                         }}
-                                        className="absolute inset-0 z-10 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition text-white text-xs"
+                                        className="absolute top-2 right-2 hidden rounded-full bg-white/80 px-2 py-1 text-[10px] font-semibold text-rose-500 shadow group-hover:inline"
                                     >
                                         Remove
                                     </button>
-                                </div>
+                                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                        <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-1 rounded-full ${selectedRefs.includes(src) ? "bg-indigo-600 text-white" : "bg-black/30 text-white opacity-0 group-hover:opacity-100"}`}>
+                                            {selectedRefs.includes(src) ? "Selected" : "Select"}
+                                        </span>
+                                    </div>
+                                </button>
                             ))}
-                         </div>
+                        </div>
                          {refSources.length === 0 && (
                             <p className="text-[10px] text-slate-400 italic">No references selected.</p>
                          )}
@@ -810,6 +837,8 @@ export default function ImageStudioPage() {
                                     });
                                 }
                             }}
+                            selectedReferences={selectedRefs}
+                            onUpdateReferences={setSelectedRefs}
                             onStartRun={onAssistantStart}
                             availableReferences={refSources}
                             modelLabel={modelNameDisplay}
