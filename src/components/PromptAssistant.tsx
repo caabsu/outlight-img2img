@@ -202,45 +202,6 @@ export function PromptAssistant({
 
                 <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm font-medium text-slate-800 dark:text-slate-200">References</p>
-                    <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {selectedReferences?.length || 0} used
-                    </span>
-                  </div>
-                  {availableReferences.length === 0 ? (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">No reference images available yet.</p>
-                  ) : (
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {availableReferences.map((src) => {
-                        const selected = selectedReferences?.includes(src);
-                        return (
-                          <button
-                            key={src}
-                            onClick={() => {
-                              if (!onUpdateReferences) return;
-                              onUpdateReferences(
-                                selected ? selectedReferences.filter((s) => s !== src) : [...selectedReferences, src].slice(0, 8)
-                              );
-                            }}
-                            className={`relative h-16 w-16 flex-none rounded-lg overflow-hidden border transition ${
-                              selected ? "border-indigo-500 ring-1 ring-indigo-500" : "border-slate-200 dark:border-slate-700 hover:border-indigo-200"
-                            }`}
-                            title={selected ? "Remove from context" : "Include as context"}
-                          >
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={src} alt="" className="h-full w-full object-cover" />
-                            {selected && (
-                              <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-xs font-semibold">Use</span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950/50 p-3 space-y-3">
-                  <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-slate-800 dark:text-slate-200">Variations</p>
                     <span className="text-xs text-slate-600 dark:text-slate-300">{count}</span>
                   </div>

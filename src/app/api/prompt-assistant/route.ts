@@ -142,7 +142,8 @@ export async function POST(req: Request) {
     const { knowledge, instructions, count, references = [], context, thread = [] } = await req.json();
     // Allow up to 20 prompts
     const promptCount = Math.max(1, Math.min(20, Number(count) || 3));
-    const referenceImages = Array.isArray(references) ? references.filter((r) => typeof r === "string" && r.trim().length > 0).slice(0, 6) : [];
+    // Temporarily ignore references for prompt assistant to avoid hallucinating product names
+    const referenceImages: string[] = [];
     const safeThread = Array.isArray(thread)
       ? thread
           .map((t) => (t && typeof t === "object" ? { role: t.role, content: t.content } : null))
@@ -163,17 +164,7 @@ export async function POST(req: Request) {
         ? safeThread.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n---\n")
         : "No prior conversation.";
 
-    const parsedReferences = referenceImages
-      .map((src) => {
-        const match = /^data:([^;]+);base64,(.*)$/i.exec(src);
-        if (!match) return null;
-        return {
-          mime: match[1],
-          base64: match[2],
-          asDataUrl: src,
-        };
-      })
-      .filter(Boolean) as { mime: string; base64: string; asDataUrl: string }[];
+    const parsedReferences: { mime: string; base64: string; asDataUrl: string }[] = [];
 
     // 1. Google Gemini
     if (process.env.GEMINI_API_KEY) {
@@ -201,7 +192,7 @@ CONVERSATION HISTORY (keep consistent):
 ${historyText || "None"}
 
 REFERENCE IMAGES:
-${parsedReferences.length > 0 ? "Provided below as inline image data. Analyze and align the prompts to match the product look & feel. Call out materials, colors, and structure inferred from the references." : "None provided."}
+None provided (reference-driven prompting disabled here).
 
 TASK:
 Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
@@ -377,16 +368,8 @@ async function makeAssistantReply({
       const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
       const historyText = thread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
       const parts: any[] = [
-        { text: `${shortSystem}\nInstructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nReference images: ${references.length}\nHistory:\n${historyText || "None"}` },
+        { text: `${shortSystem}\nInstructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nReference images: 0\nHistory:\n${historyText || "None"}` },
       ];
-      references.forEach((img) =>
-        parts.push({
-          inlineData: {
-            data: img.base64,
-            mimeType: img.mime,
-          },
-        })
-      );
 
       const result = await model.generateContent({
         contents: [
@@ -410,12 +393,6 @@ async function makeAssistantReply({
       const userParts: any[] = [
         { type: "text", text: `Instructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nHistory:\n${historyText || "None"}` },
       ];
-      references.forEach((img) =>
-        userParts.push({
-          type: "image_url",
-          image_url: { url: img.asDataUrl },
-        })
-      );
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
