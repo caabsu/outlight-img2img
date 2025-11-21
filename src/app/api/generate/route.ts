@@ -3,6 +3,12 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  IMAGE_RESOLUTIONS,
+  IMAGE_SIZES,
+  NANOBANANA_ASPECT_RATIOS,
+  NANOBANANA_RESOLUTIONS,
+} from "@/lib/models";
 
 /* ========================= ENV ========================= */
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -45,6 +51,18 @@ type PostBody = {
     // nano banana (KIE) image config
     aspect_ratio?: string;     // mapped to image_size for KIE
   };
+};
+
+type SeedreamOptions = {
+  image_size: (typeof IMAGE_SIZES)[number];
+  image_resolution: (typeof IMAGE_RESOLUTIONS)[number];
+  max_images: number;
+  seed: number | null;
+};
+
+type NanoBananaOptions = {
+  aspect_ratio?: (typeof NANOBANANA_ASPECT_RATIOS)[number];
+  image_size?: (typeof NANOBANANA_RESOLUTIONS)[number];
 };
 
 const SAFETY_OFF = [
@@ -283,6 +301,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Reference image URL(s) required" }, { status: 400 });
     }
 
+    const normalizeSeedream = (): SeedreamOptions => {
+      const sizes = new Set<string>(IMAGE_SIZES);
+      const resolutions = new Set<string>(IMAGE_RESOLUTIONS);
+      const image_size = sizes.has(options?.image_size || "") ? (options!.image_size as SeedreamOptions["image_size"]) : "square";
+      const image_resolution = resolutions.has(options?.image_resolution || "")
+        ? (options!.image_resolution as SeedreamOptions["image_resolution"])
+        : "1K";
+      const max_images =
+        typeof options?.max_images === "number" && options.max_images > 0
+          ? Math.min(Math.floor(options.max_images), 4)
+          : 1;
+      const seed = typeof options?.seed === "number" ? options.seed : null;
+      return { image_size, image_resolution, max_images, seed };
+    };
+
+    const normalizeNano = (model: string): NanoBananaOptions => {
+      const arSet = new Set<string>(NANOBANANA_ASPECT_RATIOS);
+      const resSet = new Set<string>(NANOBANANA_RESOLUTIONS);
+      const aspect_ratio = options?.aspect_ratio && arSet.has(options.aspect_ratio) ? options.aspect_ratio : undefined;
+      const allowResolution = model === "nanobanana-3-pro";
+      const image_size =
+        allowResolution && options?.image_size && resSet.has(options.image_size) ? options.image_size : undefined;
+      return { aspect_ratio, image_size };
+    };
+
     /* -------- Seedream (KIE) -------- */
     if (modelId.startsWith("seedream")) {
       if (!KIE_KEY) return NextResponse.json({ error: "Seedream API key missing" }, { status: 500 });
@@ -298,16 +341,18 @@ export async function POST(req: Request) {
       // Enhance prompt for better instruction following
       const enhancedPrompt = `Edit the provided image(s) according to these instructions. Make sure to follow the instructions precisely and apply the requested changes to the image. Instructions: ${prompt}`;
 
+      const seedreamOpts = normalizeSeedream();
+
       const payload = {
         model: "bytedance/seedream-v4-edit",
         callBackUrl: "",
         input: {
           prompt: enhancedPrompt,
           image_urls: referenceUrls,
-          image_size: options?.image_size || "square",
-          image_resolution: options?.image_resolution || "1K",
-          max_images: options?.max_images || 1,
-          seed: options?.seed ?? null,
+          image_size: seedreamOpts.image_size,
+          image_resolution: seedreamOpts.image_resolution,
+          max_images: seedreamOpts.max_images,
+          seed: seedreamOpts.seed,
         },
       };
 
@@ -376,11 +421,12 @@ export async function POST(req: Request) {
       // If any refs are data: URIs/uploads, fall back to direct Gemini with inline_data support.
       if (hasDataRefs) {
         const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
+        const nanoOpts = normalizeNano(modelId);
         const { nbRes, nbJson } = await callGeminiImageEdit({
           images,
           text: prompt,
           modelId,
-          options,
+          options: nanoOpts,
         });
         if (!nbRes.ok) {
           const msg =
@@ -403,14 +449,15 @@ export async function POST(req: Request) {
 
       const nanoModel =
         referenceUrls.length > 0 ? "google/nano-banana-edit" : "google/nano-banana";
+      const nanoOpts = normalizeNano(modelId);
       const inputPayload: Record<string, any> = {
         prompt,
         output_format: "png",
       };
       if (httpRefs.length) inputPayload.image_urls = httpRefs;
-      const ar = options?.aspect_ratio || undefined;
+      const ar = nanoOpts.aspect_ratio || undefined;
       if (ar) inputPayload.aspect_ratio = ar;
-      if (options?.image_size) inputPayload.image_size = options.image_size;
+      if (nanoOpts.image_size) inputPayload.image_size = nanoOpts.image_size;
 
       const payload = {
         model: nanoModel,
