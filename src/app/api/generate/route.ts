@@ -179,13 +179,9 @@ function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: s
   if (options?.aspect_ratio) imageConfig.aspectRatio = options.aspect_ratio;
   if (options?.image_size && modelId === "nanobanana-3-pro") imageConfig.imageSize = options.image_size;
 
-  const responseModalities =
-    options?.response_modalities?.length ? options.response_modalities : ["IMAGE"];
-
   return {
     generationConfig,
     imageConfig: Object.keys(imageConfig).length ? imageConfig : undefined,
-    responseModalities,
   };
 }
 
@@ -201,7 +197,7 @@ async function callGeminiImageEdit({
   modelId: string;
   options?: PostBody["options"];
 }) {
-  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options, modelId);
+  const { generationConfig, imageConfig } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -220,7 +216,6 @@ async function callGeminiImageEdit({
     // DO NOT send "tools" (image_editing) -- not supported on v1beta REST for this model
     generationConfig,
     ...(imageConfig ? { imageConfig } : {}),
-    ...(responseModalities ? { responseModalities } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -233,7 +228,7 @@ async function callGeminiImageEdit({
 }
 
 async function callGeminiTextToImage(text: string, modelId: string, options?: PostBody["options"]) {
-  const { generationConfig, imageConfig, responseModalities } = buildGeminiConfigs(options, modelId);
+  const { generationConfig, imageConfig } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -245,7 +240,6 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
     // returns inline image data when omitted, so we can parse it via extractGeminiImage.
     generationConfig,
     ...(imageConfig ? { imageConfig } : {}),
-    ...(responseModalities ? { responseModalities } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
