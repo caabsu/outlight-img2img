@@ -15,9 +15,9 @@ const getGeminiApiUrl = (modelId: string) => {
     return "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent";
   }
   if (modelId === "nanobanana-1" || modelId === "nanobanana-2") {
-    return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+    return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent";
   }
-  return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent";
+  return "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent";
 };
 const NB_API_KEY = process.env.NANO_BANANA_API_KEY!;
 const NB_AUTH_HEADER = process.env.NANO_BANANA_AUTH_HEADER || "x-goog-api-key";
@@ -171,11 +171,8 @@ function extractGeminiImage(json: any): {
 }
 
 function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: string) {
-  const generationConfig: Record<string, any> = {
-    temperature: 0.6,
-  };
-
   // Gemini image endpoint rejects unknown fields; keep config minimal.
+  const generationConfig: Record<string, any> = { temperature: 0.6 };
   return { generationConfig };
 }
 
