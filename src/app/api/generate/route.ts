@@ -175,14 +175,7 @@ function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: s
     temperature: 0.6,
   };
 
-  const imageConfig: Record<string, any> = {};
-  if (options?.aspect_ratio) imageConfig.aspectRatio = options.aspect_ratio;
-  if (options?.image_size && modelId === "nanobanana-3-pro") imageConfig.imageSize = options.image_size;
-
-  if (Object.keys(imageConfig).length > 0) {
-    generationConfig.imageConfig = imageConfig;
-  }
-
+  // Gemini image endpoint rejects unknown fields; keep config minimal.
   return { generationConfig };
 }
 
@@ -279,9 +272,6 @@ export async function POST(req: Request) {
     if (requiresReference && referenceUrls.length === 0) {
       return NextResponse.json({ error: "Reference image URL(s) required" }, { status: 400 });
     }
-
-    // For Gemini, imageConfig options tend to apply to text-to-image; when editing with references, omit extras.
-    const geminiOptions = referenceUrls.length === 0 ? options : undefined;
 
     /* -------- Seedream (KIE) -------- */
     if (modelId.startsWith("seedream")) {
@@ -395,7 +385,7 @@ export async function POST(req: Request) {
     }
 
     // 2) single-turn (IMAGES first, then TEXT)
-    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt, modelId, options: geminiOptions });
+    const { nbRes, nbJson } = await callGeminiImageEdit({ images: imgBlobs, text: prompt, modelId, options });
 
     if (!nbRes.ok) {
       const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
