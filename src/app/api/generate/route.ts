@@ -48,6 +48,13 @@ type PostBody = {
   };
 };
 
+const SAFETY_OFF = [
+  { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+  { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+];
+
 /* ========================= HELPERS ========================= */
 function parseDataUrl(url: string): { mime: string; base64: string } | null {
   try {
@@ -205,6 +212,7 @@ async function callGeminiImageEdit({
     ],
     // DO NOT set response_mime_type (text-only values are accepted; images come via inline_data/file_data)
     // DO NOT send "tools" (image_editing) -- not supported on v1beta REST for this model
+    safetySettings: SAFETY_OFF,
     generationConfig,
   };
 
@@ -228,6 +236,7 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
     ],
     // Leave response_mime_type unset: the Gemini image endpoint only accepts text/application values here but still
     // returns inline image data when omitted, so we can parse it via extractGeminiImage.
+    safetySettings: SAFETY_OFF,
     generationConfig,
   };
 
