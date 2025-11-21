@@ -58,15 +58,6 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadDataUrl(dataUrl: string, filename: string) {
-  const link = document.createElement("a");
-  link.href = dataUrl;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-}
-
 async function fetchImageBytes(src: string): Promise<{ bytes: Uint8Array; mime: string; ext: string }> {
   if (src.startsWith("data:")) {
     const match = /^data:([^;]+);base64,(.*)$/i.exec(src);
@@ -82,6 +73,12 @@ async function fetchImageBytes(src: string): Promise<{ bytes: Uint8Array; mime: 
   const buf = new Uint8Array(await res.arrayBuffer());
   const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
   return { bytes: buf, mime, ext };
+}
+
+async function downloadImage(src: string, filename: string) {
+  const { bytes, mime } = await fetchImageBytes(src);
+  const blob = new Blob([bytes], { type: mime });
+  downloadBlob(blob, filename);
 }
 
 function statusColor(status: RunStatus) {
@@ -400,35 +397,41 @@ export default function ImageStudioPage() {
     );
   }
   
-    async function zipRun(run: Run, selectedOnly: boolean) {
+  async function zipRun(run: Run, selectedOnly: boolean) {
     if (run.images.length === 0) return;
     const indexes = selectedOnly ? Array.from(run.selectedIdx) : run.images.map((_, idx) => idx);
     if (indexes.length === 0) return;
 
     const folderName = safeName(run.name);
     const zip = new JSZip();
-     const manifest = [
-      `Run: ${run.name}`,
-      `Model: ${run.modelNameDisplay}`,
-      `Product: Custom References`,
-      `Started: ${new Date(run.startedAt).toLocaleString()}`,
-      "",
-      "Index, Prompt",
-      ...indexes.map((i) => `${i + 1}, ${run.images[i].prompt.replace(/\r?\n/g, " ")}`),
-    ].join("\n");
-    zip.file(`${folderName}/manifest.txt`, manifest);
+    try {
+      const manifest = [
+        `Run: ${run.name}`,
+        `Model: ${run.modelNameDisplay}`,
+        `Product: Custom References`,
+        `Started: ${new Date(run.startedAt).toLocaleString()}`,
+        "",
+        "Index, Prompt",
+        ...indexes.map((i) => `${i + 1}, ${run.images[i].prompt.replace(/\r?\n/g, " ")}`),
+      ].join("\n");
+      zip.file(`${folderName}/manifest.txt`, manifest);
 
-    for (const idx of indexes) {
-      const image = run.images[idx];
-      const { bytes, ext } = await fetchImageBytes(image.imageDataUrl);
-      const fileName = `${folderName}/${String(idx + 1).padStart(2, "0")}_${safeName(run.modelNameDisplay)}_${safeName(
-        image.prompt
-      ).slice(0, 60)}.${ext}`;
-      zip.file(fileName, bytes);
+      for (const idx of indexes) {
+        const image = run.images[idx];
+        const { bytes, ext } = await fetchImageBytes(image.imageDataUrl);
+        const fileName = `${folderName}/${String(idx + 1).padStart(2, "0")}_${safeName(run.modelNameDisplay)}_${safeName(
+          image.prompt
+        ).slice(0, 60)}.${ext}`;
+        zip.file(fileName, bytes);
+      }
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadBlob(blob, `${folderName}_${safeName(run.modelNameDisplay)}.zip`);
+      setSaveToast({ message: "Zip download ready", type: "success" });
+    } catch (error: any) {
+      console.error("Zip download failed", error);
+      setSaveToast({ message: error?.message || "Failed to download zip", type: "error" });
     }
-
-    const blob = await zip.generateAsync({ type: "blob" });
-    downloadBlob(blob, `${folderName}_${safeName(run.modelNameDisplay)}.zip`);
   }
 
     function startRunWithPrompts(prompts: string[], references: string[]) {
@@ -935,7 +938,22 @@ export default function ImageStudioPage() {
                                 <img src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" alt="" />
                                 <div className="absolute top-3 right-3 flex flex-wrap gap-2">
                                   <button onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)} className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-semibold px-3 py-1.5 rounded-full shadow">Save</button>
-                                  <button onClick={() => downloadDataUrl(activeRun.images[activeRun.activeIdx].imageDataUrl, `${safeName(productName)}_${safeName(modelNameDisplay)}_${Date.now()}.png`)} className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-semibold px-3 py-1.5 rounded-full shadow">Download</button>
+                                  <button
+                                    onClick={async () => {
+                                      try {
+                                        await downloadImage(
+                                          activeRun.images[activeRun.activeIdx].imageDataUrl,
+                                          `${safeName(productName)}_${safeName(modelNameDisplay)}_${Date.now()}.png`
+                                        );
+                                      } catch (error: any) {
+                                        console.error("Single download failed", error);
+                                        setSaveToast({ message: error?.message || "Download failed", type: "error" });
+                                      }
+                                    }}
+                                    className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-semibold px-3 py-1.5 rounded-full shadow"
+                                  >
+                                    Download
+                                  </button>
                                 </div>
                               </div>
 

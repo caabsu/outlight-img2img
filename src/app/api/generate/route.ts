@@ -371,11 +371,34 @@ export async function POST(req: Request) {
       if (!KIE_KEY) return NextResponse.json({ error: "Nano Banana API key missing" }, { status: 500 });
 
       const httpRefs = referenceUrls.filter((u) => /^https?:\/\//i.test(u));
-      if (referenceUrls.length && httpRefs.length !== referenceUrls.length) {
-        return NextResponse.json(
-          { error: "Nano Banana (KIE) requires HTTP/HTTPS image URLs (no data: uploads). Please provide public URLs." },
-          { status: 400 }
-        );
+      const hasDataRefs = referenceUrls.length > httpRefs.length;
+
+      // If any refs are data: URIs/uploads, fall back to direct Gemini with inline_data support.
+      if (hasDataRefs) {
+        const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
+        const { nbRes, nbJson } = await callGeminiImageEdit({
+          images,
+          text: prompt,
+          modelId,
+          options,
+        });
+        if (!nbRes.ok) {
+          const msg =
+            nbJson?.error?.message ||
+            nbJson?.error?.status ||
+            nbJson?.error?.code ||
+            "Nano Banana (Gemini) edit failed";
+          return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
+        }
+
+        const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
+        if (!dataUrl && !url) {
+          return NextResponse.json(
+            { error: reason || "Nano Banana returned no image", debug: debug || nbJson || null },
+            { status: 502 }
+          );
+        }
+        return NextResponse.json({ imageDataUrl: dataUrl || url });
       }
 
       const nanoModel =
