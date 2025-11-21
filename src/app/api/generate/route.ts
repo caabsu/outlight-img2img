@@ -358,9 +358,10 @@ export async function POST(req: Request) {
 
     if (referenceUrls.length === 0) {
       const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
-      if (!nbRes.ok) {
+    if (!nbRes.ok) {
         const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
-        return NextResponse.json({ error: msg }, { status: nbRes.status || 502 });
+        console.error("Gemini text-to-image error", { status: nbRes.status, error: nbJson });
+        return NextResponse.json({ error: msg, debug: nbJson || null }, { status: nbRes.status || 502 });
       }
       const out = extractGeminiImage(nbJson);
       if (out.dataUrl) return NextResponse.json({ imageDataUrl: out.dataUrl });
@@ -386,7 +387,8 @@ export async function POST(req: Request) {
 
     if (!nbRes.ok) {
       const msg = nbJson?.error?.message || `Gemini request failed (${nbRes.status})`;
-      return NextResponse.json({ error: msg }, { status: nbRes.status || 502 });
+      console.error("Gemini image-edit error", { status: nbRes.status, error: nbJson });
+      return NextResponse.json({ error: msg, debug: nbJson || null }, { status: nbRes.status || 502 });
     }
 
     // 3) extract image
