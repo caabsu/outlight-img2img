@@ -316,13 +316,18 @@ export async function POST(req: Request) {
       return { image_size, image_resolution, max_images, seed };
     };
 
-    const normalizeNano = (model: string): NanoBananaOptions => {
+    const normalizeNano = (model: string, allowResolution: boolean): NanoBananaOptions => {
       const arSet = new Set<string>(NANOBANANA_ASPECT_RATIOS);
       const resSet = new Set<string>(NANOBANANA_RESOLUTIONS);
-      const aspect_ratio = options?.aspect_ratio && arSet.has(options.aspect_ratio) ? options.aspect_ratio : undefined;
-      const allowResolution = model === "nanobanana-3-pro";
+      const aspect_ratio =
+        options?.aspect_ratio && arSet.has(options.aspect_ratio)
+          ? (options.aspect_ratio as NanoBananaOptions["aspect_ratio"])
+          : undefined;
+      const allowResForModel = allowResolution && model === "nanobanana-3-pro";
       const image_size =
-        allowResolution && options?.image_size && resSet.has(options.image_size) ? options.image_size : undefined;
+        allowResForModel && options?.image_size && resSet.has(options.image_size)
+          ? (options.image_size as NanoBananaOptions["image_size"])
+          : undefined;
       return { aspect_ratio, image_size };
     };
 
@@ -421,7 +426,7 @@ export async function POST(req: Request) {
       // If any refs are data: URIs/uploads, fall back to direct Gemini with inline_data support.
       if (hasDataRefs) {
         const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
-        const nanoOpts = normalizeNano(modelId);
+        const nanoOpts = normalizeNano(modelId, true); // allow image_size only for Gemini (Pro)
         const { nbRes, nbJson } = await callGeminiImageEdit({
           images,
           text: prompt,
@@ -449,7 +454,7 @@ export async function POST(req: Request) {
 
       const nanoModel =
         referenceUrls.length > 0 ? "google/nano-banana-edit" : "google/nano-banana";
-      const nanoOpts = normalizeNano(modelId);
+      const nanoOpts = normalizeNano(modelId, false); // KIE rejects image_size, so disable
       const inputPayload: Record<string, any> = {
         prompt,
         output_format: "png",
