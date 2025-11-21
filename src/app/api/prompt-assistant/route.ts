@@ -184,6 +184,8 @@ export async function POST(req: Request) {
         try {
           const model = genAI.getGenerativeModel({ model: modelName });
 
+          const historyText = safeThread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
+
           const textPrompt = `You are a professional Prompt Engineer for commercial image generation.
 
 USER REQUEST:
@@ -196,7 +198,7 @@ CONTEXT:
 ${contextNote || "N/A"}
 
 CONVERSATION HISTORY (keep consistent):
-${threadNote}
+${historyText || "None"}
 
 REFERENCE IMAGES:
 ${parsedReferences.length > 0 ? "Provided below as inline image data. Analyze and align the prompts to match the product look & feel. Call out materials, colors, and structure inferred from the references." : "None provided."}
@@ -240,6 +242,7 @@ REQUIREMENTS:
               instructions,
               knowledge,
               references: parsedReferences,
+              thread: safeThread,
             });
             return NextResponse.json({ 
               prompts: json.slice(0, promptCount), 
@@ -274,7 +277,8 @@ ${parsedReferences.length > 0 ? "Provided in the same message. Infer materials, 
 
 Return ONLY a JSON array of strings.`;
 
-        const userParts: any[] = [{ type: "text", text: instructions || "Describe the desired scene" }];
+          const historyText = safeThread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
+          const userParts: any[] = [{ type: "text", text: `Current request: ${instructions || "Describe the desired scene"}\nHistory:\n${historyText || "None"}` }];
         parsedReferences.forEach((img) => {
           userParts.push({
             type: "image_url",
@@ -301,6 +305,7 @@ Return ONLY a JSON array of strings.`;
             instructions,
             knowledge,
             references: parsedReferences,
+            thread: safeThread,
           });
           return NextResponse.json({ prompts: parsed, source: "GPT-4 Turbo", assistantReply: reply });
         }
@@ -319,6 +324,7 @@ Return ONLY a JSON array of strings.`;
       instructions,
       knowledge,
       references: parsedReferences,
+      thread: safeThread,
     });
     // Artificial delay to simulate "work" if it's too fast (helps UX perception sometimes)
     await new Promise(r => setTimeout(r, 600)); 
@@ -342,12 +348,14 @@ async function makeAssistantReply({
   instructions,
   knowledge,
   references,
+  thread,
 }: {
   provider: "gemini" | "openai" | "local";
   prompts: string[];
   instructions: string;
   knowledge: string;
   references: ParsedRef[];
+  thread: { role: "user" | "assistant"; content: string }[];
 }) {
   const shortSystem = `You are a concise creative prompt assistant. Respond in 1–2 sentences max. Confirm that prompts were produced and offer a helpful next step (e.g., tweak lighting, angle, or styling). Never list the prompts, never enumerate or bullet, and do not mention model names or providers. Keep it short and direct.`;
 
@@ -367,10 +375,9 @@ async function makeAssistantReply({
     try {
       const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
       const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
+      const historyText = thread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
       const parts: any[] = [
-        {
-          text: `${shortSystem}\nInstructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nReference images: ${references.length}`,
-        },
+        { text: `${shortSystem}\nInstructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nReference images: ${references.length}\nHistory:\n${historyText || "None"}` },
       ];
       references.forEach((img) =>
         parts.push({
@@ -399,8 +406,9 @@ async function makeAssistantReply({
   if (provider === "openai" && process.env.OPENAI_API_KEY) {
     try {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const historyText = thread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
       const userParts: any[] = [
-        { type: "text", text: `Instructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}` },
+        { type: "text", text: `Instructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nHistory:\n${historyText || "None"}` },
       ];
       references.forEach((img) =>
         userParts.push({
