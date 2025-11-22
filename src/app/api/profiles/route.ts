@@ -9,14 +9,11 @@ function sb() {
   return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
 }
 
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const clientId = req.headers.get("x-client-id") || "";
-    if (!clientId) return NextResponse.json({ error: "Missing client id" }, { status: 400 });
     const { data, error } = await sb()
       .from("user_profiles")
       .select("id,name,role,client_id,created_at")
-      .eq("client_id", clientId)
       .order("created_at", { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ profiles: data || [] });

@@ -25,14 +25,13 @@ export default function ProfilesPage() {
   }, []);
 
   useEffect(() => {
-    if (!clientId) return;
     void loadProfiles();
   }, [clientId]);
 
   async function loadProfiles() {
     try {
       setProfilesLoading(true);
-      const res = await fetch("/api/profiles", { headers: { "x-client-id": clientId } });
+      const res = await fetch("/api/profiles");
       const json = await res.json();
       if (res.ok) setProfiles(json.profiles || []);
     } finally {
@@ -80,6 +79,27 @@ export default function ProfilesPage() {
     router.push("/image");
   }
 
+  async function deleteProfile(id: string) {
+    const entered = window.prompt("Enter admin password to delete this profile");
+    if (!entered || entered !== (process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "gmltn123")) {
+      setError("Invalid admin password");
+      return;
+    }
+    const res = await fetch("/api/profiles", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ profileId: id, adminPassword: entered }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setError(json.error || "Failed to delete profile");
+      return;
+    }
+    setProfiles((prev) => prev.filter((p) => p.id !== id));
+    const active = localStorage.getItem("ol_active_profile");
+    if (active === id) localStorage.removeItem("ol_active_profile");
+  }
+
   return (
     <div className="min-h-screen bg-[#fcfcfc] dark:bg-black flex items-center justify-center p-4">
       <div className="w-full max-w-3xl rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-6 space-y-6">
@@ -94,14 +114,25 @@ export default function ProfilesPage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           {profiles.map((p) => (
-            <button
+            <div
               key={p.id}
-              onClick={() => selectProfile(p.id, p.role)}
-              className="flex flex-col items-start rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4 text-left shadow-sm hover:border-indigo-200 dark:hover:border-indigo-700 hover:shadow-md transition"
+              className="flex items-center justify-between rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-4 text-left shadow-sm"
             >
-              <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{p.name}</span>
-              <span className="text-xs text-slate-500 dark:text-slate-400">{p.role}</span>
-            </button>
+              <button
+                onClick={() => selectProfile(p.id, p.role)}
+                className="text-left"
+              >
+                <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{p.name}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{p.role}</span>
+              </button>
+              <button
+                onClick={() => deleteProfile(p.id)}
+                className="text-xs text-rose-500 hover:text-rose-600"
+                title="Delete profile"
+              >
+                Delete
+              </button>
+            </div>
           ))}
           {profiles.length === 0 && (
             <div className="col-span-2 text-sm text-slate-500 dark:text-slate-400">No profiles yet.</div>

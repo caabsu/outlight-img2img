@@ -326,10 +326,9 @@ export default function ImageStudioPage() {
   }
 
   async function loadProfiles() {
-    if (!clientId) return;
     try {
       setProfilesLoading(true);
-      const res = await fetch("/api/profiles", { headers: { "x-client-id": clientId } });
+      const res = await fetch("/api/profiles");
       const json = await res.json();
       if (res.ok) setProfiles(json.profiles || []);
     } finally {
