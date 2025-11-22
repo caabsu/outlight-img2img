@@ -71,7 +71,7 @@ export default function ProfilesPage() {
   function selectProfile(id: string, role: ProfileRole) {
     if (role === "Admin") {
       const entered = window.prompt("Enter admin password to use this admin profile");
-      if (!entered || entered !== (process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "")) {
+      if (!entered || entered !== (process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "gmltn123")) {
         setError("Invalid admin password");
         return;
       }

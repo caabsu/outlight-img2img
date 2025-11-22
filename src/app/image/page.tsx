@@ -47,6 +47,7 @@ type Run = {
 
 const RUN_SPEED_OPTIONS: RunSpeed[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const MAX_CONCURRENT_RUNS = 10;
+const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "gmltn123";
 
 function safeName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -321,6 +322,7 @@ export default function ImageStudioPage() {
       if (res.ok) setProfiles(json.profiles || []);
     } finally {
       setProfilesLoading(false);
+      setProfileRestored(true);
     }
   }
 
@@ -1362,15 +1364,15 @@ export default function ImageStudioPage() {
         onRequireAdminPassword={(id) => {
           const p = profiles.find((x) => x.id === id);
           if (!p) return false;
-          if (p.role !== "Admin") return true;
-          if (adminUnlocks.has(id)) return true;
-          const entered = window.prompt("Enter admin password to select this profile");
-          if (entered && entered === (process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "")) {
-            setAdminUnlocks((prev) => new Set([...prev, id]));
-            return true;
-          }
-          setSaveToast({ message: "Invalid admin password", type: "error" });
-          return false;
+        if (p.role !== "Admin") return true;
+        if (adminUnlocks.has(id)) return true;
+        const entered = window.prompt("Enter admin password to select this profile");
+        if (entered && entered === ADMIN_PASS) {
+          setAdminUnlocks((prev) => new Set([...prev, id]));
+          return true;
+        }
+        setSaveToast({ message: "Invalid admin password", type: "error" });
+        return false;
         }}
         onOpenAdd={() => setShowAddProfileModal(true)}
         onDelete={(id) => {
@@ -1378,7 +1380,7 @@ export default function ImageStudioPage() {
           if (!p) return;
           if (p.role === "Admin") {
             const entered = window.prompt("Enter admin password to delete this profile");
-            if (!entered || entered !== (process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "")) {
+            if (!entered || entered !== ADMIN_PASS) {
               setSaveToast({ message: "Invalid admin password", type: "error" });
               return;
             }
@@ -1387,7 +1389,7 @@ export default function ImageStudioPage() {
             const res = await fetch("/api/profiles", {
               method: "DELETE",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ profileId: id, adminPassword: process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "" }),
+              body: JSON.stringify({ profileId: id, adminPassword: ADMIN_PASS }),
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok) {
