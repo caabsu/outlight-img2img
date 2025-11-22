@@ -941,13 +941,25 @@ export default function ImageStudioPage() {
                               ))}
                             </div>
 
-                            <div className="flex items-center justify-end gap-2">
-                              <button onClick={() => stepActiveImage(activeRun.id, -1)} className="p-2 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition">&larr; Prev</button>
-                              <button onClick={() => stepActiveImage(activeRun.id, 1)} className="p-2 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition">Next &rarr;</button>
-                            </div>
-
                             <div className="flex-1 min-h-0 flex flex-col gap-3">
                               <div className="relative flex-1 min-h-[340px] rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                                <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-full bg-black/50 px-2 py-1 text-white shadow-lg backdrop-blur">
+                                  <button
+                                    onClick={() => stepActiveImage(activeRun.id, -1)}
+                                    className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide hover:bg-white/10 transition"
+                                  >
+                                    <span className="text-sm leading-none">←</span>
+                                    <span>Prev</span>
+                                  </button>
+                                  <span className="h-4 w-px bg-white/30" />
+                                  <button
+                                    onClick={() => stepActiveImage(activeRun.id, 1)}
+                                    className="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide hover:bg-white/10 transition"
+                                  >
+                                    <span>Next</span>
+                                    <span className="text-sm leading-none">→</span>
+                                  </button>
+                                </div>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" alt="" />
                                 <div className="absolute top-3 right-3 flex flex-wrap gap-2">
