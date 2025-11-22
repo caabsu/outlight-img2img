@@ -165,6 +165,7 @@ export default function ImageStudioPage() {
   const [newProfileName, setNewProfileName] = useState("");
   const [newProfileRole, setNewProfileRole] = useState<ProfileRole>("Graphic Designer");
   const [adminKey, setAdminKey] = useState("");
+  const [showProfilePanel, setShowProfilePanel] = useState(false);
   const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
   
   // Product Creation State
@@ -281,6 +282,12 @@ export default function ImageStudioPage() {
     const found = stored ? profiles.find((p) => p.id === stored) : null;
     setActiveProfileId(found ? found.id : profiles[0].id);
   }, [profiles]);
+
+  useEffect(() => {
+    if (activeProfileId && typeof window !== "undefined") {
+      localStorage.setItem("ol_active_profile", activeProfileId);
+    }
+  }, [activeProfileId]);
 
   async function loadProducts() {
     try {
@@ -693,7 +700,7 @@ export default function ImageStudioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black p-4 lg:p-6">
+    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black p-4 lg:p-6 relative">
       <div className="mx-auto max-w-[1800px]">
         <div className="mb-6 flex items-center justify-between">
            <div className="flex items-center gap-3">
@@ -716,84 +723,9 @@ export default function ImageStudioPage() {
           {/* Column 1: Configuration */}
           <div className="space-y-6">
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Profile</h2>
-                {profilesLoading && <span className="text-[10px] text-slate-400">loading...</span>}
-              </div>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex flex-col">
-                    <span className="text-sm font-semibold text-slate-900 dark:text-white">{activeProfile?.name || "Select profile"}</span>
-                    <span className="text-[11px] text-slate-500 dark:text-slate-400">{activeProfile ? activeProfile.role : "Required to generate"}</span>
-                  </div>
-                  <div className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${activeProfile ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/30" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200 border border-amber-200 dark:border-amber-500/30"}`}>
-                    {activeProfile ? "Ready" : "Required"}
-                  </div>
-                </div>
-
-                <select
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100"
-                  value={activeProfileId || ""}
-                  onChange={(e) => {
-                    setActiveProfileId(e.target.value);
-                    localStorage.setItem("ol_active_profile", e.target.value);
-                  }}
-                >
-                  <option value="" disabled>
-                    Select a profile
-                  </option>
-                  {profiles.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} - {p.role}
-                    </option>
-                  ))}
-                </select>
-
-                <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 space-y-2">
-                  <input
-                    className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                    placeholder="Profile name"
-                    value={newProfileName}
-                    onChange={(e) => setNewProfileName(e.target.value)}
-                  />
-                  <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
-                    <select
-                      className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
-                      value={newProfileRole}
-                      onChange={(e) => setNewProfileRole(e.target.value as ProfileRole)}
-                    >
-                      {["Graphic Designer", "Catalog Manager", "Video Editor", "Creative Strategist", "Admin"].map((r) => (
-                        <option key={r} value={r}>
-                          {r}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={createProfile}
-                      className="rounded-md bg-slate-900 dark:bg-slate-50 px-3 py-2 text-[11px] font-semibold text-white dark:text-slate-900 shadow-sm hover:bg-slate-800 dark:hover:bg-slate-200 transition"
-                    >
-                      Save
-                    </button>
-                  </div>
-                  {newProfileRole === "Admin" && (
-                    <input
-                      type="password"
-                      className="w-full rounded-md border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                      placeholder="Admin password"
-                      value={adminKey}
-                      onChange={(e) => setAdminKey(e.target.value)}
-                    />
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  Profiles are saved to this browser and tied to your usage stats. Admin role requires the passphrase.
-                </p>
-              </div>
-            </div>
-             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                 <div className="mb-4 flex items-center justify-between gap-2">
-                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
-                   {isNanoBananaPro && (
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
+                  {isNanoBananaPro && (
                      <button
                        onClick={() => setShowNanoGuide(true)}
                        className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
@@ -1391,6 +1323,140 @@ export default function ImageStudioPage() {
       {saveToast && (
         <div className={`fixed bottom-6 right-6 z-50 rounded-lg px-4 py-3 text-sm shadow-lg transition-all transform translate-y-0 ${saveToast.type === 'success' ? 'bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900' : 'bg-rose-600 text-white'}`}>
           {saveToast.message}
+        </div>
+      )}
+    </div>
+      <ProfileBadge
+        activeProfile={activeProfile}
+        onSelect={(id) => setActiveProfileId(id)}
+        profiles={profiles}
+        loading={profilesLoading}
+        newName={newProfileName}
+        setNewName={setNewProfileName}
+        newRole={newProfileRole}
+        setNewRole={setNewProfileRole}
+        adminKey={adminKey}
+        setAdminKey={setAdminKey}
+        onCreate={createProfile}
+        onToggle={setShowProfilePanel}
+        open={showProfilePanel}
+      />
+    </div>
+  );
+}
+
+function ProfileBadge({
+  activeProfile,
+  onSelect,
+  profiles,
+  loading,
+  newName,
+  setNewName,
+  newRole,
+  setNewRole,
+  adminKey,
+  setAdminKey,
+  onCreate,
+  onToggle,
+  open,
+}: {
+  activeProfile: Profile | null;
+  onSelect: (id: string) => void;
+  profiles: Profile[];
+  loading: boolean;
+  newName: string;
+  setNewName: (v: string) => void;
+  newRole: ProfileRole;
+  setNewRole: (v: ProfileRole) => void;
+  adminKey: string;
+  setAdminKey: (v: string) => void;
+  onCreate: () => void;
+  onToggle: (v: boolean) => void;
+  open: boolean;
+}) {
+  return (
+    <div className="fixed bottom-4 left-4 z-50">
+      <div
+        className="flex items-center gap-2 rounded-full border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 shadow-lg cursor-pointer"
+        onClick={() => onToggle(!open)}
+      >
+        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-500 to-indigo-700 text-white flex items-center justify-center font-bold text-sm">
+          {(activeProfile?.name || "User").slice(0, 2).toUpperCase()}
+        </div>
+        <div className="flex flex-col">
+          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            {activeProfile ? activeProfile.name : "Select profile"}
+          </span>
+          <span className="text-[11px] text-slate-500 dark:text-slate-400">
+            {activeProfile ? activeProfile.role : loading ? "Loading..." : "Required to generate"}
+          </span>
+        </div>
+        <span className="text-slate-400 text-lg leading-none">{open ? "▴" : "▾"}</span>
+      </div>
+
+      {open && (
+        <div className="mt-2 w-72 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Profiles</h3>
+            <button
+              onClick={() => onToggle(false)}
+              className="rounded-full p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+            >
+              <span className="text-sm">×</span>
+            </button>
+          </div>
+          <select
+            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100"
+            value={activeProfile?.id || ""}
+            onChange={(e) => onSelect(e.target.value)}
+          >
+            <option value="" disabled>
+              Select a profile
+            </option>
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} - {p.role}
+              </option>
+            ))}
+          </select>
+
+          <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 space-y-2">
+            <input
+              className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+              placeholder="Profile name"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+            />
+            <select
+              className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value as ProfileRole)}
+            >
+              {["Graphic Designer", "Catalog Manager", "Video Editor", "Creative Strategist", "Admin"].map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            {newRole === "Admin" && (
+              <input
+                type="password"
+                className="w-full rounded-md border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                placeholder="Admin password"
+                value={adminKey}
+                onChange={(e) => setAdminKey(e.target.value)}
+              />
+            )}
+            <button
+              onClick={onCreate}
+              className="w-full rounded-md bg-slate-900 dark:bg-slate-50 px-3 py-2 text-[11px] font-semibold text-white dark:text-slate-900 shadow-sm hover:bg-slate-800 dark:hover:bg-slate-200 transition"
+            >
+              Save profile
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400">
+            Profiles live in this browser and persist across sessions. Admin role requires passphrase.
+          </p>
         </div>
       )}
     </div>
