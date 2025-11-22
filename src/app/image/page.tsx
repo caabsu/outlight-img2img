@@ -1419,6 +1419,14 @@ export default function ImageStudioPage() {
         }}
         canDelete={activeProfile?.role === "Admin"}
         onRefresh={loadProfiles}
+        onLogout={() => {
+          localStorage.removeItem("ol_active_profile");
+          setActiveProfileId(null);
+          setStoredProfileId(null);
+          setAdminUnlocks(new Set());
+          setShowProfilePanel(false);
+          router.push("/profiles");
+        }}
       />
       {showAddProfileModal && (
         <AddProfileModal
@@ -1455,6 +1463,7 @@ function ProfileBadge({
   onDelete,
   canDelete,
   onRefresh,
+  onLogout,
 }: {
   activeProfile: Profile | null;
   onSelect: (id: string) => void;
@@ -1474,6 +1483,7 @@ function ProfileBadge({
   onDelete: (profileId: string) => void;
   canDelete: boolean;
   onRefresh: () => void;
+  onLogout: () => void;
 }) {
   return (
     <div className="fixed bottom-4 left-4 z-50">
@@ -1515,42 +1525,59 @@ function ProfileBadge({
               </button>
             </div>
           </div>
-          <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
-            {profiles.map((p) => (
-              <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2">
-                <button
-                  className="flex-1 text-left"
-                  onClick={() => {
-                    if (onRequireAdminPassword(p.id)) {
-                      onSelect(p.id);
-                      onToggle(false);
-                    }
-                  }}
-                >
-                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{p.name}</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">{p.role}</div>
-                </button>
-                {canDelete && (
-                  <button
-                    className="text-[11px] text-rose-500 hover:text-rose-600"
-                    onClick={() => onDelete(p.id)}
-                    title="Delete profile"
-                  >
-                    ×
-                  </button>
-                )}
+          {activeProfile ? (
+            <div className="space-y-2">
+              <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2">
+                <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{activeProfile.name}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">{activeProfile.role}</div>
               </div>
-            ))}
-            {profiles.length === 0 && <div className="text-xs text-slate-500 dark:text-slate-400">No profiles yet.</div>}
-          </div>
+              <button
+                onClick={onLogout}
+                className="w-full rounded-md border border-rose-200 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/30 px-3 py-2 text-xs font-semibold text-rose-600 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition"
+              >
+                Log out
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-1">
+                {profiles.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2">
+                    <button
+                      className="flex-1 text-left"
+                      onClick={() => {
+                        if (onRequireAdminPassword(p.id)) {
+                          onSelect(p.id);
+                          onToggle(false);
+                        }
+                      }}
+                    >
+                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{p.name}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400">{p.role}</div>
+                    </button>
+                    {canDelete && (
+                      <button
+                        className="text-[11px] text-rose-500 hover:text-rose-600"
+                        onClick={() => onDelete(p.id)}
+                        title="Delete profile"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {profiles.length === 0 && <div className="text-xs text-slate-500 dark:text-slate-400">No profiles yet.</div>}
+              </div>
 
-          <button
-            onClick={onOpenAdd}
-            className="w-full rounded-md border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition flex items-center justify-center gap-2"
-          >
-            <span className="h-5 w-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm">+</span>
-            Add new profile
-          </button>
+              <button
+                onClick={onOpenAdd}
+                className="w-full rounded-md border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/30 px-3 py-2 text-xs font-semibold text-indigo-700 dark:text-indigo-200 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition flex items-center justify-center gap-2"
+              >
+                <span className="h-5 w-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-sm">+</span>
+                Add new profile
+              </button>
+            </>
+          )}
 
           {activeProfile?.role === "Admin" && (
             <Link
