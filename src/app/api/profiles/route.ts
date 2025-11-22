@@ -53,3 +53,19 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
 }
+
+export async function DELETE(req: Request) {
+  try {
+    const body = await req.json();
+    const { profileId, adminPassword } = body as { profileId?: string; adminPassword?: string };
+    if (!profileId) return NextResponse.json({ error: "profileId required" }, { status: 400 });
+    if (!adminPassword || adminPassword !== ADMIN_PASSWORD) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const { error } = await sb().from("user_profiles").delete().eq("id", profileId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
+  }
+}

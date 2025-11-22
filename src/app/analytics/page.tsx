@@ -12,9 +12,16 @@ type ProfileStats = {
 
 export default function AnalyticsPage() {
   const [password, setPassword] = useState("");
-  const [data, setData] = useState<{ totalsByModel: Record<string, number>; profiles: ProfileStats[] } | null>(null);
+  const [data, setData] = useState<{
+    totalsByModel: Record<string, number>;
+    totalsByRole: Record<string, number>;
+    profiles: ProfileStats[];
+    dailySeries: { day: string; count: number }[];
+  } | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [filterModel, setFilterModel] = useState<string>("");
+  const [filterRole, setFilterRole] = useState<string>("");
 
   async function load() {
     setLoading(true);
@@ -38,6 +45,20 @@ export default function AnalyticsPage() {
   const modelTotals = useMemo(() => {
     if (!data) return [];
     return Object.entries(data.totalsByModel || {}).sort((a, b) => b[1] - a[1]);
+  }, [data]);
+
+  const filteredProfiles = useMemo(() => {
+    if (!data) return [];
+    return data.profiles.filter((p) => {
+      const modelOk = !filterModel || Object.keys(p.models).includes(filterModel);
+      const roleOk = !filterRole || p.role === filterRole;
+      return modelOk && roleOk;
+    });
+  }, [data, filterModel, filterRole]);
+
+  const roles = useMemo(() => {
+    if (!data) return [];
+    return Object.keys(data.totalsByRole || {});
   }, [data]);
 
   return (
@@ -73,6 +94,16 @@ export default function AnalyticsPage() {
 
           {data && (
             <div className="mt-6 space-y-6">
+              <div className="grid gap-3 sm:grid-cols-3">
+                {roles.map((r) => (
+                  <div key={r} className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-700 dark:text-slate-200">
+                    <div className="text-xs text-slate-500 dark:text-slate-400">Role</div>
+                    <div className="font-semibold">{r}</div>
+                    <div className="text-xs text-slate-500 dark:text-slate-400">Calls: {data.totalsByRole[r] || 0}</div>
+                  </div>
+                ))}
+              </div>
+
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Totals by model</h2>
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -92,6 +123,32 @@ export default function AnalyticsPage() {
 
               <div>
                 <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Profiles</h2>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <select
+                    className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200"
+                    value={filterModel}
+                    onChange={(e) => setFilterModel(e.target.value)}
+                  >
+                    <option value="">All models</option>
+                    {modelTotals.map(([model]) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-1.5 text-xs text-slate-700 dark:text-slate-200"
+                    value={filterRole}
+                    onChange={(e) => setFilterRole(e.target.value)}
+                  >
+                    <option value="">All roles</option>
+                    {roles.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </div>
                 <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
                   <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800 text-sm">
                     <thead className="bg-slate-50 dark:bg-slate-950">
@@ -103,7 +160,7 @@ export default function AnalyticsPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {data.profiles.map((p) => (
+                      {filteredProfiles.map((p) => (
                         <tr key={p.id}>
                           <td className="px-3 py-2 text-slate-800 dark:text-slate-100 font-medium">{p.name}</td>
                           <td className="px-3 py-2 text-slate-500 dark:text-slate-300">{p.role}</td>
@@ -119,7 +176,7 @@ export default function AnalyticsPage() {
                           </td>
                         </tr>
                       ))}
-                      {data.profiles.length === 0 && (
+                      {filteredProfiles.length === 0 && (
                         <tr>
                           <td className="px-3 py-3 text-slate-500 dark:text-slate-300" colSpan={4}>
                             No profiles recorded yet.
@@ -128,6 +185,27 @@ export default function AnalyticsPage() {
                       )}
                     </tbody>
                   </table>
+                </div>
+              </div>
+
+              <div>
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Usage over time</h2>
+                <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-3 space-y-2">
+                  {data.dailySeries.length === 0 && <p className="text-sm text-slate-500 dark:text-slate-400">No events yet.</p>}
+                  {data.dailySeries.map((d) => (
+                    <div key={d.day} className="flex items-center gap-2">
+                      <div className="w-20 text-[11px] text-slate-500 dark:text-slate-400">{d.day}</div>
+                      <div className="flex-1 h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                        <div
+                          className="h-full bg-indigo-500"
+                          style={{
+                            width: `${Math.min(100, (d.count / Math.max(...data.dailySeries.map((x) => x.count), 1)) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <div className="w-10 text-right text-xs text-slate-600 dark:text-slate-300">{d.count}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
