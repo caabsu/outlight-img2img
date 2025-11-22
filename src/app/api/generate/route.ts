@@ -35,6 +35,7 @@ const KIE_KEY = process.env.KIE_API_KEY;
 /* ========================= TYPES ========================= */
 type PostBody = {
   modelId: string; // "nanobanana-1", "nanobanana-2", "nanobanana-3-pro" or startsWith("seedream")
+  profileId: string;
   productId: string | null;
   // legacy single custom url
   customUrl?: string | null;
@@ -65,7 +66,7 @@ type NanoBananaOptions = {
   resolution?: (typeof NANOBANANA_RESOLUTIONS)[number];
 };
 
-const SAFETY_OFF = [
+  const SAFETY_OFF = [
   { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
   { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
@@ -126,6 +127,15 @@ async function getReferenceUrl(productId: string | null, customUrl: string | nul
   if (error) throw new Error(`DB error: ${error.message}`);
   if (!data?.image_url) throw new Error("No image_url found for product");
   return data.image_url as string;
+}
+
+async function logUsage(profileId: string, modelId: string) {
+  try {
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    await supabase.from("usage_events").insert({ profile_id: profileId, model_id: modelId });
+  } catch (err) {
+    console.error("Failed to record usage", err);
+  }
 }
 
 /** Extract an image from Gemini responses across shapes */
@@ -270,10 +280,11 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as PostBody;
-    const { modelId, productId, customUrl = null, customUrls = [], additionalUrls = [], prompt, options } = body;
+    const { modelId, profileId, productId, customUrl = null, customUrls = [], additionalUrls = [], prompt, options } =
+      body;
 
-    if (!prompt || !modelId) {
-      return NextResponse.json({ error: "Missing modelId or prompt" }, { status: 400 });
+    if (!prompt || !modelId || !profileId) {
+      return NextResponse.json({ error: "Missing modelId, profileId, or prompt" }, { status: 400 });
     }
 
     const isSeedream = modelId.startsWith("seedream");
@@ -408,6 +419,7 @@ export async function POST(req: Request) {
       if (!resultUrl) {
         return NextResponse.json({ error: `Seedream generation timed out (last state: ${lastState})` }, { status: 504 });
       }
+      await logUsage(profileId, modelId);
       return NextResponse.json({ imageDataUrl: resultUrl });
     }
 
@@ -446,6 +458,7 @@ export async function POST(req: Request) {
               { status: 502 }
             );
           }
+          await logUsage(profileId, modelId);
           return NextResponse.json({ imageDataUrl: dataUrl || url });
         }
 
@@ -517,6 +530,7 @@ export async function POST(req: Request) {
         if (!resultUrl) {
           return NextResponse.json({ error: `Nano Banana Pro generation timed out (last state: ${lastState})` }, { status: 504 });
         }
+        await logUsage(profileId, modelId);
         return NextResponse.json({ imageDataUrl: resultUrl });
       }
 
@@ -546,6 +560,7 @@ export async function POST(req: Request) {
             { status: 502 }
           );
         }
+        await logUsage(profileId, modelId);
         return NextResponse.json({ imageDataUrl: dataUrl || url });
       }
 
@@ -619,6 +634,7 @@ export async function POST(req: Request) {
       if (!resultUrl) {
         return NextResponse.json({ error: `Nano Banana generation timed out (last state: ${lastState})` }, { status: 504 });
       }
+      await logUsage(profileId, modelId);
       return NextResponse.json({ imageDataUrl: resultUrl });
     }
 

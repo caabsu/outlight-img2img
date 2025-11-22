@@ -18,6 +18,8 @@ type Product = { id: string; name: string; slug: string; image_url: string };
 type GenImage = { id: string; prompt: string; imageDataUrl: string };
 type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
 type RunSpeed = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
+type ProfileRole = "Graphic Designer" | "Catalog Manager" | "Video Editor" | "Creative Strategist" | "Admin";
+type Profile = { id: string; name: string; role: ProfileRole; client_id?: string };
 
 type Run = {
   id: string;
@@ -25,6 +27,8 @@ type Run = {
   startedAt: number;
   modelId: string;
   modelNameDisplay: string;
+  profileId: string;
+  profileName: string;
   // productId: string | null; // Removed, as we're handling all references as custom
   // productName: string;     // Removed
   // referenceUrl: string;    // Removed
@@ -154,6 +158,14 @@ export default function ImageStudioPage() {
   const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
   const [showNanoGuide, setShowNanoGuide] = useState(false);
+  const [clientId, setClientId] = useState<string>("");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(false);
+  const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newProfileRole, setNewProfileRole] = useState<ProfileRole>("Graphic Designer");
+  const [adminKey, setAdminKey] = useState("");
+  const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
   
   // Product Creation State
   // const [newProduct, setNewProduct] = useState({ name: "", image_url: "" }); // Removed
@@ -178,7 +190,8 @@ export default function ImageStudioPage() {
   const nanoResolutionOptions = modelDef.resolutionOptions || Array.from(NANOBANANA_RESOLUTIONS);
   const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
   const hasRefs = selectedRefs.length > 0 || customUrl.trim().length > 0 || customUploads.length > 0 || customUrls.some((url) => (url || "").trim().length > 0);
-  const canStartRun = promptLines.length > 0 && (modelRequiresReference ? selectedRefs.length > 0 : true);
+  const canStartRun =
+    promptLines.length > 0 && !!activeProfile && (modelRequiresReference ? selectedRefs.length > 0 : true);
   const somethingRunning = runs.some((run) => run.status === "running");
   const overallPct =
     activeRun && activeRun.progress.total > 0
@@ -249,6 +262,26 @@ export default function ImageStudioPage() {
     loadProducts();
   }, []);
 
+  // bootstrap client + profiles
+  useEffect(() => {
+    const stored = typeof window !== "undefined" ? localStorage.getItem("ol_client_id") : null;
+    const id = stored || crypto.randomUUID();
+    if (!stored) localStorage.setItem("ol_client_id", id);
+    setClientId(id);
+  }, []);
+
+  useEffect(() => {
+    if (!clientId) return;
+    void loadProfiles();
+  }, [clientId]);
+
+  useEffect(() => {
+    if (!profiles.length) return;
+    const stored = typeof window !== "undefined" ? localStorage.getItem("ol_active_profile") : null;
+    const found = stored ? profiles.find((p) => p.id === stored) : null;
+    setActiveProfileId(found ? found.id : profiles[0].id);
+  }, [profiles]);
+
   async function loadProducts() {
     try {
       setProductsLoading(true);
@@ -258,6 +291,47 @@ export default function ImageStudioPage() {
     } finally {
       setProductsLoading(false);
     }
+  }
+
+  async function loadProfiles() {
+    if (!clientId) return;
+    try {
+      setProfilesLoading(true);
+      const res = await fetch("/api/profiles", { headers: { "x-client-id": clientId } });
+      const json = await res.json();
+      if (res.ok) setProfiles(json.profiles || []);
+    } finally {
+      setProfilesLoading(false);
+    }
+  }
+
+  async function createProfile() {
+    if (!clientId || !newProfileName.trim()) {
+      setSaveToast({ message: "Add a profile name", type: "error" });
+      return;
+    }
+    const payload: any = {
+      clientId,
+      name: newProfileName.trim(),
+      role: newProfileRole,
+    };
+    if (newProfileRole === "Admin") payload.adminPassword = adminKey;
+    const res = await fetch("/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setSaveToast({ message: json.error || "Failed to create profile", type: "error" });
+      return;
+    }
+    setProfiles((prev) => [...prev, json.profile]);
+    setActiveProfileId(json.profile.id);
+    localStorage.setItem("ol_active_profile", json.profile.id);
+    setNewProfileName("");
+    setAdminKey("");
+    setSaveToast({ message: "Profile created", type: "success" });
   }
   
   // async function handleAddProduct() {
@@ -449,6 +523,10 @@ export default function ImageStudioPage() {
   }
 
     function startRunWithPrompts(prompts: string[], references: string[]) {
+      if (!activeProfile) {
+        setSaveToast({ message: "Select a profile to start", type: "error" });
+        return;
+      }
       const effectiveRefs = references.length > 0 ? references : selectedRefs;
       if (prompts.length === 0) {
         setSaveToast({ message: "Add at least one prompt to start a run", type: "error" });
@@ -478,6 +556,8 @@ export default function ImageStudioPage() {
         startedAt: Date.now(),
         modelId,
         modelNameDisplay,
+        profileId: activeProfile.id,
+        profileName: activeProfile.name,
         prompts: [...prompts],
         status: "running",
         error: null,
@@ -505,106 +585,111 @@ export default function ImageStudioPage() {
     }
 
     async function runGenerator(run: Run, currentRefSources: string[]) {
-    let cursor = 0;
-    const total = run.prompts.length;
-
-    const pushImage = (image: GenImage) => {
-      setRuns((prev) =>
-        prev.map((item) => {
-          if (item.id !== run.id) return item;
-          const images = [...item.images, image];
-          const activeIdx = images.length === 1 ? 0 : item.activeIdx;
-          return { ...item, images, activeIdx };
-        })
-      );
-    };
-
-    const advance = () => {
-      setRuns((prev) =>
-        prev.map((item) => {
-          if (item.id !== run.id) return item;
-          const done = item.progress.done + 1;
-          return { ...item, progress: { done, total: item.progress.total } };
-        })
-      );
-    };
-
-    const setError = (message: string, debug?: unknown) => {
-      setRuns((prev) =>
-        prev.map((item) => {
-          if (item.id !== run.id) return item;
-          return { ...item, status: "error" as RunStatus, error: message, debug: debug ?? null };
-        })
-      );
-    };
-
-    const worker = async () => {
-      while (true) {
-        const index = cursor;
-        if (index >= total) return;
-        cursor++;
-        const prompt = run.prompts[index];
-
-        try {
-          const res = await fetch("/api/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              modelId: run.modelId,
-              customUrls: currentRefSources,
-              prompt,
-              options: (() => {
-                const runModel = getModelById(run.modelId);
-                if (!runModel) return undefined;
-                if (runModel.provider === "seedream") {
-                  return {
-                    image_size: sdSize,
-                    image_resolution: sdRes,
-                    max_images: sdMax,
-                    seed: sdSeed === "" ? null : sdSeed,
-                  };
-                }
-                if (runModel.id === "nanobanana-3-pro") {
-                  return {
-                    aspect_ratio: nbAspectRatio,
-                    image_size: nbResolution,
-                  };
-                }
-                return undefined;
-              })(),
-            }),
-            signal: run.controller?.signal,
-          });
-
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok) {
-            setError(json.error || "Generation failed", json.debug);
-            advance();
-            continue;
-          }
-
-          pushImage({ id: crypto.randomUUID(), prompt, imageDataUrl: json.imageDataUrl });
-          advance();
-        } catch (error: any) {
-           const abort = error?.name === "AbortError";
-           setError(abort ? "Run cancelled" : error?.message || "Request failed");
-           return;
-        }
+      if (!run.profileId) {
+        setSaveToast({ message: "Profile missing for this run", type: "error" });
+        return;
       }
-    };
+      let cursor = 0;
+      const total = run.prompts.length;
 
-    const parallel = Math.max(1, Math.min(run.speed, RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1]));
-    const workers: Promise<void>[] = [];
-    for (let i = 0; i < parallel; i++) workers.push(worker());
-    await Promise.all(workers).catch(() => undefined);
+      const pushImage = (image: GenImage) => {
+        setRuns((prev) =>
+          prev.map((item) => {
+            if (item.id !== run.id) return item;
+            const images = [...item.images, image];
+            const activeIdx = images.length === 1 ? 0 : item.activeIdx;
+            return { ...item, images, activeIdx };
+          })
+        );
+      };
 
-    setRuns((prev) =>
-      prev.map((item) => {
-        if (item.id !== run.id) return item;
-        if (item.status === "running") return { ...item, status: "done" as RunStatus };
-        return item;
-      })
-    );
+      const advance = () => {
+        setRuns((prev) =>
+          prev.map((item) => {
+            if (item.id !== run.id) return item;
+            const done = item.progress.done + 1;
+            return { ...item, progress: { done, total: item.progress.total } };
+          })
+        );
+      };
+
+      const setError = (message: string, debug?: unknown) => {
+        setRuns((prev) =>
+          prev.map((item) => {
+            if (item.id !== run.id) return item;
+            return { ...item, status: "error" as RunStatus, error: message, debug: debug ?? null };
+          })
+        );
+      };
+
+      const worker = async () => {
+        while (true) {
+          const index = cursor;
+          if (index >= total) return;
+          cursor++;
+          const prompt = run.prompts[index];
+
+          try {
+            const res = await fetch("/api/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                modelId: run.modelId,
+                profileId: run.profileId,
+                customUrls: currentRefSources,
+                prompt,
+                options: (() => {
+                  const runModel = getModelById(run.modelId);
+                  if (!runModel) return undefined;
+                  if (runModel.provider === "seedream") {
+                    return {
+                      image_size: sdSize,
+                      image_resolution: sdRes,
+                      max_images: sdMax,
+                      seed: sdSeed === "" ? null : sdSeed,
+                    };
+                  }
+                  if (runModel.id === "nanobanana-3-pro") {
+                    return {
+                      aspect_ratio: nbAspectRatio,
+                      image_size: nbResolution,
+                    };
+                  }
+                  return undefined;
+                })(),
+              }),
+              signal: run.controller?.signal,
+            });
+
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setError(json.error || "Generation failed", json.debug);
+              advance();
+              continue;
+            }
+
+            pushImage({ id: crypto.randomUUID(), prompt, imageDataUrl: json.imageDataUrl });
+            advance();
+          } catch (error: any) {
+             const abort = error?.name === "AbortError";
+             setError(abort ? "Run cancelled" : error?.message || "Request failed");
+             return;
+          }
+        }
+      };
+
+      const parallel = Math.max(1, Math.min(run.speed, RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1]));
+      const workers: Promise<void>[] = [];
+      for (let i = 0; i < parallel; i++) workers.push(worker());
+      await Promise.all(workers).catch(() => undefined);
+
+      setRuns((prev) =>
+        prev.map((item) => {
+          if (item.id !== run.id) return item;
+          if (item.status === "running") return { ...item, status: "done" as RunStatus };
+          return item;
+        })
+      );
   }
 
   return (
@@ -630,6 +715,81 @@ export default function ImageStudioPage() {
           
           {/* Column 1: Configuration */}
           <div className="space-y-6">
+            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Profile</h2>
+                {profilesLoading && <span className="text-[10px] text-slate-400">loading...</span>}
+              </div>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-white">{activeProfile?.name || "Select profile"}</span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">{activeProfile ? activeProfile.role : "Required to generate"}</span>
+                  </div>
+                  <div className={`px-2 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${activeProfile ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-500/30" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-200 border border-amber-200 dark:border-amber-500/30"}`}>
+                    {activeProfile ? "Ready" : "Required"}
+                  </div>
+                </div>
+
+                <select
+                  className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm font-medium text-slate-900 dark:text-slate-100"
+                  value={activeProfileId || ""}
+                  onChange={(e) => {
+                    setActiveProfileId(e.target.value);
+                    localStorage.setItem("ol_active_profile", e.target.value);
+                  }}
+                >
+                  <option value="" disabled>
+                    Select a profile
+                  </option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} - {p.role}
+                    </option>
+                  ))}
+                </select>
+
+                <div className="rounded-lg border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-3 py-2 space-y-2">
+                  <input
+                    className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                    placeholder="Profile name"
+                    value={newProfileName}
+                    onChange={(e) => setNewProfileName(e.target.value)}
+                  />
+                  <div className="grid grid-cols-[1fr_auto] gap-2 items-center">
+                    <select
+                      className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100"
+                      value={newProfileRole}
+                      onChange={(e) => setNewProfileRole(e.target.value as ProfileRole)}
+                    >
+                      {["Graphic Designer", "Catalog Manager", "Video Editor", "Creative Strategist", "Admin"].map((r) => (
+                        <option key={r} value={r}>
+                          {r}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={createProfile}
+                      className="rounded-md bg-slate-900 dark:bg-slate-50 px-3 py-2 text-[11px] font-semibold text-white dark:text-slate-900 shadow-sm hover:bg-slate-800 dark:hover:bg-slate-200 transition"
+                    >
+                      Save
+                    </button>
+                  </div>
+                  {newProfileRole === "Admin" && (
+                    <input
+                      type="password"
+                      className="w-full rounded-md border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                      placeholder="Admin password"
+                      value={adminKey}
+                      onChange={(e) => setAdminKey(e.target.value)}
+                    />
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Profiles are saved to this browser and tied to your usage stats. Admin role requires the passphrase.
+                </p>
+              </div>
+            </div>
              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
                  <div className="mb-4 flex items-center justify-between gap-2">
                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
@@ -847,6 +1007,7 @@ export default function ImageStudioPage() {
                                     });
                                 }
                             }}
+                            profileId={activeProfile?.id || undefined}
                             availableReferences={refSources}
                             selectedReferences={selectedRefs}
                             onUpdateReferences={setSelectedRefs}
@@ -894,6 +1055,10 @@ export default function ImageStudioPage() {
                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ring-1 ring-inset ${statusColor(activeRun.status)}`}>
                                  {activeRun.status}
                              </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                          <span>Profile: <span className="font-semibold text-slate-700 dark:text-slate-200">{activeRun.profileName}</span></span>
+                          <span className="text-slate-400">{activeRun.modelNameDisplay}</span>
                         </div>
                         {activeRun.status === "error" && (
                           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">

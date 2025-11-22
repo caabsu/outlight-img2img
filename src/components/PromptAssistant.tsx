@@ -12,6 +12,7 @@ type PromptAssistantProps = {
   productName?: string;
   requiresReference?: boolean;
   className?: string;
+  profileId?: string;
 };
 
 type KnowledgeBase = {
@@ -34,6 +35,7 @@ export function PromptAssistant({
   productName = "Custom",
   requiresReference = false,
   className = "",
+  profileId,
 }: PromptAssistantProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
@@ -46,12 +48,87 @@ export function PromptAssistant({
   const [generated, setGenerated] = useState<string[]>([]);
   const [source, setSource] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const storageKey = `ol_pa_${profileId || "anon"}`;
 
   useEffect(() => {
     if (isOpen) {
       void fetchKnowledgeBases();
     }
   }, [isOpen]);
+
+  // hydrate from local storage on profile change
+  useEffect(() => {
+    try {
+      const raw = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed.selectedKbId) setSelectedKbId(parsed.selectedKbId);
+        if (typeof parsed.variationCount === "number") setCount(parsed.variationCount);
+        if (Array.isArray(parsed.threadMessages)) setThreadMessages(parsed.threadMessages);
+      } else {
+        setSelectedKbId("");
+        setCount(3);
+        setThreadMessages([]);
+      }
+    } catch {
+      setSelectedKbId("");
+      setCount(3);
+      setThreadMessages([]);
+    }
+  }, [storageKey]);
+
+  // hydrate from server preferences
+  useEffect(() => {
+    if (!profileId) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch(`/api/preferences?profileId=${encodeURIComponent(profileId)}`);
+        const json = await res.json();
+        if (!res.ok) return;
+        if (cancelled) return;
+        const prefs = json.preferences || {};
+        if (prefs.selected_kb_id !== undefined) setSelectedKbId(prefs.selected_kb_id || "");
+        if (typeof prefs.variation_count === "number") setCount(prefs.variation_count);
+        if (Array.isArray(prefs.assistant_thread)) setThreadMessages(prefs.assistant_thread);
+      } catch {
+        // ignore
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  // persist preferences
+  useEffect(() => {
+    const snapshot = {
+      selectedKbId,
+      variationCount: count,
+      threadMessages,
+    };
+    try {
+      if (typeof window !== "undefined") localStorage.setItem(storageKey, JSON.stringify(snapshot));
+    } catch {
+      // ignore
+    }
+
+    if (!profileId) return;
+    const timer = setTimeout(() => {
+      void fetch("/api/preferences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          profileId,
+          selectedKbId,
+          variationCount: count,
+          assistantThread: threadMessages,
+        }),
+      });
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [profileId, selectedKbId, count, threadMessages, storageKey]);
 
   async function fetchKnowledgeBases() {
     try {
