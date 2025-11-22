@@ -62,7 +62,7 @@ type SeedreamOptions = {
 
 type NanoBananaOptions = {
   aspect_ratio?: (typeof NANOBANANA_ASPECT_RATIOS)[number];
-  image_size?: (typeof NANOBANANA_RESOLUTIONS)[number];
+  resolution?: (typeof NANOBANANA_RESOLUTIONS)[number];
 };
 
 const SAFETY_OFF = [
@@ -197,13 +197,7 @@ function extractGeminiImage(json: any): {
 function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: string) {
   // Gemini image endpoint rejects unknown fields; keep config minimal.
   const generationConfig: Record<string, any> = { temperature: 0.6 };
-  const imageGenerationConfig: Record<string, any> = {};
-  if (options?.aspect_ratio) imageGenerationConfig.aspectRatio = options.aspect_ratio;
-  if (options?.image_size && modelId === "nanobanana-3-pro") imageGenerationConfig.imageSize = options.image_size;
-  return {
-    generationConfig,
-    imageGenerationConfig: Object.keys(imageGenerationConfig).length ? imageGenerationConfig : undefined,
-  };
+  return { generationConfig };
 }
 
 /** Single-turn image edit: one or more IMAGES first, then TEXT (v1beta REST) */
@@ -218,7 +212,7 @@ async function callGeminiImageEdit({
   modelId: string;
   options?: PostBody["options"];
 }) {
-  const { generationConfig, imageGenerationConfig } = buildGeminiConfigs(options, modelId);
+  const { generationConfig } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -237,7 +231,6 @@ async function callGeminiImageEdit({
     // DO NOT send "tools" (image_editing) -- not supported on v1beta REST for this model
     safetySettings: SAFETY_OFF,
     generationConfig,
-    ...(imageGenerationConfig ? { imageGenerationConfig } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -250,7 +243,7 @@ async function callGeminiImageEdit({
 }
 
 async function callGeminiTextToImage(text: string, modelId: string, options?: PostBody["options"]) {
-  const { generationConfig, imageGenerationConfig } = buildGeminiConfigs(options, modelId);
+  const { generationConfig } = buildGeminiConfigs(options, modelId);
   const payload = {
     contents: [
       {
@@ -262,7 +255,6 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
     // returns inline image data when omitted, so we can parse it via extractGeminiImage.
     safetySettings: SAFETY_OFF,
     generationConfig,
-    ...(imageGenerationConfig ? { imageGenerationConfig } : {}),
   };
 
   const nbRes = await fetch(getGeminiApiUrl(modelId), {
@@ -327,11 +319,11 @@ export async function POST(req: Request) {
           ? (options.aspect_ratio as NanoBananaOptions["aspect_ratio"])
           : undefined;
       const allowResForModel = allowResolution && model === "nanobanana-3-pro";
-      const image_size =
+      const resolution =
         allowResForModel && options?.image_size && resSet.has(options.image_size)
-          ? (options.image_size as NanoBananaOptions["image_size"])
+          ? (options.image_size as NanoBananaOptions["resolution"])
           : undefined;
-      return { aspect_ratio, image_size };
+      return { aspect_ratio, resolution };
     };
 
     /* -------- Seedream (KIE) -------- */
@@ -429,14 +421,15 @@ export async function POST(req: Request) {
 
       // Nano Banana Pro: route everything through Gemini so image_config (aspect/resolution) is respected.
       if (isPro) {
+        // Prefer KIE for Pro to honor aspect_ratio/resolution; if refs are data URIs, fallback to Gemini without options.
         const nanoOpts = normalizeNano(modelId, true);
-        if (referenceUrls.length > 0) {
+        if (hasDataRefs) {
           const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
           const { nbRes, nbJson } = await callGeminiImageEdit({
             images,
             text: prompt,
             modelId,
-            options: nanoOpts,
+            options: undefined, // avoid image config fields that Gemini rejects
           });
           if (!nbRes.ok) {
             const msg =
@@ -456,24 +449,75 @@ export async function POST(req: Request) {
           return NextResponse.json({ imageDataUrl: dataUrl || url });
         }
 
-        // No references: text-to-image
-        const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, nanoOpts);
-        if (!nbRes.ok) {
-          const msg =
-            nbJson?.error?.message ||
-            nbJson?.error?.status ||
-            nbJson?.error?.code ||
-            "Nano Banana Pro generation failed";
-          return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
+        // KIE path for http(s) refs or text-to-image
+        const nanoModel = referenceUrls.length > 0 ? "nano-banana-pro" : "nano-banana-pro";
+        const inputPayload: Record<string, any> = {
+          prompt,
+          output_format: "png",
+        };
+        if (httpRefs.length) inputPayload.image_input = httpRefs;
+        if (nanoOpts.aspect_ratio) inputPayload.aspect_ratio = nanoOpts.aspect_ratio;
+        if (nanoOpts.resolution) inputPayload.resolution = nanoOpts.resolution;
+
+        const payload = {
+          model: nanoModel,
+          callBackUrl: "",
+          input: inputPayload,
+        };
+
+        const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
+          body: JSON.stringify(payload),
+        });
+        const createJson = await createRes.json().catch(() => ({}));
+        if (!createRes.ok || createJson?.code !== 200) {
+          const msg = createJson?.message || createJson?.msg || "Nano Banana Pro createTask failed";
+          console.error("Nano Banana Pro createTask error", { status: createRes.status, body: createJson });
+          return NextResponse.json({ error: msg, debug: createJson || null }, { status: 502 });
         }
-        const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
-        if (!dataUrl && !url) {
-          return NextResponse.json(
-            { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
-            { status: 502 }
-          );
+        const taskId: string | undefined = createJson?.data?.taskId;
+        if (!taskId) return NextResponse.json({ error: "Nano Banana Pro taskId missing" }, { status: 502 });
+
+        const started = Date.now();
+        const MAX_MS = 180_000;
+        let resultUrl: string | null = null;
+        let lastState = "waiting";
+
+        while (Date.now() - started < MAX_MS) {
+          await new Promise((r) => setTimeout(r, 2000));
+          const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+            headers: { Authorization: `Bearer ${KIE_KEY}` },
+          });
+          const qJson = await qRes.json().catch(() => ({}));
+          if (!qRes.ok || qJson?.code !== 200) {
+            const msg = qJson?.message || qJson?.msg || "Nano Banana Pro query failed";
+            console.error("Nano Banana Pro recordInfo error", { status: qRes.status, body: qJson });
+            return NextResponse.json({ error: msg, debug: qJson || null }, { status: 502 });
+          }
+
+          lastState = qJson?.data?.state as string;
+          if (lastState === "success") {
+            try {
+              const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
+              const urls: string[] = parsed?.resultUrls || [];
+              if (!urls.length) return NextResponse.json({ error: "Nano Banana Pro returned no result URLs" }, { status: 502 });
+              resultUrl = urls[0];
+              break;
+            } catch {
+              return NextResponse.json({ error: "Malformed Nano Banana Pro resultJson" }, { status: 502 });
+            }
+          }
+          if (lastState === "fail") {
+            const failMsg = qJson?.data?.failMsg || "Nano Banana Pro reported failure";
+            return NextResponse.json({ error: failMsg }, { status: 502 });
+          }
         }
-        return NextResponse.json({ imageDataUrl: dataUrl || url });
+
+        if (!resultUrl) {
+          return NextResponse.json({ error: `Nano Banana Pro generation timed out (last state: ${lastState})` }, { status: 504 });
+        }
+        return NextResponse.json({ imageDataUrl: resultUrl });
       }
 
       // If any refs are data: URIs/uploads, fall back to direct Gemini with inline_data support.
