@@ -173,6 +173,7 @@ export default function ImageStudioPage() {
   const [adminUnlocks, setAdminUnlocks] = useState<Set<string>>(new Set());
   const router = useRouter();
   const [profileRestored, setProfileRestored] = useState(false);
+  const [storedProfileId, setStoredProfileId] = useState<string | null>(null);
   
   // Product Creation State
   // const [newProduct, setNewProduct] = useState({ name: "", image_url: "" }); // Removed
@@ -272,9 +273,11 @@ export default function ImageStudioPage() {
   // bootstrap client + profiles
   useEffect(() => {
     const stored = typeof window !== "undefined" ? localStorage.getItem("ol_client_id") : null;
+    const storedProfile = typeof window !== "undefined" ? localStorage.getItem("ol_active_profile") : null;
     const id = stored || crypto.randomUUID();
     if (!stored) localStorage.setItem("ol_client_id", id);
     setClientId(id);
+    if (storedProfile) setStoredProfileId(storedProfile);
   }, []);
 
   useEffect(() => {
@@ -283,24 +286,33 @@ export default function ImageStudioPage() {
   }, [clientId]);
 
   useEffect(() => {
-    if (!profiles.length) return;
-    const stored = typeof window !== "undefined" ? localStorage.getItem("ol_active_profile") : null;
+    if (!profiles.length) {
+      setProfileRestored(true);
+      return;
+    }
+    const stored = storedProfileId || (typeof window !== "undefined" ? localStorage.getItem("ol_active_profile") : null);
     const found = stored ? profiles.find((p) => p.id === stored) : null;
     setActiveProfileId(found ? found.id : profiles[0].id);
     setProfileRestored(true);
-  }, [profiles]);
+  }, [profiles, storedProfileId]);
 
   useEffect(() => {
     if (activeProfileId && typeof window !== "undefined") {
       localStorage.setItem("ol_active_profile", activeProfileId);
+      setStoredProfileId(activeProfileId);
     }
   }, [activeProfileId]);
 
   useEffect(() => {
-    if (!profilesLoading && profiles.length && profileRestored && !activeProfileId) {
+    if (
+      !profilesLoading &&
+      profileRestored &&
+      !activeProfileId &&
+      !storedProfileId
+    ) {
       router.push("/profiles");
     }
-  }, [profilesLoading, profiles, activeProfileId, profileRestored, router]);
+  }, [profilesLoading, profileRestored, activeProfileId, storedProfileId, router]);
 
   async function loadProducts() {
     try {
@@ -322,7 +334,6 @@ export default function ImageStudioPage() {
       if (res.ok) setProfiles(json.profiles || []);
     } finally {
       setProfilesLoading(false);
-      setProfileRestored(true);
     }
   }
 
