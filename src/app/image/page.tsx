@@ -1325,7 +1325,6 @@ export default function ImageStudioPage() {
           {saveToast.message}
         </div>
       )}
-    </div>
       <ProfileBadge
         activeProfile={activeProfile}
         onSelect={(id) => setActiveProfileId(id)}
