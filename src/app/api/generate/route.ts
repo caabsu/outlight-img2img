@@ -559,7 +559,7 @@ export async function POST(req: Request) {
       if (httpRefs.length) inputPayload.image_urls = httpRefs;
       const ar = nanoOpts.aspect_ratio || undefined;
       if (ar) inputPayload.aspect_ratio = ar;
-      if (nanoOpts.image_size) inputPayload.image_size = nanoOpts.image_size;
+      if (nanoOpts.resolution) inputPayload.resolution = nanoOpts.resolution;
 
       const payload = {
         model: nanoModel,
