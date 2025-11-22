@@ -988,9 +988,11 @@ export default function ImageStudioPage() {
                         {activeRun.status === "running" && (
                           <button
                             onClick={() => cancelRun(activeRun.id)}
-                            className="text-xs font-semibold text-rose-600 dark:text-rose-400 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-500/40 bg-rose-50/70 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition"
+                            className="flex items-center gap-1 rounded-full border border-rose-200 dark:border-rose-500/40 bg-rose-50/60 dark:bg-rose-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-500/20 transition"
+                            title="Cancel this run"
                           >
-                            Cancel run
+                            <span className="text-sm leading-none">&times;</span>
+                            <span>Cancel</span>
                           </button>
                         )}
                         <button onClick={() => zipRun(activeRun, false)} className="text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">Download All Zip</button>
