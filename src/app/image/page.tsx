@@ -1362,8 +1362,8 @@ export default function ImageStudioPage() {
           if (!p) return false;
           if (p.role !== "Admin") return true;
           if (adminUnlocks.has(id)) return true;
-          const entered = window.prompt("Enter admin password (gmltn123) to select this profile");
-          if (entered === "gmltn123") {
+          const entered = window.prompt("Enter admin password to select this profile");
+          if (entered && entered === (process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "")) {
             setAdminUnlocks((prev) => new Set([...prev, id]));
             return true;
           }
@@ -1552,7 +1552,7 @@ function AddProfileModal({
             <input
               type="password"
               className="w-full rounded-md border border-amber-200 dark:border-amber-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-              placeholder="Admin password (gmltn123)"
+              placeholder="Admin password"
               value={adminKey}
               onChange={(e) => setAdminKey(e.target.value)}
             />
