@@ -137,19 +137,33 @@ function generateFallbackPrompts(instructions: string, knowledge: string, count:
 
 // --- Main Handler ---
 
+type Attachment = {
+  type: "image" | "video";
+  url: string;
+  mimeType: string;
+  name?: string;
+};
+
+function parseDataUrl(dataUrl: string): { mime: string; base64: string } | null {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) return null;
+  return { mime: match[1], base64: match[2] };
+}
+
 export async function POST(req: Request) {
   try {
-    const { knowledge, instructions, count, references = [], context, thread = [] } = await req.json();
+    const { knowledge, instructions, count, references = [], attachments = [], context, thread = [] } = await req.json();
     // Allow up to 20 prompts
     const promptCount = Math.max(1, Math.min(20, Number(count) || 3));
     // Temporarily ignore references for prompt assistant to avoid hallucinating product names
     const referenceImages: string[] = [];
     const safeThread = Array.isArray(thread)
       ? thread
-          .map((t) => (t && typeof t === "object" ? { role: t.role, content: t.content } : null))
+          .map((t) => (t && typeof t === "object" ? { role: t.role, content: t.content, attachments: t.attachments } : null))
           .filter((t) => (t?.role === "user" || t?.role === "assistant") && typeof t?.content === "string") as {
           role: "user" | "assistant";
           content: string;
+          attachments?: Attachment[];
         }[]
       : [];
     const contextNote = [
@@ -166,6 +180,23 @@ export async function POST(req: Request) {
 
     const parsedReferences: { mime: string; base64: string; asDataUrl: string }[] = [];
 
+    // Parse attachments from the current message
+    const parsedAttachments: { type: "image" | "video"; mime: string; base64: string }[] = [];
+    if (Array.isArray(attachments)) {
+      for (const att of attachments as Attachment[]) {
+        if (att.url && att.url.startsWith("data:")) {
+          const parsed = parseDataUrl(att.url);
+          if (parsed) {
+            parsedAttachments.push({
+              type: att.type,
+              mime: parsed.mime,
+              base64: parsed.base64,
+            });
+          }
+        }
+      }
+    }
+
     // 1. Google Gemini
     if (process.env.GEMINI_API_KEY) {
       const modelsToTry = ["gemini-3-pro-preview", "gemini-2.5-flash"];
@@ -176,6 +207,11 @@ export async function POST(req: Request) {
           const model = genAI.getGenerativeModel({ model: modelName });
 
           const historyText = safeThread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
+
+          const hasAttachments = parsedAttachments.length > 0;
+          const attachmentNote = hasAttachments
+            ? `${parsedAttachments.length} image/video file(s) attached. Analyze these visuals and incorporate their content, style, colors, composition, and subject matter into the prompts.`
+            : "None provided.";
 
           const textPrompt = `You are a professional Prompt Engineer for commercial image generation.
 
@@ -191,8 +227,8 @@ ${contextNote || "N/A"}
 CONVERSATION HISTORY (keep consistent):
 ${historyText || "None"}
 
-REFERENCE IMAGES:
-None provided (reference-driven prompting disabled here).
+ATTACHED MEDIA:
+${attachmentNote}
 
 TASK:
 Generate ${promptCount} unique, highly descriptive, and detailed image prompts.
@@ -202,9 +238,22 @@ REQUIREMENTS:
 2. EXPAND: Add textures, lighting, atmosphere, and composition. Make it "visual" and "evocative".
 3. VARIANCE: Each prompt must have a distinct setting or lighting variation while staying true to the core request.
 4. INTEGRATION: Apply the tone and style from the Knowledge Base implicitly.
-5. FORMAT: Return strictly a JSON array of strings.`;
+5. MEDIA ANALYSIS: If images/videos are attached, carefully analyze them and incorporate relevant visual elements, style, mood, colors, and subjects into the prompts.
+6. FORMAT: Return strictly a JSON array of strings.`;
 
           const parts: any[] = [{ text: textPrompt }];
+
+          // Add parsed attachments (images and videos) to the request
+          parsedAttachments.forEach((att) =>
+            parts.push({
+              inlineData: {
+                data: att.base64,
+                mimeType: att.mime,
+              },
+            })
+          );
+
+          // Also add any parsed references (legacy support)
           parsedReferences.forEach((img) =>
             parts.push({
               inlineData: {
@@ -233,10 +282,11 @@ REQUIREMENTS:
               instructions,
               knowledge,
               references: parsedReferences,
+              attachments: parsedAttachments,
               thread: safeThread,
             });
-            return NextResponse.json({ 
-              prompts: json.slice(0, promptCount), 
+            return NextResponse.json({
+              prompts: json.slice(0, promptCount),
               source: `Gemini (${modelName})`,
               assistantReply: reply,
             });
@@ -296,6 +346,7 @@ Return ONLY a JSON array of strings.`;
             instructions,
             knowledge,
             references: parsedReferences,
+            attachments: parsedAttachments,
             thread: safeThread,
           });
           return NextResponse.json({ prompts: parsed, source: "GPT-4 Turbo", assistantReply: reply });
@@ -307,14 +358,16 @@ Return ONLY a JSON array of strings.`;
 
     // 3. Fallback
     const referenceHint = parsedReferences.length > 0 ? `There are ${parsedReferences.length} reference images. Align prompts to the depicted product.` : "";
+    const attachmentHint = parsedAttachments.length > 0 ? `There are ${parsedAttachments.length} attached media files.` : "";
     const historyHint = threadNote ? `Thread: ${threadNote}` : "";
-    const prompts = generateFallbackPrompts(`${instructions} ${referenceHint} ${historyHint}`.trim(), knowledge || "", promptCount);
+    const prompts = generateFallbackPrompts(`${instructions} ${referenceHint} ${attachmentHint} ${historyHint}`.trim(), knowledge || "", promptCount);
     const assistantReply = await makeAssistantReply({
       provider: "local",
       prompts,
       instructions,
       knowledge,
       references: parsedReferences,
+      attachments: parsedAttachments,
       thread: safeThread,
     });
     // Artificial delay to simulate "work" if it's too fast (helps UX perception sometimes)
@@ -332,6 +385,7 @@ Return ONLY a JSON array of strings.`;
   }
 }
 type ParsedRef = { mime: string; base64: string; asDataUrl: string };
+type ParsedAttachment = { type: "image" | "video"; mime: string; base64: string };
 
 async function makeAssistantReply({
   provider,
@@ -339,6 +393,7 @@ async function makeAssistantReply({
   instructions,
   knowledge,
   references,
+  attachments = [],
   thread,
 }: {
   provider: "gemini" | "openai" | "local";
@@ -346,6 +401,7 @@ async function makeAssistantReply({
   instructions: string;
   knowledge: string;
   references: ParsedRef[];
+  attachments?: ParsedAttachment[];
   thread: { role: "user" | "assistant"; content: string }[];
 }) {
   const shortSystem = `You are a concise creative prompt assistant. Respond in 1–2 sentences max. Confirm that prompts were produced and offer a helpful next step (e.g., tweak lighting, angle, or styling). Never list the prompts, never enumerate or bullet, and do not mention model names or providers. Keep it short and direct.`;
@@ -409,7 +465,9 @@ async function makeAssistantReply({
   }
 
   const refNote = references.length ? ` I used ${references.length} reference image(s).` : "";
-  if (prompts.length === 0) return sanitizeReply(`I couldn’t produce prompts this round.${refNote} Suggest a tweak or add another reference.`);
-  if (prompts.length < 3) return sanitizeReply(`Drafted ${prompts.length} focused prompts.${refNote} Want me to push a new angle or adjust lighting?`);
-  return sanitizeReply(`Generated a small batch of prompts.${refNote} Want them tighter on style, camera, or lighting?`);
+  const attNote = attachments.length ? ` I analyzed ${attachments.length} attached file(s).` : "";
+  const mediaNote = refNote || attNote ? `${refNote}${attNote}` : "";
+  if (prompts.length === 0) return sanitizeReply(`I couldn't produce prompts this round.${mediaNote} Suggest a tweak or add another reference.`);
+  if (prompts.length < 3) return sanitizeReply(`Drafted ${prompts.length} focused prompts.${mediaNote} Want me to push a new angle or adjust lighting?`);
+  return sanitizeReply(`Generated a small batch of prompts.${mediaNote} Want them tighter on style, camera, or lighting?`);
 }

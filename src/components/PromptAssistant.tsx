@@ -21,9 +21,17 @@ type KnowledgeBase = {
   content: string;
 };
 
+type Attachment = {
+  type: "image" | "video";
+  url: string; // data URL or regular URL
+  mimeType: string;
+  name?: string;
+};
+
 type ThreadMessage = {
   role: "user" | "assistant";
   content: string;
+  attachments?: Attachment[];
 };
 
 export function PromptAssistant({
@@ -48,7 +56,36 @@ export function PromptAssistant({
   const [generated, setGenerated] = useState<string[]>([]);
   const [source, setSource] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const storageKey = `ol_pa_${profileId || "anon"}`;
+
+  // Convert files to data URLs and create attachment objects
+  async function filesToAttachments(files: FileList | null): Promise<Attachment[]> {
+    if (!files || files.length === 0) return [];
+    const results: Attachment[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const isImage = file.type.startsWith("image/");
+      const isVideo = file.type.startsWith("video/");
+      if (!isImage && !isVideo) continue;
+      const url = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(file);
+      });
+      results.push({
+        type: isImage ? "image" : "video",
+        url,
+        mimeType: file.type,
+        name: file.name,
+      });
+    }
+    return results;
+  }
+
+  function removeAttachment(index: number) {
+    setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }
 
   useEffect(() => {
     if (isOpen) {
@@ -156,22 +193,30 @@ export function PromptAssistant({
 
   async function sendMessage() {
     const text = message.trim();
-    if (!text) return;
+    if (!text && attachments.length === 0) return;
     setLoading(true);
     const kb = knowledgeBases.find((k) => k.id === selectedKbId);
     const knowledgeContent = kb ? kb.content : "";
+
+    const currentAttachments = [...attachments];
+    const userMessage: ThreadMessage = {
+      role: "user",
+      content: text,
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+    };
 
     const payload = {
       knowledge: knowledgeContent,
       instructions: text,
       count,
       references: selectedReferences,
+      attachments: currentAttachments,
       context: {
         model: modelLabel,
         product: productName,
         requiresReference,
       },
-      thread: [...threadMessages, { role: "user", content: text }],
+      thread: [...threadMessages, userMessage],
     };
 
     try {
@@ -187,16 +232,17 @@ export function PromptAssistant({
         setSource(json.source || null);
         const responseCopy = json.assistantReply
           || (prompts.length === 0
-            ? "I couldn’t produce prompts this round—want to try a different request or add a reference?"
+            ? "I couldn't produce prompts this round—want to try a different request or add a reference?"
             : prompts.length < 3
-            ? `Got it. I’ve drafted ${prompts.length} focused prompts. Want me to push toward a new angle or adjust lighting?`
-            : `All set. I’ve generated a small batch of prompts covering varied scenes. Need me to tighten style, lighting, or camera notes?`);
+            ? `Got it. I've drafted ${prompts.length} focused prompts. Want me to push toward a new angle or adjust lighting?`
+            : `All set. I've generated a small batch of prompts covering varied scenes. Need me to tighten style, lighting, or camera notes?`);
         setThreadMessages((prev) => [
           ...prev,
-          { role: "user", content: text },
+          userMessage,
           { role: "assistant", content: responseCopy },
         ]);
         setMessage("");
+        setAttachments([]);
       }
     } catch (e) {
       console.error("Failed to generate prompts", e);
@@ -314,12 +360,85 @@ export function PromptAssistant({
                         <span className="block text-[11px] font-semibold uppercase tracking-wide mb-1 text-slate-500 dark:text-slate-400">
                           {msg.role === "user" ? "You" : "Assistant"}
                         </span>
+                        {msg.attachments && msg.attachments.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {msg.attachments.map((att, attIdx) => (
+                              <div key={attIdx} className="relative">
+                                {att.type === "image" ? (
+                                  <img
+                                    src={att.url}
+                                    alt={att.name || "attachment"}
+                                    className="h-20 w-20 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+                                  />
+                                ) : (
+                                  <div className="h-20 w-20 flex flex-col items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-500">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+                                    </svg>
+                                    <span className="text-[10px] text-slate-500 mt-1 truncate max-w-[70px]">{att.name || "Video"}</span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                         <span className="whitespace-pre-wrap break-words">{msg.content}</span>
                       </div>
                     ))}
                   </div>
 
+                  {/* Attachment previews */}
+                  {attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                      {attachments.map((att, idx) => (
+                        <div key={idx} className="relative group">
+                          {att.type === "image" ? (
+                            <img
+                              src={att.url}
+                              alt={att.name || "attachment"}
+                              className="h-16 w-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+                            />
+                          ) : (
+                            <div className="h-16 w-16 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-500">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+                              </svg>
+                            </div>
+                          )}
+                          <button
+                            onClick={() => removeAttachment(idx)}
+                            className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center rounded-full bg-rose-500 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
+                    <input
+                      type="file"
+                      id="chat-file-input"
+                      className="hidden"
+                      multiple
+                      accept="image/*,video/*"
+                      onChange={async (e) => {
+                        const newAttachments = await filesToAttachments(e.target.files);
+                        setAttachments((prev) => [...prev, ...newAttachments]);
+                        e.target.value = "";
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById("chat-file-input")?.click()}
+                      className="rounded-lg border border-slate-200 dark:border-slate-700 p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-300 transition"
+                      title="Attach image or video"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
+                      </svg>
+                    </button>
                     <textarea
                       rows={2}
                       className="flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:border-indigo-500 focus:ring-indigo-500 resize-none"
@@ -335,7 +454,7 @@ export function PromptAssistant({
                     />
                     <button
                       onClick={sendMessage}
-                      disabled={loading || (!message.trim() && threadMessages.length === 0)}
+                      disabled={loading || (!message.trim() && attachments.length === 0)}
                       className="rounded-lg bg-indigo-600 text-white px-4 py-2 text-sm font-semibold shadow-sm hover:bg-indigo-500 disabled:opacity-50"
                     >
                       {loading ? "Working..." : "Send"}
