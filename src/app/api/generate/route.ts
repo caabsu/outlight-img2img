@@ -205,8 +205,14 @@ function extractGeminiImage(json: any): {
 }
 
 function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: string) {
-  // Gemini image endpoint rejects unknown fields; keep config minimal.
+  // Gemini image endpoint accepts aspectRatio in generationConfig for image generation
   const generationConfig: Record<string, any> = { temperature: 0.6 };
+
+  // Add aspectRatio for Nano Banana Pro if specified
+  if (modelId === "nanobanana-3-pro" && options?.aspect_ratio) {
+    generationConfig.aspectRatio = options.aspect_ratio;
+  }
+
   return { generationConfig };
 }
 
@@ -433,15 +439,38 @@ export async function POST(req: Request) {
 
       // Nano Banana Pro: route everything through Gemini so image_config (aspect/resolution) is respected.
       if (isPro) {
-        // Prefer KIE for Pro to honor aspect_ratio/resolution; if refs are data URIs, fallback to Gemini without options.
+        // Prefer KIE for Pro to honor aspect_ratio/resolution; if refs are data URIs, use Gemini with aspectRatio in generationConfig.
         const nanoOpts = normalizeNano(modelId, true);
+
+        // For text-to-image (no reference images), use Gemini directly to ensure aspectRatio is respected
+        if (referenceUrls.length === 0) {
+          const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
+          if (!nbRes.ok) {
+            const msg =
+              nbJson?.error?.message ||
+              nbJson?.error?.status ||
+              nbJson?.error?.code ||
+              "Nano Banana Pro text-to-image failed";
+            return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
+          }
+          const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
+          if (!dataUrl && !url) {
+            return NextResponse.json(
+              { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
+              { status: 502 }
+            );
+          }
+          await logUsage(profileId, modelId);
+          return NextResponse.json({ imageDataUrl: dataUrl || url });
+        }
+
         if (hasDataRefs) {
           const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
           const { nbRes, nbJson } = await callGeminiImageEdit({
             images,
             text: prompt,
             modelId,
-            options: undefined, // avoid image config fields that Gemini rejects
+            options, // pass options so aspectRatio is included in generationConfig
           });
           if (!nbRes.ok) {
             const msg =
