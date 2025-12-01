@@ -205,13 +205,9 @@ function extractGeminiImage(json: any): {
 }
 
 function buildGeminiConfigs(options: PostBody["options"] | undefined, modelId: string) {
-  // Gemini image endpoint accepts aspectRatio in generationConfig for image generation
+  // Gemini generateContent endpoint does NOT support aspectRatio in generationConfig
+  // Aspect ratio is only supported through the KIE API, not direct Gemini REST calls
   const generationConfig: Record<string, any> = { temperature: 0.6 };
-
-  // Add aspectRatio for Nano Banana Pro if specified
-  if (modelId === "nanobanana-3-pro" && options?.aspect_ratio) {
-    generationConfig.aspectRatio = options.aspect_ratio;
-  }
 
   return { generationConfig };
 }
@@ -437,40 +433,19 @@ export async function POST(req: Request) {
       const hasDataRefs = referenceUrls.length > httpRefs.length;
       const isPro = modelId === "nanobanana-3-pro";
 
-      // Nano Banana Pro: route everything through Gemini so image_config (aspect/resolution) is respected.
+      // Nano Banana Pro: prefer KIE for aspect_ratio/resolution support; fall back to Gemini for data URIs.
       if (isPro) {
-        // Prefer KIE for Pro to honor aspect_ratio/resolution; if refs are data URIs, use Gemini with aspectRatio in generationConfig.
+        // KIE supports aspect_ratio/resolution; Gemini does not. Use Gemini only for data URI refs.
         const nanoOpts = normalizeNano(modelId, true);
 
-        // For text-to-image (no reference images), use Gemini directly to ensure aspectRatio is respected
-        if (referenceUrls.length === 0) {
-          const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
-          if (!nbRes.ok) {
-            const msg =
-              nbJson?.error?.message ||
-              nbJson?.error?.status ||
-              nbJson?.error?.code ||
-              "Nano Banana Pro text-to-image failed";
-            return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
-          }
-          const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
-          if (!dataUrl && !url) {
-            return NextResponse.json(
-              { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
-              { status: 502 }
-            );
-          }
-          await logUsage(profileId, modelId);
-          return NextResponse.json({ imageDataUrl: dataUrl || url });
-        }
-
+        // For data URI refs, use Gemini directly (KIE requires HTTP URLs)
         if (hasDataRefs) {
           const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
           const { nbRes, nbJson } = await callGeminiImageEdit({
             images,
             text: prompt,
             modelId,
-            options, // pass options so aspectRatio is included in generationConfig
+            options,
           });
           if (!nbRes.ok) {
             const msg =
