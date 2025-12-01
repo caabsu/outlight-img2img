@@ -433,10 +433,31 @@ export async function POST(req: Request) {
       const hasDataRefs = referenceUrls.length > httpRefs.length;
       const isPro = modelId === "nanobanana-3-pro";
 
-      // Nano Banana Pro: prefer KIE for aspect_ratio/resolution support; fall back to Gemini for data URIs.
+      // Nano Banana Pro: route through Gemini for text-to-image and data URIs; use KIE for HTTP refs (aspect_ratio support).
       if (isPro) {
-        // KIE supports aspect_ratio/resolution; Gemini does not. Use Gemini only for data URI refs.
         const nanoOpts = normalizeNano(modelId, true);
+
+        // For text-to-image (no reference images), use Gemini directly
+        if (referenceUrls.length === 0) {
+          const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
+          if (!nbRes.ok) {
+            const msg =
+              nbJson?.error?.message ||
+              nbJson?.error?.status ||
+              nbJson?.error?.code ||
+              "Nano Banana Pro text-to-image failed";
+            return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
+          }
+          const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
+          if (!dataUrl && !url) {
+            return NextResponse.json(
+              { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
+              { status: 502 }
+            );
+          }
+          await logUsage(profileId, modelId);
+          return NextResponse.json({ imageDataUrl: dataUrl || url });
+        }
 
         // For data URI refs, use Gemini directly (KIE requires HTTP URLs)
         if (hasDataRefs) {
