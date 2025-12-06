@@ -860,7 +860,7 @@ export default function ImageStudioPage() {
                     </div>
                   </div>
                   <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    Seedream 4.5 generates images from text. Basic outputs 2K, High outputs 4K resolution.
+                    <span className="font-medium">Auto-mode:</span> Text-to-image when no reference selected, Edit mode when reference image(s) added. Basic = 2K, High = 4K.
                   </p>
                 </div>
               )}

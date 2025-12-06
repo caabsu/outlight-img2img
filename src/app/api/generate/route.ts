@@ -351,7 +351,7 @@ export async function POST(req: Request) {
       return { aspect_ratio, resolution };
     };
 
-    /* -------- Seedream 4.5 Text-to-Image (KIE) -------- */
+    /* -------- Seedream 4.5 (auto-switch: text-to-image or edit) -------- */
     if (isSeedream45) {
       if (!KIE_KEY) return NextResponse.json({ error: "Seedream API key missing" }, { status: 500 });
 
@@ -365,15 +365,43 @@ export async function POST(req: Request) {
         ? options!.quality!
         : "basic";
 
-      const payload = {
-        model: "seedream/4.5-text-to-image",
-        callBackUrl: "",
-        input: {
-          prompt,
-          aspect_ratio,
-          quality,
-        },
-      };
+      // Determine mode based on whether reference images are provided
+      const hasReferences = referenceUrls.length > 0;
+      const useEditMode = hasReferences;
+
+      // Edit mode requires HTTP/HTTPS URLs (not data: URIs)
+      if (useEditMode) {
+        const badUrl = referenceUrls.find((u) => !/^https?:\/\//i.test(u));
+        if (badUrl) {
+          return NextResponse.json(
+            { error: "Seedream 4.5 Edit requires public HTTP/HTTPS URLs for reference images (uploaded images not supported)" },
+            { status: 400 }
+          );
+        }
+      }
+
+      const payload = useEditMode
+        ? {
+            model: "seedream/4.5-edit",
+            callBackUrl: "",
+            input: {
+              prompt,
+              image_urls: referenceUrls,
+              aspect_ratio,
+              quality,
+            },
+          }
+        : {
+            model: "seedream/4.5-text-to-image",
+            callBackUrl: "",
+            input: {
+              prompt,
+              aspect_ratio,
+              quality,
+            },
+          };
+
+      const modeLabel = useEditMode ? "Seedream 4.5 Edit" : "Seedream 4.5";
 
       // 1) create task
       const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
@@ -383,11 +411,11 @@ export async function POST(req: Request) {
       });
       const createJson = await createRes.json().catch(() => ({}));
       if (!createRes.ok || createJson?.code !== 200) {
-        const msg = createJson?.message || createJson?.msg || "Seedream 4.5 createTask failed";
+        const msg = createJson?.message || createJson?.msg || `${modeLabel} createTask failed`;
         return NextResponse.json({ error: msg }, { status: 502 });
       }
       const taskId: string | undefined = createJson?.data?.taskId;
-      if (!taskId) return NextResponse.json({ error: "Seedream 4.5 taskId missing" }, { status: 502 });
+      if (!taskId) return NextResponse.json({ error: `${modeLabel} taskId missing` }, { status: 502 });
 
       // 2) poll recordInfo
       const started = Date.now();
@@ -402,7 +430,7 @@ export async function POST(req: Request) {
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
-          const msg = qJson?.message || qJson?.msg || "Seedream 4.5 query failed";
+          const msg = qJson?.message || qJson?.msg || `${modeLabel} query failed`;
           return NextResponse.json({ error: msg }, { status: 502 });
         }
 
@@ -411,21 +439,21 @@ export async function POST(req: Request) {
           try {
             const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
             const urls: string[] = parsed?.resultUrls || [];
-            if (!urls.length) return NextResponse.json({ error: "Seedream 4.5 returned no result URLs" }, { status: 502 });
+            if (!urls.length) return NextResponse.json({ error: `${modeLabel} returned no result URLs` }, { status: 502 });
             resultUrl = urls[0];
             break;
           } catch {
-            return NextResponse.json({ error: "Malformed Seedream 4.5 resultJson" }, { status: 502 });
+            return NextResponse.json({ error: `Malformed ${modeLabel} resultJson` }, { status: 502 });
           }
         }
         if (lastState === "fail") {
-          const failMsg = qJson?.data?.failMsg || "Seedream 4.5 reported failure";
+          const failMsg = qJson?.data?.failMsg || `${modeLabel} reported failure`;
           return NextResponse.json({ error: failMsg }, { status: 502 });
         }
       }
 
       if (!resultUrl) {
-        return NextResponse.json({ error: `Seedream 4.5 generation timed out (last state: ${lastState})` }, { status: 504 });
+        return NextResponse.json({ error: `${modeLabel} generation timed out (last state: ${lastState})` }, { status: 504 });
       }
       await logUsage(profileId, modelId);
       return NextResponse.json({ imageDataUrl: resultUrl });
