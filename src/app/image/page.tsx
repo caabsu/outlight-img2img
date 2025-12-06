@@ -16,8 +16,340 @@ import {
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
 
-type Product = { id: string; name: string; slug: string; image_url: string };
+type Product = {
+  id: string;
+  name: string;
+  slug: string;
+  image_url: string;
+  shopify_id?: string | null;
+  shopify_vendor?: string | null;
+  shopify_product_type?: string | null;
+  shopify_images?: string[] | null;
+};
 type GenImage = { id: string; prompt: string; imageDataUrl: string };
+type ProductViewMode = "grid" | "compact" | "list";
+
+// Product Selector Modal Component
+function ProductSelectorModal({
+  products,
+  onSelect,
+  onClose,
+  searchQuery,
+  setSearchQuery,
+}: {
+  products: Product[];
+  onSelect: (imageUrl: string) => void;
+  onClose: () => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+}) {
+  const [viewMode, setViewMode] = useState<ProductViewMode>("grid");
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [expandedProduct, setExpandedProduct] = useState<Product | null>(null);
+
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    const q = searchQuery.toLowerCase();
+    return products.filter(
+      (p) =>
+        p.name?.toLowerCase().includes(q) ||
+        p.slug?.toLowerCase().includes(q) ||
+        p.shopify_vendor?.toLowerCase().includes(q) ||
+        p.shopify_product_type?.toLowerCase().includes(q)
+    );
+  }, [products, searchQuery]);
+
+  const handleSelectImage = (imageUrl: string) => {
+    onSelect(imageUrl);
+    setSearchQuery("");
+  };
+
+  const handleAddMultiple = () => {
+    selectedImages.forEach((url) => onSelect(url));
+    setSelectedImages([]);
+    onClose();
+  };
+
+  const toggleImageSelection = (imageUrl: string) => {
+    setSelectedImages((prev) =>
+      prev.includes(imageUrl) ? prev.filter((u) => u !== imageUrl) : [...prev, imageUrl]
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-5xl flex flex-col max-h-[90vh] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/10 dark:ring-slate-50/10 overflow-hidden">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <div className="flex items-center gap-4 flex-1">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+              Product Library
+            </h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+              {filteredProducts.length} products
+            </span>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-2 mr-4">
+            <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  viewMode === "grid"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+                title="Grid view"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v2.5A2.25 2.25 0 004.25 9h2.5A2.25 2.25 0 009 6.75v-2.5A2.25 2.25 0 006.75 2h-2.5zm0 9A2.25 2.25 0 002 13.25v2.5A2.25 2.25 0 004.25 18h2.5A2.25 2.25 0 009 15.75v-2.5A2.25 2.25 0 006.75 11h-2.5zm9-9A2.25 2.25 0 0011 4.25v2.5A2.25 2.25 0 0013.25 9h2.5A2.25 2.25 0 0018 6.75v-2.5A2.25 2.25 0 0015.75 2h-2.5zm0 9A2.25 2.25 0 0011 13.25v2.5A2.25 2.25 0 0013.25 18h2.5A2.25 2.25 0 0018 15.75v-2.5A2.25 2.25 0 0015.75 11h-2.5z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode("compact")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  viewMode === "compact"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+                title="Compact view"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v2.5A2.25 2.25 0 004.25 9h2.5A2.25 2.25 0 009 6.75v-2.5A2.25 2.25 0 006.75 2h-2.5zm0 9A2.25 2.25 0 002 13.25v2.5A2.25 2.25 0 004.25 18h2.5A2.25 2.25 0 009 15.75v-2.5A2.25 2.25 0 006.75 11h-2.5zM11 4.5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 0111 4.5zm0 4a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 0111 8.5zm0 5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5a.75.75 0 01-.75-.75z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  viewMode === "list"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+                title="List view"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+          <div className="relative max-w-md">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400">
+              <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name, vendor, or type..."
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white pl-10 pr-4 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400"
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Multi-select action bar */}
+        {selectedImages.length > 0 && (
+          <div className="px-6 py-2 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/30 flex items-center justify-between">
+            <span className="text-sm text-indigo-700 dark:text-indigo-300">
+              {selectedImages.length} image{selectedImages.length > 1 ? "s" : ""} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedImages([])}
+                className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleAddMultiple}
+                className="bg-indigo-600 text-white text-xs font-medium px-3 py-1 rounded-md hover:bg-indigo-700 transition"
+              >
+                Add Selected
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Body */}
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-950/50">
+          {filteredProducts.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center text-center">
+              <div className="mb-4 rounded-full bg-slate-100 dark:bg-slate-800 p-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-slate-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No products found</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Try a different search term</p>
+            </div>
+          ) : viewMode === "grid" ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="group relative">
+                  <button
+                    onClick={() => handleSelectImage(product.image_url)}
+                    className="w-full flex flex-col gap-2 text-left outline-none"
+                  >
+                    <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm transition-all group-hover:border-indigo-500 dark:group-hover:border-indigo-500 group-hover:shadow-md group-hover:ring-2 group-hover:ring-indigo-500/20">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={product.image_url}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        alt=""
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="bg-white/90 dark:bg-black/80 text-indigo-600 dark:text-indigo-400 rounded-full p-1.5 shadow-lg">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                          </svg>
+                        </div>
+                      </div>
+                      {product.shopify_id && (
+                        <span className="absolute top-1.5 left-1.5 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                          Shopify
+                        </span>
+                      )}
+                      {product.shopify_images && product.shopify_images.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedProduct(product);
+                          }}
+                          className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] font-medium px-1.5 py-0.5 rounded hover:bg-black/80 transition"
+                        >
+                          +{product.shopify_images.length - 1}
+                        </button>
+                      )}
+                    </div>
+                    <div className="px-0.5">
+                      <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                        {product.name}
+                      </p>
+                      {product.shopify_vendor && (
+                        <p className="truncate text-[10px] text-slate-400">{product.shopify_vendor}</p>
+                      )}
+                    </div>
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : viewMode === "compact" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => handleSelectImage(product.image_url)}
+                  className="flex items-center gap-3 p-2 rounded-lg border border-transparent hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition text-left group"
+                >
+                  <div className="h-10 w-10 flex-none rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                      {product.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400 truncate">{product.shopify_vendor || product.slug}</p>
+                  </div>
+                  {product.shopify_id && <span className="w-2 h-2 rounded-full bg-emerald-500 flex-none" />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => handleSelectImage(product.image_url)}
+                  className="w-full flex items-center gap-4 py-3 px-2 -mx-2 rounded-lg hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition text-left group"
+                >
+                  <div className="h-12 w-12 flex-none rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                      {product.name}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{product.slug}</p>
+                  </div>
+                  <div className="hidden sm:block text-right">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{product.shopify_vendor || "-"}</p>
+                    <p className="text-xs text-slate-400">{product.shopify_product_type || "-"}</p>
+                  </div>
+                  {product.shopify_id ? (
+                    <span className="flex-none rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                      Shopify
+                    </span>
+                  ) : (
+                    <span className="flex-none rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                      Manual
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Expanded Product Images Modal */}
+        {expandedProduct && expandedProduct.shopify_images && (
+          <div className="absolute inset-0 z-10 bg-black/80 flex items-center justify-center p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <h4 className="font-semibold text-slate-900 dark:text-white">{expandedProduct.name}</h4>
+                <button
+                  onClick={() => setExpandedProduct(null)}
+                  className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[calc(80vh-60px)]">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                  Select an image ({expandedProduct.shopify_images.length} available)
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {expandedProduct.shopify_images.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        handleSelectImage(img);
+                        setExpandedProduct(null);
+                      }}
+                      className="group aspect-square overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:ring-2 hover:ring-indigo-500/20 transition"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
 type RunSpeed = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 type ProfileRole = "Graphic Designer" | "Catalog Manager" | "Video Editor" | "Creative Strategist" | "Admin";
@@ -1243,98 +1575,16 @@ export default function ImageStudioPage() {
 
       {/* Reference Selection Modal (Select Products) */}
       {showRefProductModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-4xl flex flex-col max-h-[85vh] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/10 dark:ring-slate-50/10 overflow-hidden">
-                {/* Modal Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50">
-                    <div className="flex items-center gap-4 flex-1">
-                         <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Product Library</h3>
-                         <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
-                         <div className="relative flex-1 max-w-md">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="absolute left-2.5 top-2.5 w-4 h-4 text-slate-400">
-                                <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
-                            </svg>
-                            <input 
-                                type="text"
-                                placeholder="Search products..."
-                                className="w-full bg-slate-100 dark:bg-slate-800 text-sm text-slate-900 dark:text-white pl-9 pr-4 py-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 placeholder:text-slate-500"
-                                autoFocus
-                                value={refSearchQuery}
-                                onChange={(e) => setRefSearchQuery(e.target.value)}
-                            />
-                         </div>
-                    </div>
-                    <button 
-                        onClick={() => setShowRefProductModal(false)} 
-                        className="ml-4 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                          <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
-                        </svg>
-                    </button>
-                </div>
-
-                {/* Modal Body (Grid) */}
-                <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-950/50">
-                    {products.filter(p => !refSearchQuery || p.name.toLowerCase().includes(refSearchQuery.toLowerCase())).length > 0 ? (
-                        <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
-                            {products
-                                .filter(p => !refSearchQuery || p.name.toLowerCase().includes(refSearchQuery.toLowerCase()))
-                                .map(product => (
-                                <button
-                                    key={product.id}
-                                    onClick={() => {
-                                        if (product.image_url) {
-                                            setCustomUrls(prev => [...prev, product.image_url]);
-                                            setShowRefProductModal(false);
-                                            setRefSearchQuery(""); // Clear search on selection
-                                        }
-                                    }}
-                                    className="group flex flex-col gap-2 text-left outline-none"
-                                >
-                                    <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800 shadow-sm transition-all group-hover:border-indigo-500 dark:group-hover:border-indigo-500 group-hover:shadow-md group-hover:ring-2 group-hover:ring-indigo-500/20">
-                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                        <img 
-                                            src={product.image_url} 
-                                            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" 
-                                            alt="" 
-                                            loading="lazy"
-                                        />
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                                        {/* Selection Indicator Overlay */}
-                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <div className="bg-white/90 dark:bg-black/80 text-indigo-600 dark:text-indigo-400 rounded-full p-1.5 shadow-lg transform scale-90 group-hover:scale-100 transition-transform">
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                                                  <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-                                                </svg>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="px-1">
-                                        <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                            {product.name}
-                                        </p>
-                                        <p className="truncate text-[10px] text-slate-400">
-                                            {product.slug}
-                                        </p>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="flex h-64 flex-col items-center justify-center text-center">
-                            <div className="mb-4 rounded-full bg-slate-100 dark:bg-slate-800 p-4">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-slate-400">
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                                </svg>
-                            </div>
-                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No products found</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">Try searching for something else.</p>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+        <ProductSelectorModal
+          products={products}
+          onSelect={(imageUrl) => {
+            setCustomUrls(prev => [...prev, imageUrl]);
+            setShowRefProductModal(false);
+          }}
+          onClose={() => setShowRefProductModal(false)}
+          searchQuery={refSearchQuery}
+          setSearchQuery={setRefSearchQuery}
+        />
       )}
 
       {/* Preview Modal (Shared for Refs & Product) */}

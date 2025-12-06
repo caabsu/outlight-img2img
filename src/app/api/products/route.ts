@@ -16,17 +16,44 @@ function slugify(s: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const search = searchParams.get("search")?.trim().toLowerCase();
+    const source = searchParams.get("source"); // "shopify" | "manual" | null (all)
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    const { data, error } = await supabase
+
+    let query = supabase
       .from("products")
-      .select("id,name,slug,image_url")
+      .select("id,name,slug,image_url,shopify_id,shopify_handle,shopify_vendor,shopify_product_type,shopify_status,shopify_images,shopify_sku,shopify_price,created_at,updated_at")
       .order("name", { ascending: true });
+
+    // Filter by source
+    if (source === "shopify") {
+      query = query.not("shopify_id", "is", null);
+    } else if (source === "manual") {
+      query = query.is("shopify_id", null);
+    }
+
+    const { data, error } = await query;
 
     if (error) throw error;
 
-    return NextResponse.json({ products: data ?? [] });
+    // Client-side search filter (for flexibility)
+    let products = data ?? [];
+    if (search) {
+      products = products.filter(
+        (p) =>
+          p.name?.toLowerCase().includes(search) ||
+          p.slug?.toLowerCase().includes(search) ||
+          p.shopify_vendor?.toLowerCase().includes(search) ||
+          p.shopify_product_type?.toLowerCase().includes(search) ||
+          p.shopify_sku?.toLowerCase().includes(search)
+      );
+    }
+
+    return NextResponse.json({ products });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || "Failed to fetch products" }, { status: 500 });
   }
