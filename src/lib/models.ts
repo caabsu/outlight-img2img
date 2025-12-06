@@ -12,6 +12,7 @@ export type ModelDef = {
   // Optional UI helpers
   aspectRatioOptions?: readonly string[];
   resolutionOptions?: readonly string[];
+  qualityOptions?: readonly string[];  // e.g., ["basic", "high"] for Seedream 4.5
   // whether the model REQUIRES a reference image
   requiresReference?: boolean;
   // UI capability flags (only Seedream needs these now)
@@ -52,16 +53,23 @@ export const MODEL_LIST: ModelDef[] = [
     resolutionOptions: ["1K", "2K", "4K"],
   },
   {
-    id: "seedream-v4-edit",
-    label: "Seedream",
-    version: "v4-edit",
+    id: "seedream-4.5",
+    label: "Seedream 4.5",
+    version: "v4.5",
     provider: "seedream",
-    providerName: "bytedance/seedream-v4-edit",
-    requiresReference: true,
-    supportsSize: true,
-    supportsResolution: true,
-    supportsMaxImages: true,
-    supportsSeed: true,
+    providerName: "seedream/4.5-text-to-image",
+    requiresReference: false,
+    aspectRatioOptions: [
+      "1:1",
+      "4:3",
+      "3:4",
+      "16:9",
+      "9:16",
+      "2:3",
+      "3:2",
+      "21:9",
+    ],
+    qualityOptions: ["basic", "high"],
   },
 ];
 
@@ -93,6 +101,8 @@ export const NANOBANANA_ASPECT_RATIOS = [
 ] as const;
 
 export const NANOBANANA_RESOLUTIONS = ["1K", "2K", "4K"] as const;
+
+export const SEEDREAM_QUALITY_OPTIONS = ["basic", "high"] as const;
 
 export function getModelById(id: string): ModelDef | undefined {
   return MODEL_LIST.find((m) => m.id === id);

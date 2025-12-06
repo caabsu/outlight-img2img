@@ -11,6 +11,7 @@ import {
   IMAGE_SIZES,
   NANOBANANA_ASPECT_RATIOS,
   NANOBANANA_RESOLUTIONS,
+  SEEDREAM_QUALITY_OPTIONS,
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
@@ -148,6 +149,10 @@ export default function ImageStudioPage() {
   const [sdRes, setSdRes] = useState<(typeof IMAGE_RESOLUTIONS)[number]>("1K");
   const [sdMax, setSdMax] = useState(1);
   const [sdSeed, setSdSeed] = useState<number | "">("");
+  // Seedream 4.5 options
+  const [sd45AspectRatio, setSd45AspectRatio] = useState<string>("1:1");
+  const [sd45Quality, setSd45Quality] = useState<string>("basic");
+  const isSeedream45 = modelDef.id === "seedream-4.5";
   const [speed, setSpeed] = useState<RunSpeed>(1);
   const [promptsText, setPromptsText] = useState("");
   const promptLines = useMemo(
@@ -680,6 +685,14 @@ export default function ImageStudioPage() {
                 options: (() => {
                   const runModel = getModelById(run.modelId);
                   if (!runModel) return undefined;
+                  // Seedream 4.5 text-to-image
+                  if (runModel.id === "seedream-4.5") {
+                    return {
+                      aspect_ratio: sd45AspectRatio,
+                      quality: sd45Quality,
+                    };
+                  }
+                  // Legacy seedream edit (if any)
                   if (runModel.provider === "seedream") {
                     return {
                       image_size: sdSize,
@@ -818,40 +831,37 @@ export default function ImageStudioPage() {
                 </div>
               )}
 
-                  {modelDef.provider === "seedream" && (
+                  {isSeedream45 && (
                 <div className="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Ratio</label>
+                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect Ratio</label>
                         <select
                             className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
-                            value={sdSize}
-                            onChange={(e) => setSdSize(e.target.value as any)}
+                            value={sd45AspectRatio}
+                            onChange={(e) => setSd45AspectRatio(e.target.value)}
                         >
-                            {IMAGE_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                            {(modelDef.aspectRatioOptions || ["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"]).map((ar) => (
+                              <option key={ar} value={ar}>{ar}</option>
+                            ))}
                         </select>
                     </div>
                      <div>
                         <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
                          <select
                             className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
-                            value={sdRes}
-                            onChange={(e) => setSdRes(e.target.value as any)}
+                            value={sd45Quality}
+                            onChange={(e) => setSd45Quality(e.target.value)}
                         >
-                            {IMAGE_RESOLUTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                            {(modelDef.qualityOptions || SEEDREAM_QUALITY_OPTIONS).map((q) => (
+                              <option key={q} value={q}>{q === "basic" ? "Basic (2K)" : "High (4K)"}</option>
+                            ))}
                         </select>
                     </div>
                   </div>
-                   <div>
-                      <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Seed</label>
-                      <input 
-                         type="number" 
-                         placeholder="Random"
-                         className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium placeholder:text-slate-400 text-slate-900 dark:text-slate-100"
-                         value={sdSeed}
-                         onChange={(e) => setSdSeed(e.target.value === "" ? "" : Number(e.target.value))}
-                      />
-                   </div>
+                  <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    Seedream 4.5 generates images from text. Basic outputs 2K, High outputs 4K resolution.
+                  </p>
                 </div>
               )}
              </div>

@@ -8,6 +8,7 @@ import {
   IMAGE_SIZES,
   NANOBANANA_ASPECT_RATIOS,
   NANOBANANA_RESOLUTIONS,
+  SEEDREAM_QUALITY_OPTIONS,
 } from "@/lib/models";
 
 /* ========================= ENV ========================= */
@@ -45,12 +46,14 @@ type PostBody = {
   additionalUrls?: string[];
   prompt: string;
   options?: {
-    image_size?: string;       // seedream-only (resolution)
-    image_resolution?: string; // seedream-only
-    max_images?: number;       // seedream-only
-    seed?: number | null;      // seedream-only
+    image_size?: string;       // seedream edit (resolution)
+    image_resolution?: string; // seedream edit
+    max_images?: number;       // seedream edit
+    seed?: number | null;      // seedream edit
     // nano banana (KIE) image config
-    aspect_ratio?: string;     // mapped to image_size for KIE
+    aspect_ratio?: string;     // shared: nano banana & seedream 4.5
+    // seedream 4.5 text-to-image
+    quality?: string;          // "basic" or "high"
   };
 };
 
@@ -260,7 +263,14 @@ async function callGeminiTextToImage(text: string, modelId: string, options?: Po
     contents: [
       {
         role: "user",
-        parts: [{ text }],
+        parts: [
+          {
+            text:
+              `Generate an image based on the following description. ` +
+              `You MUST return an IMAGE, not text. Do not describe the image - create it.\n\n` +
+              `Image description: ${text}`,
+          },
+        ],
       },
     ],
     // Leave response_mime_type unset: the Gemini image endpoint only accepts text/application values here but still
@@ -290,7 +300,9 @@ export async function POST(req: Request) {
     }
 
     const isSeedream = modelId.startsWith("seedream");
-    const requiresReference = isSeedream;
+    const isSeedream45 = modelId === "seedream-4.5";
+    // Seedream 4.5 is text-to-image, doesn't require reference; old seedream edit does
+    const requiresReference = isSeedream && !isSeedream45;
 
     // Build the list of reference images (http(s) or data:) in priority order
     // product -> its image_url + any additionalUrls; otherwise use customUrls or fallback customUrl
@@ -339,7 +351,87 @@ export async function POST(req: Request) {
       return { aspect_ratio, resolution };
     };
 
-    /* -------- Seedream (KIE) -------- */
+    /* -------- Seedream 4.5 Text-to-Image (KIE) -------- */
+    if (isSeedream45) {
+      if (!KIE_KEY) return NextResponse.json({ error: "Seedream API key missing" }, { status: 500 });
+
+      // Normalize options for Seedream 4.5
+      const aspectRatioSet = new Set(["1:1", "4:3", "3:4", "16:9", "9:16", "2:3", "3:2", "21:9"]);
+      const qualitySet = new Set<string>(SEEDREAM_QUALITY_OPTIONS);
+      const aspect_ratio = aspectRatioSet.has(options?.aspect_ratio || "")
+        ? options!.aspect_ratio!
+        : "1:1";
+      const quality = qualitySet.has(options?.quality || "")
+        ? options!.quality!
+        : "basic";
+
+      const payload = {
+        model: "seedream/4.5-text-to-image",
+        callBackUrl: "",
+        input: {
+          prompt,
+          aspect_ratio,
+          quality,
+        },
+      };
+
+      // 1) create task
+      const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
+        body: JSON.stringify(payload),
+      });
+      const createJson = await createRes.json().catch(() => ({}));
+      if (!createRes.ok || createJson?.code !== 200) {
+        const msg = createJson?.message || createJson?.msg || "Seedream 4.5 createTask failed";
+        return NextResponse.json({ error: msg }, { status: 502 });
+      }
+      const taskId: string | undefined = createJson?.data?.taskId;
+      if (!taskId) return NextResponse.json({ error: "Seedream 4.5 taskId missing" }, { status: 502 });
+
+      // 2) poll recordInfo
+      const started = Date.now();
+      const MAX_MS = 180_000;
+      let resultUrl: string | null = null;
+      let lastState = "waiting";
+
+      while (Date.now() - started < MAX_MS) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+          headers: { Authorization: `Bearer ${KIE_KEY}` },
+        });
+        const qJson = await qRes.json().catch(() => ({}));
+        if (!qRes.ok || qJson?.code !== 200) {
+          const msg = qJson?.message || qJson?.msg || "Seedream 4.5 query failed";
+          return NextResponse.json({ error: msg }, { status: 502 });
+        }
+
+        lastState = qJson?.data?.state as string;
+        if (lastState === "success") {
+          try {
+            const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
+            const urls: string[] = parsed?.resultUrls || [];
+            if (!urls.length) return NextResponse.json({ error: "Seedream 4.5 returned no result URLs" }, { status: 502 });
+            resultUrl = urls[0];
+            break;
+          } catch {
+            return NextResponse.json({ error: "Malformed Seedream 4.5 resultJson" }, { status: 502 });
+          }
+        }
+        if (lastState === "fail") {
+          const failMsg = qJson?.data?.failMsg || "Seedream 4.5 reported failure";
+          return NextResponse.json({ error: failMsg }, { status: 502 });
+        }
+      }
+
+      if (!resultUrl) {
+        return NextResponse.json({ error: `Seedream 4.5 generation timed out (last state: ${lastState})` }, { status: 504 });
+      }
+      await logUsage(profileId, modelId);
+      return NextResponse.json({ imageDataUrl: resultUrl });
+    }
+
+    /* -------- Seedream Edit (KIE) -------- */
     if (modelId.startsWith("seedream")) {
       if (!KIE_KEY) return NextResponse.json({ error: "Seedream API key missing" }, { status: 500 });
       // KIE Seedream requires publicly accessible URLs, not data: URIs
