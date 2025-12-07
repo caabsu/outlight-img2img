@@ -960,11 +960,49 @@ export default function ImageStudioPage() {
       startRunWithPrompts(promptLines, selectedRefs);
     }
 
+    // Upload a data URI to Supabase storage and return the public URL
+    async function uploadToStorage(dataUrl: string): Promise<string> {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataUrl }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) {
+        throw new Error(json.error || "Failed to upload image");
+      }
+      return json.url;
+    }
+
     async function runGenerator(run: Run, currentRefSources: string[]) {
       if (!run.profileId) {
         setSaveToast({ message: "Profile missing for this run", type: "error" });
         return;
       }
+
+      // For Seedream models, upload data URIs to storage first (KIE requires public URLs)
+      const isSeedreamModel = run.modelId.startsWith("seedream");
+      let resolvedRefs = currentRefSources;
+
+      if (isSeedreamModel && currentRefSources.length > 0) {
+        const dataUriRefs = currentRefSources.filter((url) => url.startsWith("data:"));
+        if (dataUriRefs.length > 0) {
+          try {
+            setSaveToast({ message: "Uploading images for Seedream...", type: "success" });
+            const uploadPromises = currentRefSources.map(async (url) => {
+              if (url.startsWith("data:")) {
+                return await uploadToStorage(url);
+              }
+              return url; // Already an HTTP URL
+            });
+            resolvedRefs = await Promise.all(uploadPromises);
+          } catch (err: any) {
+            setSaveToast({ message: err?.message || "Failed to upload images", type: "error" });
+            return;
+          }
+        }
+      }
+
       let cursor = 0;
       const total = run.prompts.length;
 
@@ -1012,7 +1050,7 @@ export default function ImageStudioPage() {
               body: JSON.stringify({
                 modelId: run.modelId,
                 profileId: run.profileId,
-                customUrls: currentRefSources,
+                customUrls: resolvedRefs,
                 prompt,
                 options: (() => {
                   const runModel = getModelById(run.modelId);
