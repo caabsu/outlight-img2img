@@ -1,0 +1,213 @@
+// src/lib/session-storage.ts
+// Utilities for persisting session state across page refreshes
+
+const STORAGE_KEYS = {
+  IMAGE_STUDIO: "ol_image_studio_session",
+  VIDEO_STUDIO: "ol_video_studio_session",
+} as const;
+
+// Debounce helper to avoid excessive writes
+function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
+  let timeout: NodeJS.Timeout | null = null;
+  return ((...args: any[]) => {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
+// Generic save/load functions
+export function saveToStorage<T>(key: string, data: T): void {
+  if (typeof window === "undefined") return;
+  try {
+    const json = JSON.stringify(data);
+    localStorage.setItem(key, json);
+  } catch (err) {
+    console.warn("Failed to save to localStorage:", err);
+  }
+}
+
+export function loadFromStorage<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const json = localStorage.getItem(key);
+    if (!json) return null;
+    return JSON.parse(json) as T;
+  } catch (err) {
+    console.warn("Failed to load from localStorage:", err);
+    return null;
+  }
+}
+
+// Create a debounced save function
+export function createDebouncedSave<T>(key: string, delayMs = 500) {
+  return debounce((data: T) => saveToStorage(key, data), delayMs);
+}
+
+// ============ IMAGE STUDIO ============
+
+export type SerializedRun = {
+  id: string;
+  name: string;
+  startedAt: number;
+  modelId: string;
+  modelNameDisplay: string;
+  profileId: string;
+  profileName: string;
+  prompts: string[];
+  status: "idle" | "done" | "cancelled" | "error"; // Running runs become "cancelled" on reload
+  error: string | null;
+  images: Array<{ id: string; prompt: string; imageDataUrl: string }>;
+  activeIdx: number;
+  selectedIdx: number[]; // Set<number> serialized as array
+  progress: { done: number; total: number };
+  speed: number;
+};
+
+export type ImageStudioSession = {
+  version: 1;
+  savedAt: number;
+  promptsText: string;
+  modelId: string;
+  // Model options
+  nbAspectRatio: string;
+  nbResolution: string;
+  sd45AspectRatio: string;
+  sd45Quality: string;
+  sdSize: string;
+  sdRes: string;
+  sdMax: number;
+  sdSeed: number | "";
+  speed: number;
+  // References (URLs only, not large data URIs to avoid quota issues)
+  customUrls: string[];
+  // Runs
+  runs: SerializedRun[];
+  activeRunId: string | null;
+};
+
+export function serializeImageRun(run: any): SerializedRun {
+  return {
+    id: run.id,
+    name: run.name,
+    startedAt: run.startedAt,
+    modelId: run.modelId,
+    modelNameDisplay: run.modelNameDisplay,
+    profileId: run.profileId,
+    profileName: run.profileName,
+    prompts: run.prompts,
+    // Convert running to cancelled since we can't resume
+    status: run.status === "running" ? "cancelled" : run.status,
+    error: run.error,
+    images: run.images,
+    activeIdx: run.activeIdx,
+    selectedIdx: Array.from(run.selectedIdx || []),
+    progress: run.progress,
+    speed: run.speed,
+  };
+}
+
+export function deserializeImageRun(data: SerializedRun): any {
+  return {
+    ...data,
+    selectedIdx: new Set(data.selectedIdx || []),
+    controller: null, // Can't restore AbortController
+    debug: null,
+  };
+}
+
+export function saveImageStudioSession(session: ImageStudioSession): void {
+  saveToStorage(STORAGE_KEYS.IMAGE_STUDIO, session);
+}
+
+export function loadImageStudioSession(): ImageStudioSession | null {
+  return loadFromStorage<ImageStudioSession>(STORAGE_KEYS.IMAGE_STUDIO);
+}
+
+export const debouncedSaveImageSession = createDebouncedSave<ImageStudioSession>(
+  STORAGE_KEYS.IMAGE_STUDIO,
+  1000
+);
+
+// ============ VIDEO STUDIO ============
+
+export type SerializedVideoRun = {
+  id: string;
+  name: string;
+  startedAt: number;
+  modelId: string;
+  modelNameDisplay: string;
+  profileId: string;
+  profileName: string;
+  prompts: string[];
+  status: "idle" | "done" | "cancelled" | "error";
+  error: string | null;
+  videos: Array<{ id: string; prompt: string; videoUrl: string; imageDataUrl?: string }>;
+  activeIdx: number;
+  selectedIdx: number[];
+  progress: { done: number; total: number };
+  speed: number;
+};
+
+export type VideoStudioSession = {
+  version: 1;
+  savedAt: number;
+  promptsText: string;
+  videoModel: string;
+  // Model options
+  klingDuration: string;
+  klingAspect: string;
+  klingCfg: string;
+  veoAspect: string;
+  veoGenType: string;
+  soraFrames: string;
+  soraAspect: string;
+  videoParallel: number;
+  // References
+  customUrl: string;
+  batchVideoImages: string[];
+  // Runs
+  videoRuns: SerializedVideoRun[];
+  activeVideoRunId: string | null;
+};
+
+export function serializeVideoRun(run: any): SerializedVideoRun {
+  return {
+    id: run.id,
+    name: run.name,
+    startedAt: run.startedAt,
+    modelId: run.modelId,
+    modelNameDisplay: run.modelNameDisplay,
+    profileId: run.profileId,
+    profileName: run.profileName,
+    prompts: run.prompts,
+    status: run.status === "running" ? "cancelled" : run.status,
+    error: run.error,
+    videos: run.videos,
+    activeIdx: run.activeIdx,
+    selectedIdx: Array.from(run.selectedIdx || []),
+    progress: run.progress,
+    speed: run.speed,
+  };
+}
+
+export function deserializeVideoRun(data: SerializedVideoRun): any {
+  return {
+    ...data,
+    selectedIdx: new Set(data.selectedIdx || []),
+    controller: null,
+    debug: null,
+  };
+}
+
+export function saveVideoStudioSession(session: VideoStudioSession): void {
+  saveToStorage(STORAGE_KEYS.VIDEO_STUDIO, session);
+}
+
+export function loadVideoStudioSession(): VideoStudioSession | null {
+  return loadFromStorage<VideoStudioSession>(STORAGE_KEYS.VIDEO_STUDIO);
+}
+
+export const debouncedSaveVideoSession = createDebouncedSave<VideoStudioSession>(
+  STORAGE_KEYS.VIDEO_STUDIO,
+  1000
+);

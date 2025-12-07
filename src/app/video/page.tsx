@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { MODEL_LIST } from "@/lib/models";
 import { PromptAssistant } from "@/components/PromptAssistant";
+import {
+  loadVideoStudioSession,
+  debouncedSaveVideoSession,
+  serializeVideoRun,
+  deserializeVideoRun,
+  type VideoStudioSession,
+} from "@/lib/session-storage";
 
 type Product = { id: string; name: string; slug: string; image_url: string };
 
@@ -214,6 +221,90 @@ export default function VideoStudioPage() {
       kick();
     });
   }
+
+  // Session restoration flag
+  const sessionRestoredRef = useRef(false);
+  const allVideoModelIds = useMemo(
+    () => VIDEO_MODEL_GROUPS.flatMap((g) => g.options.map((o) => o.id)),
+    []
+  );
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    if (sessionRestoredRef.current) return;
+    sessionRestoredRef.current = true;
+
+    const session = loadVideoStudioSession();
+    if (!session) return;
+
+    // Restore state from session
+    if (session.promptsText) setVideoPrompts(session.promptsText);
+    if (session.videoModel && allVideoModelIds.includes(session.videoModel)) {
+      setVideoModel(session.videoModel);
+    }
+    if (session.klingDuration) setKlingDuration(session.klingDuration as any);
+    if (session.klingAspect) setKlingAspect(session.klingAspect as any);
+    if (session.klingCfg) setKlingCfg(session.klingCfg);
+    if (session.veoAspect) setVeoAspect(session.veoAspect as any);
+    if (session.veoGenType) setVeoGenType(session.veoGenType as any);
+    if (session.soraFrames) setSoraFrames(session.soraFrames as any);
+    if (session.soraAspect) setSoraAspect(session.soraAspect as any);
+    if (typeof session.videoParallel === "number") setVideoParallel(session.videoParallel);
+    if (session.customUrl) setCustomVideoUrl(session.customUrl);
+    if (session.batchVideoImages?.length) setBatchVideoImages(session.batchVideoImages);
+
+    // Restore runs (deserialize Set and mark running as cancelled)
+    if (session.videoRuns?.length) {
+      const restoredRuns = session.videoRuns.map(deserializeVideoRun);
+      setVideoRuns(restoredRuns);
+      if (session.activeVideoRunId) {
+        setActiveVideoRunId(session.activeVideoRunId);
+      } else if (restoredRuns.length > 0) {
+        setActiveVideoRunId(restoredRuns[restoredRuns.length - 1].id);
+      }
+    }
+  }, [allVideoModelIds]);
+
+  // Save session to localStorage when state changes
+  useEffect(() => {
+    if (!sessionRestoredRef.current) return; // Don't save during initial load
+
+    const session: VideoStudioSession = {
+      version: 1,
+      savedAt: Date.now(),
+      promptsText: videoPrompts,
+      videoModel,
+      klingDuration,
+      klingAspect,
+      klingCfg,
+      veoAspect,
+      veoGenType,
+      soraFrames,
+      soraAspect,
+      videoParallel,
+      customUrl: customVideoUrl,
+      batchVideoImages: batchVideoImages.filter((u) => !u.startsWith("data:")), // Don't save large data URIs
+      videoRuns: videoRuns.map(serializeVideoRun),
+      activeVideoRunId,
+    };
+
+    debouncedSaveVideoSession(session);
+  }, [
+    videoPrompts,
+    videoModel,
+    klingDuration,
+    klingAspect,
+    klingCfg,
+    veoAspect,
+    veoGenType,
+    soraFrames,
+    soraAspect,
+    videoParallel,
+    customVideoUrl,
+    batchVideoImages,
+    videoRuns,
+    activeVideoRunId,
+  ]);
 
   useEffect(() => {
     async function load() {

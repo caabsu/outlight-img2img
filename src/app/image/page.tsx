@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import JSZip from "jszip";
 import {
@@ -15,6 +15,13 @@ import {
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
+import {
+  loadImageStudioSession,
+  debouncedSaveImageSession,
+  serializeImageRun,
+  deserializeImageRun,
+  type ImageStudioSession,
+} from "@/lib/session-storage";
 
 type Product = {
   id: string;
@@ -587,6 +594,86 @@ export default function ImageStudioPage() {
     setCustomUploads((prev) => prev.filter((u) => u !== src));
     setCustomUrls((prev) => prev.filter((u) => u !== src));
   }
+
+  // Session restoration flag
+  const sessionRestoredRef = useRef(false);
+
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    if (sessionRestoredRef.current) return;
+    sessionRestoredRef.current = true;
+
+    const session = loadImageStudioSession();
+    if (!session) return;
+
+    // Restore state from session
+    if (session.promptsText) setPromptsText(session.promptsText);
+    if (session.modelId && MODEL_LIST.some((m) => m.id === session.modelId)) {
+      setModelId(session.modelId);
+    }
+    if (session.nbAspectRatio) setNbAspectRatio(session.nbAspectRatio);
+    if (session.nbResolution) setNbResolution(session.nbResolution);
+    if (session.sd45AspectRatio) setSd45AspectRatio(session.sd45AspectRatio);
+    if (session.sd45Quality) setSd45Quality(session.sd45Quality);
+    if (session.sdSize) setSdSize(session.sdSize as any);
+    if (session.sdRes) setSdRes(session.sdRes as any);
+    if (typeof session.sdMax === "number") setSdMax(session.sdMax);
+    if (session.sdSeed !== undefined) setSdSeed(session.sdSeed);
+    if (typeof session.speed === "number") setSpeed(session.speed as any);
+    if (session.customUrls?.length) setCustomUrls(session.customUrls);
+
+    // Restore runs (deserialize Set and mark running as cancelled)
+    if (session.runs?.length) {
+      const restoredRuns = session.runs.map(deserializeImageRun);
+      setRuns(restoredRuns);
+      if (session.activeRunId) {
+        setActiveRunId(session.activeRunId);
+      } else if (restoredRuns.length > 0) {
+        setActiveRunId(restoredRuns[restoredRuns.length - 1].id);
+      }
+    }
+  }, []);
+
+  // Save session to localStorage when state changes
+  useEffect(() => {
+    if (!sessionRestoredRef.current) return; // Don't save during initial load
+
+    const session: ImageStudioSession = {
+      version: 1,
+      savedAt: Date.now(),
+      promptsText,
+      modelId,
+      nbAspectRatio,
+      nbResolution,
+      sd45AspectRatio,
+      sd45Quality,
+      sdSize,
+      sdRes,
+      sdMax,
+      sdSeed,
+      speed,
+      customUrls: customUrls.filter((u) => u && !u.startsWith("data:")), // Don't save large data URIs
+      runs: runs.map(serializeImageRun),
+      activeRunId,
+    };
+
+    debouncedSaveImageSession(session);
+  }, [
+    promptsText,
+    modelId,
+    nbAspectRatio,
+    nbResolution,
+    sd45AspectRatio,
+    sd45Quality,
+    sdSize,
+    sdRes,
+    sdMax,
+    sdSeed,
+    speed,
+    customUrls,
+    runs,
+    activeRunId,
+  ]);
 
   useEffect(() => {
     if (modelDef.aspectRatioOptions?.length) {
