@@ -576,9 +576,9 @@ export default function ImageStudioPage() {
   }, [customUploads, customUrl, customUrls]);
 
   useEffect(() => {
-    setSelectedRefs((prev) => {
-      const filtered = prev.filter((src) => refSources.includes(src));
-      if (filtered.length > 0) return filtered;
+    setSelectedRefs(() => {
+      // Auto-select ALL ref sources (up to 6) so multiple uploads are always included
+      // Users can deselect individual images if needed, or use "Remove" to permanently exclude
       return refSources.slice(0, 6);
     });
   }, [refSources]);
@@ -1248,7 +1248,7 @@ export default function ImageStudioPage() {
                                 <button
                                     key={i}
                                     type="button"
-                                    className={`relative group aspect-square rounded-lg overflow-hidden border ${selectedRefs.includes(src) ? "border-indigo-500 ring-2 ring-indigo-500" : "border-slate-200 dark:border-slate-700"}`}
+                                    className={`relative group aspect-square rounded-lg overflow-hidden border-2 transition-all ${selectedRefs.includes(src) ? "border-indigo-500 ring-2 ring-indigo-500" : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"}`}
                                     onClick={() => {
                                         setSelectedRefs((prev) =>
                                             prev.includes(src) ? prev.filter((s) => s !== src) : [...prev, src]
@@ -1263,10 +1263,12 @@ export default function ImageStudioPage() {
                                             e.stopPropagation();
                                             setRefPreviewUrl(src);
                                         }}
-                                        className="absolute inset-0"
+                                        className="absolute top-2 left-2 hidden rounded-full bg-white/80 px-2 py-1 text-[10px] font-semibold text-slate-600 shadow group-hover:inline hover:bg-white"
                                         aria-label="Preview reference"
-                                    />
-                                    <button 
+                                    >
+                                        Preview
+                                    </button>
+                                    <button
                                         type="button"
                                         onClick={(e) => {
                                              e.stopPropagation();
@@ -1276,7 +1278,7 @@ export default function ImageStudioPage() {
                                                  removeUploadSrc(src);
                                              }
                                         }}
-                                        className="absolute top-2 right-2 hidden rounded-full bg-white/80 px-2 py-1 text-[10px] font-semibold text-rose-500 shadow group-hover:inline"
+                                        className="absolute top-2 right-2 hidden rounded-full bg-white/80 px-2 py-1 text-[10px] font-semibold text-rose-500 shadow group-hover:inline hover:bg-white"
                                     >
                                         Remove
                                     </button>
