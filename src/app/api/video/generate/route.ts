@@ -16,18 +16,22 @@ type VideoProvider = "kling" | "veo" | "sora";
 type PostBody = {
   provider?: VideoProvider;
   model?: string;
-  // mode: "image-to-video" | "text-to-video" (for Kling)
-  mode?: "image-to-video" | "text-to-video";
+  // mode: "image-to-video" | "text-to-video" | "kling26" (for Kling)
+  mode?: "image-to-video" | "text-to-video" | "kling26";
   // shared
   prompt: string;
   duration?: "5" | "10";          // KIE expects string "5" | "10"
   negative_prompt?: string;
   cfg_scale?: number;             // 0..1
-  aspect_ratio?: "16:9" | "9:16" | "1:1"; // text2video only
+  aspect_ratio?: "16:9" | "9:16" | "1:1"; // text2video and kling26
 
-  // image-to-video reference (Kling)
+  // image-to-video reference (Kling legacy)
   productId?: string | null;
   customUrl?: string | null;      // direct URL if using custom
+
+  // Kling 2.6 specific
+  image_urls?: string[];          // Array of image URLs for Kling 2.6
+  sound?: boolean;                // Generate with sound for Kling 2.6
 
   // Veo-specific
   aspectRatio?: "16:9" | "9:16" | "Auto";
@@ -130,6 +134,9 @@ export async function POST(req: Request) {
       aspect_ratio,
       productId = null,
       customUrl = null,
+      // Kling 2.6 specific
+      image_urls,
+      sound,
       // Veo
       aspectRatio,
       generationType,
@@ -143,6 +150,39 @@ export async function POST(req: Request) {
 
     /* -------- KLING -------- */
     if (provider === "kling") {
+      /* -------- KLING 2.6 -------- */
+      if (mode === "kling26") {
+        // Kling 2.6 uses different payload structure
+        // Model is determined by whether image_urls are provided
+        const isImageToVideo = image_urls && image_urls.length > 0;
+        const kling26Model = model || (isImageToVideo ? "kling-2.6/image-to-video" : "kling-2.6/text-to-video");
+
+        const payload: any = {
+          model: kling26Model,
+          callBackUrl: "",
+          input: {
+            prompt,
+            sound: sound ?? false,
+            duration,
+          },
+        };
+
+        // Add image_urls for image-to-video
+        if (isImageToVideo) {
+          payload.input.image_urls = image_urls;
+        } else {
+          // Text-to-video requires aspect_ratio
+          if (aspect_ratio) {
+            payload.input.aspect_ratio = aspect_ratio;
+          }
+        }
+
+        const taskId = await kieCreateTask(payload);
+        const { url } = await kiePoll(taskId, 300_000); // 5 minutes max
+        return NextResponse.json({ videoUrl: url });
+      }
+
+      /* -------- KLING LEGACY (v2.1, v2.5) -------- */
       if (mode !== "image-to-video" && mode !== "text-to-video") {
         return NextResponse.json({ error: "Invalid mode for Kling" }, { status: 400 });
       }

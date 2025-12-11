@@ -15,7 +15,7 @@ import {
 type Product = { id: string; name: string; slug: string; image_url: string };
 
 type VideoProvider = "kling" | "veo" | "sora";
-type VideoModelKind = "image-to-video" | "text-to-video" | "veo" | "storyboard";
+type VideoModelKind = "image-to-video" | "text-to-video" | "veo" | "storyboard" | "kling26";
 
 type VideoModelOption = {
   id: string;
@@ -63,6 +63,11 @@ type VideoRunContext = {
     negative: string;
     cfg: string;
   };
+  kling26: {
+    duration: "5" | "10";
+    aspect: "16:9" | "9:16" | "1:1";
+    sound: boolean;
+  };
   veo: {
     aspect: VeoRatio;
     generation: VeoGenType;
@@ -82,6 +87,7 @@ const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> 
   {
     label: "Kling (KIE)",
     options: [
+      { id: "kling-2.6", provider: "kling", label: "Kling 2.6 (Auto I2V/T2V)", kind: "kling26" },
       { id: "kling/v2-5-turbo-image-to-video-pro", provider: "kling", label: "Kling 2.5 Turbo I2V Pro", kind: "image-to-video", requiresImage: true },
       { id: "kling/v2-5-turbo-text-to-video-pro", provider: "kling", label: "Kling 2.5 Turbo T2V Pro", kind: "text-to-video" },
       { id: "kling/v2-1-image-to-video", provider: "kling", label: "Kling 2.1 Image-to-Video", kind: "image-to-video", requiresImage: true },
@@ -162,8 +168,10 @@ export default function VideoStudioPage() {
   const resolvedVideoReferenceUrl = referenceUploadedUrl || baseReference;
 
   const isKling = videoModelDef.provider === "kling";
+  const isKling26 = isKling && videoModelDef.kind === "kling26";
   const isKlingText = isKling && videoModelDef.kind === "text-to-video";
   const isKlingImage = isKling && videoModelDef.kind === "image-to-video";
+  const isKlingLegacy = isKlingText || isKlingImage;
   const isVeo = videoModelDef.provider === "veo";
   const isSora = videoModelDef.provider === "sora";
 
@@ -171,6 +179,11 @@ export default function VideoStudioPage() {
   const [klingAspect, setKlingAspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [klingNeg, setKlingNeg] = useState("");
   const [klingCfg, setKlingCfg] = useState<string>("0.5");
+
+  // Kling 2.6 specific states
+  const [kling26Duration, setKling26Duration] = useState<"5" | "10">("5");
+  const [kling26Aspect, setKling26Aspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [kling26Sound, setKling26Sound] = useState<boolean>(false);
 
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
   const [veoGenType, setVeoGenType] = useState<VeoGenType>("TEXT_2_VIDEO");
@@ -186,6 +199,7 @@ export default function VideoStudioPage() {
 
   const trimmedSoraImageUrl = soraImageUrl.trim();
   const finalReferenceUrl = isSora ? trimmedSoraImageUrl || resolvedVideoReferenceUrl : resolvedVideoReferenceUrl;
+  // Kling 2.6 doesn't require an image (auto-selects I2V/T2V based on availability)
   const videoNeedsImage =
     isKlingImage ||
     (isVeo && veoGenType !== "TEXT_2_VIDEO") ||
@@ -245,6 +259,10 @@ export default function VideoStudioPage() {
     if (session.klingDuration) setKlingDuration(session.klingDuration as any);
     if (session.klingAspect) setKlingAspect(session.klingAspect as any);
     if (session.klingCfg) setKlingCfg(session.klingCfg);
+    // Kling 2.6 settings
+    if (session.kling26Duration) setKling26Duration(session.kling26Duration as any);
+    if (session.kling26Aspect) setKling26Aspect(session.kling26Aspect as any);
+    if (typeof session.kling26Sound === "boolean") setKling26Sound(session.kling26Sound);
     if (session.veoAspect) setVeoAspect(session.veoAspect as any);
     if (session.veoGenType) setVeoGenType(session.veoGenType as any);
     if (session.soraFrames) setSoraFrames(session.soraFrames as any);
@@ -277,6 +295,9 @@ export default function VideoStudioPage() {
       klingDuration,
       klingAspect,
       klingCfg,
+      kling26Duration,
+      kling26Aspect,
+      kling26Sound,
       veoAspect,
       veoGenType,
       soraFrames,
@@ -295,6 +316,9 @@ export default function VideoStudioPage() {
     klingDuration,
     klingAspect,
     klingCfg,
+    kling26Duration,
+    kling26Aspect,
+    kling26Sound,
     veoAspect,
     veoGenType,
     soraFrames,
@@ -513,6 +537,7 @@ export default function VideoStudioPage() {
       customUrl: selectedId === "custom" ? (finalReferenceUrl || null) : null,
       referenceUrl: finalReferenceUrl || null,
       kling: { duration: klingDuration, aspect: klingAspect, negative: klingNeg, cfg: klingCfg },
+      kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
@@ -555,6 +580,7 @@ export default function VideoStudioPage() {
       customUrl: selectedId === "custom" ? (finalReferenceUrl || null) : null,
       referenceUrl: finalReferenceUrl || null,
       kling: { duration: klingDuration, aspect: klingAspect, negative: klingNeg, cfg: klingCfg },
+      kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
@@ -571,8 +597,10 @@ export default function VideoStudioPage() {
       VIDEO_MODEL_GROUPS.flatMap((group) => group.options).find((opt) => opt.id === run.modelId) ??
       VIDEO_MODEL_GROUPS[0].options[0];
     const runIsKling = modelOption.provider === "kling";
+    const runIsKling26 = runIsKling && modelOption.kind === "kling26";
     const runIsKlingText = runIsKling && modelOption.kind === "text-to-video";
     const runIsKlingImage = runIsKling && modelOption.kind === "image-to-video";
+    const runIsKlingLegacy = runIsKlingText || runIsKlingImage;
     const runIsVeo = modelOption.provider === "veo";
     const runIsSora = modelOption.provider === "sora";
 
@@ -615,7 +643,20 @@ export default function VideoStudioPage() {
         tasks.push(async () => {
           let provider: VideoProvider = "kling";
           let body: any = {};
-          if (runIsKling) {
+          if (runIsKling26) {
+            // Kling 2.6 uses image_urls array and sound parameter
+            provider = "kling";
+            body = {
+              provider,
+              model: "kling-2.6/image-to-video", // Always I2V for batch mode (has images)
+              mode: "kling26",
+              prompt,
+              duration: context.kling26.duration,
+              aspect_ratio: context.kling26.aspect,
+              sound: context.kling26.sound,
+              image_urls: [imageUrl],
+            };
+          } else if (runIsKlingLegacy) {
             const cfgVal = Number.isFinite(Number(context.kling.cfg)) ? Number(context.kling.cfg) : undefined;
             provider = "kling";
             body = {
@@ -654,8 +695,8 @@ export default function VideoStudioPage() {
               .map((row) => {
                 const [durStr, ...rest] = row.split("|");
                 const duration = Math.max(1, Number(durStr.trim() || "1"));
-                const Scene = rest.join("|").trim() || prompt;
-                return { duration, Scene };
+                const scene = rest.join("|").trim() || prompt;
+                return { duration, scene };
               });
             body = {
               provider,
@@ -684,10 +725,23 @@ export default function VideoStudioPage() {
     } else {
       run.prompts.forEach((line, index) => {
         tasks.push(async () => {
-           // ... (normal run logic same as before)
            let provider: VideoProvider = "kling";
           let body: any = {};
-          if (runIsKling) {
+          if (runIsKling26) {
+            // Kling 2.6 auto-selects I2V or T2V based on reference image availability
+            provider = "kling";
+            const hasImage = !!context.referenceUrl;
+            body = {
+              provider,
+              model: hasImage ? "kling-2.6/image-to-video" : "kling-2.6/text-to-video",
+              mode: "kling26",
+              prompt: line,
+              duration: context.kling26.duration,
+              aspect_ratio: context.kling26.aspect,
+              sound: context.kling26.sound,
+              ...(hasImage ? { image_urls: [context.referenceUrl] } : {}),
+            };
+          } else if (runIsKlingLegacy) {
             const cfgVal = Number.isFinite(Number(context.kling.cfg)) ? Number(context.kling.cfg) : undefined;
             provider = "kling";
             body = {
@@ -733,8 +787,8 @@ export default function VideoStudioPage() {
               .map((row) => {
                 const [durStr, ...rest] = row.split("|");
                 const duration = Math.max(1, Number(durStr.trim() || "1"));
-                const Scene = rest.join("|").trim() || line;
-                return { duration, Scene };
+                const scene = rest.join("|").trim() || line;
+                return { duration, scene };
               });
             const imageUrls = context.sora.imageUrl
               ? [context.sora.imageUrl]
@@ -832,8 +886,37 @@ export default function VideoStudioPage() {
                  
                  {/* Model Specific Params */}
                  <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
-                     {/* Kling Params */}
-                     {isKling && (
+                     {/* Kling 2.6 Params */}
+                     {isKling26 && (
+                         <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Duration</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={kling26Duration} onChange={e => setKling26Duration(e.target.value as any)}>
+                                        <option value="5">5s</option>
+                                        <option value="10">10s</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={kling26Aspect} onChange={e => setKling26Aspect(e.target.value as any)}>
+                                        <option value="16:9">16:9</option>
+                                        <option value="9:16">9:16</option>
+                                        <option value="1:1">1:1</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                                <input type="checkbox" checked={kling26Sound} onChange={e => setKling26Sound(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
+                                Generate with Sound
+                            </label>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                                {finalReferenceUrl ? "Image provided: using Image-to-Video" : "No image: using Text-to-Video"}
+                            </p>
+                         </div>
+                     )}
+                     {/* Kling Legacy Params */}
+                     {isKlingLegacy && (
                          <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-2">
                                 <div>

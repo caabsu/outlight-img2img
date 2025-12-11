@@ -153,14 +153,21 @@ export type VideoStudioSession = {
   savedAt: number;
   promptsText: string;
   videoModel: string;
-  // Model options
+  // Model options - Kling Legacy
   klingDuration: string;
   klingAspect: string;
   klingCfg: string;
+  // Model options - Kling 2.6
+  kling26Duration?: string;
+  kling26Aspect?: string;
+  kling26Sound?: boolean;
+  // Model options - Veo
   veoAspect: string;
   veoGenType: string;
+  // Model options - Sora
   soraFrames: string;
   soraAspect: string;
+  // General
   videoParallel: number;
   // References
   customUrl: string;
