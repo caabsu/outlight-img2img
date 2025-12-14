@@ -12,7 +12,338 @@ import {
   type VideoStudioSession,
 } from "@/lib/session-storage";
 
-type Product = { id: string; name: string; slug: string; image_url: string };
+type Product = {
+  id: string;
+  name: string;
+  slug: string;
+  image_url: string;
+  shopify_id?: string | null;
+  shopify_vendor?: string | null;
+  shopify_product_type?: string | null;
+  shopify_images?: string[] | null;
+};
+type ProductViewMode = "grid" | "compact" | "list";
+
+// Product Selector Modal Component (similar to Image Studio)
+function ProductSelectorModal({
+  products,
+  onSelect,
+  onClose,
+  searchQuery,
+  setSearchQuery,
+}: {
+  products: Product[];
+  onSelect: (imageUrl: string) => void;
+  onClose: () => void;
+  searchQuery: string;
+  setSearchQuery: (q: string) => void;
+}) {
+  const [viewMode, setViewMode] = useState<ProductViewMode>("grid");
+  const [selectedImages, setSelectedImages] = useState<string[]>([]);
+  const [expandedProduct, setExpandedProduct] = useState<Product | null>(null);
+
+  const filteredProducts = useMemo(() => {
+    if (!searchQuery.trim()) return products;
+    const q = searchQuery.toLowerCase();
+    return products.filter(
+      (p) =>
+        p.name?.toLowerCase().includes(q) ||
+        p.slug?.toLowerCase().includes(q) ||
+        p.shopify_vendor?.toLowerCase().includes(q) ||
+        p.shopify_product_type?.toLowerCase().includes(q)
+    );
+  }, [products, searchQuery]);
+
+  const handleSelectImage = (imageUrl: string) => {
+    onSelect(imageUrl);
+  };
+
+  const handleAddMultiple = () => {
+    selectedImages.forEach((url) => onSelect(url));
+    setSelectedImages([]);
+    onClose();
+  };
+
+  const toggleImageSelection = (imageUrl: string) => {
+    setSelectedImages((prev) =>
+      prev.includes(imageUrl) ? prev.filter((u) => u !== imageUrl) : [...prev, imageUrl]
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-5xl flex flex-col max-h-[90vh] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/10 dark:ring-slate-50/10 overflow-hidden">
+        {/* Modal Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900">
+          <div className="flex items-center gap-4 flex-1">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+              Product Library
+            </h3>
+            <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
+              {filteredProducts.length} products
+            </span>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="flex items-center gap-2 mr-4">
+            <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5">
+              <button
+                onClick={() => setViewMode("grid")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  viewMode === "grid"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+                title="Grid view"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v2.5A2.25 2.25 0 004.25 9h2.5A2.25 2.25 0 009 6.75v-2.5A2.25 2.25 0 006.75 2h-2.5zm0 9A2.25 2.25 0 002 13.25v2.5A2.25 2.25 0 004.25 18h2.5A2.25 2.25 0 009 15.75v-2.5A2.25 2.25 0 006.75 11h-2.5zm9-9A2.25 2.25 0 0011 4.25v2.5A2.25 2.25 0 0013.25 9h2.5A2.25 2.25 0 0018 6.75v-2.5A2.25 2.25 0 0015.75 2h-2.5zm0 9A2.25 2.25 0 0011 13.25v2.5A2.25 2.25 0 0013.25 18h2.5A2.25 2.25 0 0018 15.75v-2.5A2.25 2.25 0 0015.75 11h-2.5z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode("compact")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  viewMode === "compact"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+                title="Compact view"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path fillRule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v2.5A2.25 2.25 0 004.25 9h2.5A2.25 2.25 0 009 6.75v-2.5A2.25 2.25 0 006.75 2h-2.5zm0 9A2.25 2.25 0 002 13.25v2.5A2.25 2.25 0 004.25 18h2.5A2.25 2.25 0 009 15.75v-2.5A2.25 2.25 0 006.75 11h-2.5zM11 4.5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 0111 4.5zm0 4a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 0111 8.5zm0 5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5a.75.75 0 01-.75-.75z" clipRule="evenodd" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setViewMode("list")}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition ${
+                  viewMode === "list"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+                }`}
+                title="List view"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+              <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Search Bar */}
+        <div className="px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+          <div className="relative max-w-md">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400">
+              <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search by name, vendor, or type..."
+              className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white pl-10 pr-4 py-2.5 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400"
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {/* Multi-select action bar */}
+        {selectedImages.length > 0 && (
+          <div className="px-6 py-2 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/30 flex items-center justify-between">
+            <span className="text-sm text-indigo-700 dark:text-indigo-300">
+              {selectedImages.length} image{selectedImages.length > 1 ? "s" : ""} selected
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectedImages([])}
+                className="text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+              >
+                Clear
+              </button>
+              <button
+                onClick={handleAddMultiple}
+                className="bg-indigo-600 text-white text-xs font-medium px-3 py-1 rounded-md hover:bg-indigo-700 transition"
+              >
+                Add Selected
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal Body */}
+        <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50 dark:bg-slate-950/50">
+          {filteredProducts.length === 0 ? (
+            <div className="flex h-64 flex-col items-center justify-center text-center">
+              <div className="mb-4 rounded-full bg-slate-100 dark:bg-slate-800 p-4">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 text-slate-400">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                </svg>
+              </div>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-100">No products found</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Try a different search term</p>
+            </div>
+          ) : viewMode === "grid" ? (
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-4">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="group relative">
+                  <button
+                    onClick={() => handleSelectImage(product.image_url)}
+                    className="w-full flex flex-col gap-2 text-left outline-none"
+                  >
+                    <div className="relative aspect-square w-full overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-sm transition-all group-hover:border-indigo-500 dark:group-hover:border-indigo-500 group-hover:shadow-md group-hover:ring-2 group-hover:ring-indigo-500/20">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={product.image_url}
+                        className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                        alt=""
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <div className="bg-white/90 dark:bg-black/80 text-indigo-600 dark:text-indigo-400 rounded-full p-1.5 shadow-lg">
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                            <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                          </svg>
+                        </div>
+                      </div>
+                      {product.shopify_id && (
+                        <span className="absolute top-1.5 left-1.5 bg-emerald-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+                          Shopify
+                        </span>
+                      )}
+                      {product.shopify_images && product.shopify_images.length > 1 && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedProduct(product);
+                          }}
+                          className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] font-medium px-1.5 py-0.5 rounded hover:bg-black/80 transition"
+                        >
+                          +{product.shopify_images.length - 1}
+                        </button>
+                      )}
+                    </div>
+                    <div className="px-0.5">
+                      <p className="truncate text-xs font-medium text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                        {product.name}
+                      </p>
+                      {product.shopify_vendor && (
+                        <p className="truncate text-[10px] text-slate-400">{product.shopify_vendor}</p>
+                      )}
+                    </div>
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : viewMode === "compact" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => handleSelectImage(product.image_url)}
+                  className="flex items-center gap-3 p-2 rounded-lg border border-transparent hover:border-indigo-500 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition text-left group"
+                >
+                  <div className="h-10 w-10 flex-none rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                      {product.name}
+                    </p>
+                    <p className="text-[10px] text-slate-400 truncate">{product.shopify_vendor || product.slug}</p>
+                  </div>
+                  {product.shopify_id && <span className="w-2 h-2 rounded-full bg-emerald-500 flex-none" />}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {filteredProducts.map((product) => (
+                <button
+                  key={product.id}
+                  onClick={() => handleSelectImage(product.image_url)}
+                  className="w-full flex items-center gap-4 py-3 px-2 -mx-2 rounded-lg hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition text-left group"
+                >
+                  <div className="h-12 w-12 flex-none rounded-lg bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={product.image_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                      {product.name}
+                    </p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{product.slug}</p>
+                  </div>
+                  <div className="hidden sm:block text-right">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{product.shopify_vendor || "-"}</p>
+                    <p className="text-xs text-slate-400">{product.shopify_product_type || "-"}</p>
+                  </div>
+                  {product.shopify_id ? (
+                    <span className="flex-none rounded-full bg-emerald-100 dark:bg-emerald-900/30 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400">
+                      Shopify
+                    </span>
+                  ) : (
+                    <span className="flex-none rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:text-slate-400">
+                      Manual
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Expanded Product Images Modal */}
+        {expandedProduct && expandedProduct.shopify_images && (
+          <div className="absolute inset-0 z-10 bg-black/80 flex items-center justify-center p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
+                <h4 className="font-semibold text-slate-900 dark:text-white">{expandedProduct.name}</h4>
+                <button
+                  onClick={() => setExpandedProduct(null)}
+                  className="p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                  </svg>
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[calc(80vh-60px)]">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                  Select an image ({expandedProduct.shopify_images.length} available)
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  {expandedProduct.shopify_images.map((img, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        handleSelectImage(img);
+                        setExpandedProduct(null);
+                      }}
+                      className="group aspect-square overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 hover:border-indigo-500 hover:ring-2 hover:ring-indigo-500/20 transition"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={img} alt="" className="h-full w-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 type VideoProvider = "kling" | "veo" | "sora";
 type VideoModelKind = "image-to-video" | "text-to-video" | "veo" | "storyboard" | "kling26";
@@ -57,6 +388,7 @@ type VideoRunContext = {
   productId: string | null;
   customUrl: string | null;
   referenceUrl: string | null;
+  referenceUrls: string[]; // Multiple reference URLs for Kling 2.6
   kling: {
     duration: "5" | "10";
     aspect: "16:9" | "9:16" | "1:1";
@@ -129,11 +461,14 @@ function statusColor(status: RunStatus) {
 export default function VideoStudioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [selectedId, setSelectedId] = useState<string>("custom");
   const [customVideoUrl, setCustomVideoUrl] = useState("");
+  const [customVideoUrls, setCustomVideoUrls] = useState<string[]>([]);
+  const [customVideoUploads, setCustomVideoUploads] = useState<string[]>([]);
   const [referenceUploadPreview, setReferenceUploadPreview] = useState<string | null>(null);
-  const [referenceUploadedUrl, setReferenceUploadedUrl] = useState<string | null>(null);
   const [videoModel, setVideoModel] = useState<string>(VIDEO_MODEL_GROUPS[0].options[0].id);
+  const [showRefProductModal, setShowRefProductModal] = useState(false);
+  const [refSearchQuery, setRefSearchQuery] = useState("");
+  const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
   const videoModelDef = useMemo(
     () => VIDEO_MODEL_GROUPS.flatMap((group) => group.options).find((opt) => opt.id === videoModel) ?? VIDEO_MODEL_GROUPS[0].options[0],
     [videoModel]
@@ -154,18 +489,32 @@ export default function VideoStudioPage() {
   const [batchVideoPreviews, setBatchVideoPreviews] = useState<string[]>([]);
   const [batchVideoUploading, setBatchVideoUploading] = useState(false);
   
-  // Product Creation State
-  const [showProductModal, setShowProductModal] = useState(false);
-  const [newProduct, setNewProduct] = useState({ name: "", image_url: "" });
-  const [creatingProduct, setCreatingProduct] = useState(false);
+  // Computed ref sources (all unique images from uploads and URLs)
+  const refSources = useMemo(() => {
+    const list = [
+      ...customVideoUploads,
+      ...(customVideoUrl.trim() ? [customVideoUrl.trim()] : []),
+      ...customVideoUrls.map((u) => u.trim()).filter(Boolean),
+    ];
+    const seen = new Set<string>();
+    return list.filter((src) => {
+      if (seen.has(src)) return false;
+      seen.add(src);
+      return true;
+    });
+  }, [customVideoUploads, customVideoUrl, customVideoUrls]);
 
-  const selectedProduct = useMemo(
-    () => products.find((product) => product.id === selectedId),
-    [products, selectedId]
-  );
+  // Auto-select new refs when added
+  useEffect(() => {
+    setSelectedRefs(() => refSources.slice(0, 6));
+  }, [refSources]);
 
-  const baseReference = selectedId === "custom" ? customVideoUrl.trim() : selectedProduct?.image_url?.trim() ?? "";
-  const resolvedVideoReferenceUrl = referenceUploadedUrl || baseReference;
+  function removeUploadSrc(src: string) {
+    setCustomVideoUploads((prev) => prev.filter((u) => u !== src));
+    setCustomVideoUrls((prev) => prev.filter((u) => u !== src));
+  }
+
+  const resolvedVideoReferenceUrl = selectedRefs[0] || "";
 
   const isKling = videoModelDef.provider === "kling";
   const isKling26 = isKling && videoModelDef.kind === "kling26";
@@ -344,46 +693,22 @@ export default function VideoStudioPage() {
     load();
   }, []);
   
-  async function handleAddProduct() {
-      if (!newProduct.name || !newProduct.image_url) return;
-      setCreatingProduct(true);
-      try {
-          const res = await fetch("/api/products", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(newProduct)
-          });
-          const json = await res.json();
-          if(!res.ok) throw new Error(json.error || "Failed to create product");
-          
-          setProducts(prev => [...prev, json.product].sort((a,b) => a.name.localeCompare(b.name)));
-          setSelectedId(json.product.id);
-          setShowProductModal(false);
-          setNewProduct({ name: "", image_url: "" });
-          setSaveToast({ message: "Product created", type: "success" });
-      } catch (e: any) {
-          setSaveToast({ message: e.message, type: "error" });
-      } finally {
-          setCreatingProduct(false);
-      }
-  }
-
   useEffect(() => {
     if (!saveToast) return;
     const timer = setTimeout(() => setSaveToast(null), 3200);
     return () => clearTimeout(timer);
   }, [saveToast]);
-  
+
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
           if (referenceUploadPreview) setReferenceUploadPreview(null);
-          if (showProductModal) setShowProductModal(false);
+          if (showRefProductModal) setShowRefProductModal(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [referenceUploadPreview, showProductModal]);
+  }, [referenceUploadPreview, showRefProductModal]);
 
   async function filesToDataUrls(files: FileList | null) {
     if (!files || files.length === 0) return [];
@@ -428,19 +753,25 @@ export default function VideoStudioPage() {
   async function handleReferenceUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     try {
-      const [preview] = await filesToDataUrls(files);
-      setReferenceUploadPreview(preview || null);
+      const previews = await filesToDataUrls(files);
+      // Add previews temporarily while uploading
+      setCustomVideoUploads((prev) => [...prev, ...previews]);
 
       const formData = new FormData();
-      formData.append("files", files[0]);
+      Array.from(files).forEach((file) => formData.append("files", file));
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const json = await res.json();
       if (!res.ok || !json.urls?.length) throw new Error(json.error || "Upload failed");
-      setReferenceUploadedUrl(json.urls[0]);
-      setSaveToast({ message: "Reference uploaded", type: "success" });
+
+      // Replace previews with actual uploaded URLs
+      setCustomVideoUploads((prev) => {
+        const withoutPreviews = prev.filter((p) => !previews.includes(p));
+        return [...withoutPreviews, ...json.urls];
+      });
+      setSaveToast({ message: `${json.urls.length} image${json.urls.length > 1 ? "s" : ""} uploaded`, type: "success" });
     } catch (error: any) {
-      setReferenceUploadPreview(null);
-      setReferenceUploadedUrl(null);
+      // Remove failed previews
+      setCustomVideoUploads((prev) => prev.filter((p) => !p.startsWith("data:")));
       setSaveToast({ message: error?.message || "Upload failed", type: "error" });
     }
   }
@@ -516,7 +847,7 @@ export default function VideoStudioPage() {
     const run: VideoRun = {
       id: crypto.randomUUID(),
       name: `${videoModelDef.label} - ${new Date().toLocaleTimeString()}`,
-      productName: selectedProduct ? selectedProduct.name : "Custom",
+      productName: "Custom",
       startedAt: Date.now(),
       modelId: videoModel,
       modelLabel: videoModelDef.label,
@@ -533,9 +864,10 @@ export default function VideoStudioPage() {
     };
 
     const context: VideoRunContext = {
-      productId: selectedId !== "custom" ? selectedId : null,
-      customUrl: selectedId === "custom" ? (finalReferenceUrl || null) : null,
+      productId: null,
+      customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
+      referenceUrls: [...selectedRefs],
       kling: { duration: klingDuration, aspect: klingAspect, negative: klingNeg, cfg: klingCfg },
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
@@ -559,7 +891,7 @@ export default function VideoStudioPage() {
     const run: VideoRun = {
       id: crypto.randomUUID(),
       name: `${videoModelDef.label} Batch - ${new Date().toLocaleTimeString()}`,
-      productName: selectedProduct ? selectedProduct.name : "Custom",
+      productName: "Custom",
       startedAt: Date.now(),
       modelId: videoModel,
       modelLabel: videoModelDef.label,
@@ -576,9 +908,10 @@ export default function VideoStudioPage() {
     };
 
     const context: VideoRunContext = {
-      productId: selectedId !== "custom" ? selectedId : null,
-      customUrl: selectedId === "custom" ? (finalReferenceUrl || null) : null,
+      productId: null,
+      customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
+      referenceUrls: [...selectedRefs],
       kling: { duration: klingDuration, aspect: klingAspect, negative: klingNeg, cfg: klingCfg },
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
@@ -729,8 +1062,10 @@ export default function VideoStudioPage() {
           let body: any = {};
           if (runIsKling26) {
             // Kling 2.6 auto-selects I2V or T2V based on reference image availability
+            // Supports multiple images via context.referenceUrls
             provider = "kling";
-            const hasImage = !!context.referenceUrl;
+            const imageUrls = context.referenceUrls?.length > 0 ? context.referenceUrls : (context.referenceUrl ? [context.referenceUrl] : []);
+            const hasImage = imageUrls.length > 0;
             body = {
               provider,
               model: hasImage ? "kling-2.6/image-to-video" : "kling-2.6/text-to-video",
@@ -739,7 +1074,7 @@ export default function VideoStudioPage() {
               duration: context.kling26.duration,
               aspect_ratio: context.kling26.aspect,
               sound: context.kling26.sound,
-              ...(hasImage ? { image_urls: [context.referenceUrl] } : {}),
+              ...(hasImage ? { image_urls: imageUrls } : {}),
             };
           } else if (runIsKlingLegacy) {
             const cfgVal = Number.isFinite(Number(context.kling.cfg)) ? Number(context.kling.cfg) : undefined;
@@ -964,85 +1299,151 @@ export default function VideoStudioPage() {
                  </div>
              </div>
 
-             {/* Context / Reference */}
+             {/* Context / Reference - Now supports multiple images */}
              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
                  <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Context</h2>
-                     {videoNeedsImage && (
-                        <span className={`h-2 w-2 rounded-full ${finalReferenceUrl ? "bg-emerald-500" : "bg-rose-500"}`} />
-                    )}
+                    <div className="flex items-center gap-2">
+                      {selectedRefs.length > 0 && (
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                          {selectedRefs.length} selected
+                        </span>
+                      )}
+                      {videoNeedsImage && (
+                        <span className={`h-2 w-2 rounded-full ${selectedRefs.length > 0 ? "bg-emerald-500" : "bg-rose-500"}`} />
+                      )}
+                    </div>
                  </div>
-                 
+
                  <div className="space-y-4">
-                     <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Subject / Product</label>
-                             <button 
-                                onClick={() => setShowProductModal(true)}
-                                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
-                            >
-                                + Add Product
-                            </button>
-                        </div>
-                        <select
-                            className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-sm bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100"
-                            value={selectedId}
-                            onChange={(e) => { setSelectedId(e.target.value); setReferenceUploadPreview(null); setReferenceUploadedUrl(null); }}
-                        >
-                            <option value="custom">Custom</option>
-                            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                        </select>
-                     </div>
-                     
-                     {selectedId !== "custom" && selectedProduct && (
-                         <div className="flex gap-3 items-center rounded-lg bg-slate-50 dark:bg-slate-950/50 p-2 border border-slate-100 dark:border-slate-800">
-                             {selectedProduct.image_url && (
-                                 <button 
-                                    onClick={() => setReferenceUploadPreview(selectedProduct.image_url)}
-                                    className="shrink-0 h-10 w-10 rounded overflow-hidden border border-slate-200 dark:border-slate-700 hover:ring-2 ring-indigo-500 transition"
-                                 >
-                                     {/* eslint-disable-next-line @next/next/no-img-element */}
-                                     <img src={selectedProduct.image_url} className="h-full w-full object-cover bg-white dark:bg-slate-800" alt="" />
-                                 </button>
-                             )}
-                             <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">{selectedProduct.name}</span>
-                         </div>
-                     )}
-                     
+                     {/* Reference Images Grid */}
                      <div className="space-y-2">
-                         <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Reference Source</label>
-                         {selectedId === "custom" ? (
-                             <div className="space-y-2">
-                                <input 
-                                    className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                                    placeholder="Video Reference URL..."
-                                    value={customVideoUrl}
-                                    onChange={(e) => { setCustomVideoUrl(e.target.value); setReferenceUploadedUrl(null); }}
-                                />
-                                <label className="flex w-full items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition">
-                                    <input type="file" accept="image/*" className="hidden" onChange={e => handleReferenceUpload(e.target.files)} />
-                                    {referenceUploadPreview ? "Change Image" : "Upload Image"}
-                                </label>
-                             </div>
-                         ) : (
-                             <p className="text-xs text-slate-400 italic">Using product image as reference.</p>
-                         )}
-                         
-                         {referenceUploadPreview && (
-                             <div className="relative rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700">
-                                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                                 <img src={referenceUploadPreview} className="w-full h-32 object-cover" alt="" />
-                                 <button 
-                                    onClick={() => setReferenceUploadPreview(null)}
-                                    className="absolute top-1 right-1 rounded-full bg-black/50 p-1 text-white hover:bg-black/70"
-                                 >
-                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                                     </svg>
-                                 </button>
-                             </div>
-                         )}
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
+                          <button
+                            onClick={() => setShowRefProductModal(true)}
+                            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
+                          >
+                            Browse Products
+                          </button>
+                        </div>
+
+                        {/* Image Grid */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {/* Upload Button */}
+                          <label className="aspect-square flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition">
+                            <input
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => handleReferenceUpload(e.target.files)}
+                            />
+                            <div className="text-center">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mx-auto text-slate-400">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                              </svg>
+                              <span className="text-[9px] text-slate-400 mt-0.5 block">Upload</span>
+                            </div>
+                          </label>
+
+                          {/* Existing References */}
+                          {refSources.map((src, idx) => {
+                            const isSelected = selectedRefs.includes(src);
+                            return (
+                              <div key={idx} className="relative group">
+                                <button
+                                  onClick={() => {
+                                    setSelectedRefs((prev) =>
+                                      prev.includes(src)
+                                        ? prev.filter((s) => s !== src)
+                                        : [...prev, src]
+                                    );
+                                  }}
+                                  className={`aspect-square w-full rounded-lg border-2 overflow-hidden transition ${
+                                    isSelected
+                                      ? "border-indigo-500 ring-2 ring-indigo-500/20"
+                                      : "border-slate-200 dark:border-slate-700 opacity-60 hover:opacity-100"
+                                  }`}
+                                >
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={src}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
+                                  {isSelected && (
+                                    <div className="absolute top-1 left-1 bg-indigo-500 text-white rounded-full p-0.5">
+                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                                      </svg>
+                                    </div>
+                                  )}
+                                </button>
+                                {/* Preview & Remove buttons */}
+                                <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setReferenceUploadPreview(src);
+                                    }}
+                                    className="bg-black/60 text-white rounded p-0.5 hover:bg-black/80"
+                                    title="Preview"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                      <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+                                      <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeUploadSrc(src);
+                                    }}
+                                    className="bg-rose-500/80 text-white rounded p-0.5 hover:bg-rose-600"
+                                    title="Remove"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                      </div>
+
+                     {/* URL Input */}
+                     <div className="space-y-2">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Add by URL</label>
+                        <input
+                          className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                          placeholder="Paste image URL and press Enter..."
+                          value={customVideoUrl}
+                          onChange={(e) => setCustomVideoUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && customVideoUrl.trim()) {
+                              setCustomVideoUrls((prev) => [...prev, customVideoUrl.trim()]);
+                              setCustomVideoUrl("");
+                            }
+                          }}
+                        />
+                     </div>
+
+                     {/* Kling 2.6 multiple images hint */}
+                     {isKling26 && selectedRefs.length > 1 && (
+                       <p className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded">
+                         Kling 2.6 will use all {selectedRefs.length} selected images as reference elements.
+                       </p>
+                     )}
+
+                     {/* Mode indicator for Kling 2.6 */}
+                     {isKling26 && (
+                       <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                         {selectedRefs.length > 0 ? "Image-to-Video mode" : "Text-to-Video mode (no images)"}
+                       </p>
+                     )}
                  </div>
              </div>
           </div>
@@ -1250,48 +1651,22 @@ export default function VideoStudioPage() {
         </div>
       </div>
       
-      {/* Product Creation Modal */}
-      {showProductModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/80 p-4 backdrop-blur-sm">
-              <div className="w-full max-w-md rounded-xl bg-white dark:bg-slate-900 p-6 shadow-xl ring-1 ring-slate-900/5 dark:ring-slate-50/10">
-                  <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-4">Add New Product</h3>
-                  <div className="space-y-4">
-                      <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Product Name</label>
-                          <input 
-                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                              placeholder="e.g. Neon Runner 2025"
-                              value={newProduct.name}
-                              onChange={(e) => setNewProduct(prev => ({ ...prev, name: e.target.value }))}
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Image URL</label>
-                          <input 
-                              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-slate-100"
-                              placeholder="https://..."
-                              value={newProduct.image_url}
-                              onChange={(e) => setNewProduct(prev => ({ ...prev, image_url: e.target.value }))}
-                          />
-                      </div>
-                      <div className="flex gap-3 pt-2">
-                          <button 
-                            onClick={() => setShowProductModal(false)}
-                            className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                          >
-                              Cancel
-                          </button>
-                          <button 
-                            onClick={handleAddProduct}
-                            disabled={!newProduct.name || !newProduct.image_url || creatingProduct}
-                            className="flex-1 rounded-lg bg-slate-900 dark:bg-slate-50 py-2 text-sm font-medium text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50"
-                          >
-                              {creatingProduct ? "Creating..." : "Create Product"}
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
+      {/* Product Selector Modal */}
+      {showRefProductModal && (
+        <ProductSelectorModal
+          products={products}
+          onSelect={(imageUrl) => {
+            setCustomVideoUrls((prev) => [...prev, imageUrl]);
+            setShowRefProductModal(false);
+            setRefSearchQuery("");
+          }}
+          onClose={() => {
+            setShowRefProductModal(false);
+            setRefSearchQuery("");
+          }}
+          searchQuery={refSearchQuery}
+          setSearchQuery={setRefSearchQuery}
+        />
       )}
 
       {/* Preview Modal for Reference/Product */}
