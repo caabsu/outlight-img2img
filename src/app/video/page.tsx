@@ -753,27 +753,30 @@ export default function VideoStudioPage() {
   async function handleReferenceUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     try {
-      const previews = await filesToDataUrls(files);
-      // Add previews temporarily while uploading
-      setCustomVideoUploads((prev) => [...prev, ...previews]);
-
-      const formData = new FormData();
-      Array.from(files).forEach((file) => formData.append("files", file));
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const json = await res.json();
-      if (!res.ok || !json.urls?.length) throw new Error(json.error || "Upload failed");
-
-      // Replace previews with actual uploaded URLs
-      setCustomVideoUploads((prev) => {
-        const withoutPreviews = prev.filter((p) => !previews.includes(p));
-        return [...withoutPreviews, ...json.urls];
-      });
-      setSaveToast({ message: `${json.urls.length} image${json.urls.length > 1 ? "s" : ""} uploaded`, type: "success" });
+      const dataUrls = await filesToDataUrls(files);
+      setCustomVideoUploads((prev) => [...prev, ...dataUrls]);
+      setSaveToast({ message: `${dataUrls.length} image${dataUrls.length > 1 ? "s" : ""} added`, type: "success" });
     } catch (error: any) {
-      // Remove failed previews
-      setCustomVideoUploads((prev) => prev.filter((p) => !p.startsWith("data:")));
-      setSaveToast({ message: error?.message || "Upload failed", type: "error" });
+      setSaveToast({ message: error?.message || "Failed to load images", type: "error" });
     }
+  }
+
+  // Upload a data URI to storage and return the public URL (for APIs that require public URLs)
+  async function uploadToStorage(dataUrl: string): Promise<string> {
+    // If already an HTTP URL, return as-is
+    if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
+      return dataUrl;
+    }
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataUrl }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.url) {
+      throw new Error(json.error || "Failed to upload image");
+    }
+    return json.url;
   }
 
   function setActiveVideoRun(runId: string) {
@@ -1064,7 +1067,13 @@ export default function VideoStudioPage() {
             // Kling 2.6 auto-selects I2V or T2V based on reference image availability
             // Supports multiple images via context.referenceUrls
             provider = "kling";
-            const imageUrls = context.referenceUrls?.length > 0 ? context.referenceUrls : (context.referenceUrl ? [context.referenceUrl] : []);
+            let imageUrls = context.referenceUrls?.length > 0 ? context.referenceUrls : (context.referenceUrl ? [context.referenceUrl] : []);
+
+            // Upload any data URLs to storage (Kling requires public HTTP URLs)
+            if (imageUrls.some((url) => url.startsWith("data:"))) {
+              imageUrls = await Promise.all(imageUrls.map((url) => uploadToStorage(url)));
+            }
+
             const hasImage = imageUrls.length > 0;
             body = {
               provider,
