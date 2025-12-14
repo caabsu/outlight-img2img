@@ -9,12 +9,77 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET_NAME = "reference-images";
 
+// Determine file extension from mime type
+const extMap: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+async function uploadBuffer(
+  supabase: any,
+  buffer: Buffer,
+  mimeType: string
+): Promise<string> {
+  const ext = extMap[mimeType] || "png";
+  const filename = `${crypto.randomUUID()}.${ext}`;
+  const filePath = `uploads/${filename}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET_NAME)
+    .upload(filePath, buffer, {
+      contentType: mimeType,
+      upsert: false,
+    });
+
+  if (uploadError) {
+    throw new Error(uploadError.message || "Upload failed");
+  }
+
+  const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+
+  if (!urlData?.publicUrl) {
+    throw new Error("Failed to get public URL");
+  }
+
+  return urlData.publicUrl;
+}
+
 /**
- * Upload a base64 image to Supabase storage and return the public URL.
- * Used for Seedream which requires public HTTP URLs (not data URIs).
+ * Upload images to Supabase storage and return the public URL(s).
+ * Supports two formats:
+ * 1. FormData with "files" field (File objects) → returns { urls: string[] }
+ * 2. JSON with "dataUrl" field (base64 data URI) → returns { url: string }
  */
 export async function POST(req: Request) {
   try {
+    const contentType = req.headers.get("content-type") || "";
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // Handle FormData uploads (multiple files)
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await req.formData();
+      const files = formData.getAll("files") as File[];
+
+      if (!files || files.length === 0) {
+        return NextResponse.json({ error: "No files provided" }, { status: 400 });
+      }
+
+      const urls: string[] = [];
+      for (const file of files) {
+        const arrayBuffer = await file.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const mimeType = file.type || "image/png";
+        const url = await uploadBuffer(supabase, buffer, mimeType);
+        urls.push(url);
+      }
+
+      return NextResponse.json({ urls });
+    }
+
+    // Handle JSON uploads (single base64 data URL)
     const body = await req.json().catch(() => ({}));
     const dataUrl: string | undefined = body?.dataUrl;
 
@@ -32,43 +97,8 @@ export async function POST(req: Request) {
     const base64Data = match[2];
     const buffer = Buffer.from(base64Data, "base64");
 
-    // Determine file extension
-    const extMap: Record<string, string> = {
-      "image/png": "png",
-      "image/jpeg": "jpg",
-      "image/jpg": "jpg",
-      "image/webp": "webp",
-      "image/gif": "gif",
-    };
-    const ext = extMap[mimeType] || "png";
-
-    // Generate unique filename
-    const filename = `${crypto.randomUUID()}.${ext}`;
-    const filePath = `uploads/${filename}`;
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Upload to storage
-    const { error: uploadError } = await supabase.storage
-      .from(BUCKET_NAME)
-      .upload(filePath, buffer, {
-        contentType: mimeType,
-        upsert: false,
-      });
-
-    if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
-      return NextResponse.json({ error: uploadError.message || "Upload failed" }, { status: 500 });
-    }
-
-    // Get public URL
-    const { data: urlData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
-
-    if (!urlData?.publicUrl) {
-      return NextResponse.json({ error: "Failed to get public URL" }, { status: 500 });
-    }
-
-    return NextResponse.json({ url: urlData.publicUrl });
+    const url = await uploadBuffer(supabase, buffer, mimeType);
+    return NextResponse.json({ url });
   } catch (err: any) {
     console.error("Upload error:", err);
     return NextResponse.json({ error: err?.message || "Upload failed" }, { status: 500 });
