@@ -1165,7 +1165,9 @@ export default function VideoStudioPage() {
     }
 
     try {
-      await runWithLimit(Math.max(1, Math.min(run.speed, MAX_CONCURRENT_REQUESTS)), tasks);
+      // Veo API has rate limits - force sequential execution to avoid errors
+      const effectiveSpeed = runIsVeo ? 1 : Math.max(1, Math.min(run.speed, MAX_CONCURRENT_REQUESTS));
+      await runWithLimit(effectiveSpeed, tasks);
       setVideoRuns((prev) =>
         prev.map((item) => {
           if (item.id !== run.id) return item;
@@ -1595,13 +1597,17 @@ export default function VideoStudioPage() {
                             }}
                         />
                          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
-                          <select 
-                            className="bg-transparent text-xs font-medium text-slate-600 dark:text-slate-400 focus:outline-none dark:bg-slate-900"
-                            value={videoParallel}
-                            onChange={(e) => setVideoParallel(Number(e.target.value))}
-                        >
-                            {RUN_PARALLEL_OPTIONS.map(s => <option key={s} value={s}>Parallel {s}x</option>)}
-                         </select>
+                          {isVeo ? (
+                            <span className="text-xs text-slate-400 dark:text-slate-500" title="Veo API requires sequential execution">Sequential</span>
+                          ) : (
+                            <select
+                              className="bg-transparent text-xs font-medium text-slate-600 dark:text-slate-400 focus:outline-none dark:bg-slate-900"
+                              value={videoParallel}
+                              onChange={(e) => setVideoParallel(Number(e.target.value))}
+                            >
+                              {RUN_PARALLEL_OPTIONS.map(s => <option key={s} value={s}>Parallel {s}x</option>)}
+                            </select>
+                          )}
                      </div>
                 </div>
                 
