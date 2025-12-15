@@ -159,7 +159,6 @@ export type VideoStudioSession = {
   kling26Sound?: boolean;
   // Model options - Veo
   veoAspect: string;
-  veoGenType: string;
   // Model options - Sora
   soraFrames: string;
   soraAspect: string;

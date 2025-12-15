@@ -38,6 +38,7 @@ type PostBody = {
   };
 };
 
+// ---- Generic KIE API (for Kling, Sora) ----
 async function kieCreateTask(payload: any) {
   const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
     method: "POST",
@@ -89,6 +90,72 @@ async function kiePoll(taskId: string, maxMs = 240_000) {
     }
   }
   throw new Error(`KIE generation timed out (last state: ${lastState})`);
+}
+
+// ---- Veo 3.1 Dedicated API ----
+async function veoGenerate(payload: {
+  prompt: string;
+  model?: string;
+  imageUrls?: string[];
+  generationType?: string;
+  aspectRatio?: string;
+  seeds?: number;
+}) {
+  const res = await fetch(`${KIE_BASE}/api/v1/veo/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${KIE_KEY}`,
+    },
+    body: JSON.stringify({
+      prompt: payload.prompt,
+      model: payload.model || "veo3_fast",
+      ...(payload.imageUrls && payload.imageUrls.length > 0 ? { imageUrls: payload.imageUrls } : {}),
+      ...(payload.generationType ? { generationType: payload.generationType } : {}),
+      ...(payload.aspectRatio ? { aspectRatio: payload.aspectRatio } : {}),
+      ...(typeof payload.seeds === "number" ? { seeds: payload.seeds } : {}),
+      enableTranslation: true,
+    }),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || json?.code !== 200) {
+    const msg = json?.message || json?.msg || `Veo generate failed (${res.status})`;
+    throw new Error(msg);
+  }
+  const taskId = json?.data?.taskId as string | undefined;
+  if (!taskId) throw new Error("Veo taskId missing");
+  return taskId;
+}
+
+async function veoPoll(taskId: string, maxMs = 360_000) {
+  const start = Date.now();
+  let lastFlag = 0;
+  while (Date.now() - start < maxMs) {
+    await new Promise((r) => setTimeout(r, 3000)); // Poll every 3s for Veo
+    const res = await fetch(`${KIE_BASE}/api/v1/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${KIE_KEY}` },
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json?.code !== 200) {
+      const msg = json?.message || json?.msg || "Veo query failed";
+      throw new Error(msg);
+    }
+
+    const data = json?.data;
+    lastFlag = data?.successFlag ?? 0;
+
+    // successFlag: 0 = generating, 1 = success, 2 = failed, 3 = generation failed
+    if (lastFlag === 1) {
+      const urls: string[] = data?.response?.resultUrls || [];
+      if (!urls.length) throw new Error("Veo returned no resultUrls");
+      return { url: urls[0] as string };
+    }
+    if (lastFlag === 2 || lastFlag === 3) {
+      const errMsg = data?.errorMessage || data?.response?.errorMessage || "Veo generation failed";
+      throw new Error(errMsg);
+    }
+  }
+  throw new Error(`Veo generation timed out (last flag: ${lastFlag})`);
 }
 
 export async function POST(req: Request) {
@@ -150,34 +217,33 @@ export async function POST(req: Request) {
       return NextResponse.json({ videoUrl: url });
     }
 
-    /* -------- VEO (Google DeepMind) -------- */
+    /* -------- VEO 3.1 (Google DeepMind) -------- */
     if (provider === "veo") {
-      const payload: any = {
-        model: model || "veo3_fast",
-        callBackUrl: "",
-        input: {
-          prompt,
-          generationType: generationType || "TEXT_2_VIDEO",
-        },
-      };
-
-      // Add aspect ratio if provided
-      if (aspectRatio && aspectRatio !== "Auto") {
-        payload.input.aspectRatio = aspectRatio;
+      // Determine generation type based on images
+      let effectiveGenType = generationType;
+      if (!effectiveGenType) {
+        if (imageUrls && imageUrls.length > 0) {
+          // Auto-detect: 1-2 images = FIRST_AND_LAST_FRAMES_2_VIDEO, 3+ = REFERENCE_2_VIDEO
+          effectiveGenType = imageUrls.length >= 3 ? "REFERENCE_2_VIDEO" : "FIRST_AND_LAST_FRAMES_2_VIDEO";
+        } else {
+          effectiveGenType = "TEXT_2_VIDEO";
+        }
       }
 
-      // Add image URLs if provided
-      if (imageUrls && imageUrls.length > 0) {
-        payload.input.imageUrls = imageUrls;
-      }
+      // REFERENCE_2_VIDEO only supports veo3_fast and 16:9
+      const effectiveModel = effectiveGenType === "REFERENCE_2_VIDEO" ? "veo3_fast" : (model || "veo3_fast");
+      const effectiveAspect = effectiveGenType === "REFERENCE_2_VIDEO" ? "16:9" : (aspectRatio || "16:9");
 
-      // Add seed if provided
-      if (typeof seeds === "number") {
-        payload.input.seeds = seeds;
-      }
+      const taskId = await veoGenerate({
+        prompt,
+        model: effectiveModel,
+        imageUrls: imageUrls && imageUrls.length > 0 ? imageUrls : undefined,
+        generationType: effectiveGenType,
+        aspectRatio: effectiveAspect,
+        seeds: typeof seeds === "number" ? seeds : undefined,
+      });
 
-      const taskId = await kieCreateTask(payload);
-      const { url } = await kiePoll(taskId, 360_000); // 6 minutes max for Veo
+      const { url } = await veoPoll(taskId, 420_000); // 7 minutes max for Veo
       return NextResponse.json({ videoUrl: url });
     }
 

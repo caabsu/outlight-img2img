@@ -357,7 +357,6 @@ type VideoModelOption = {
 };
 
 type VeoRatio = "16:9" | "9:16" | "Auto";
-type VeoGenType = "TEXT_2_VIDEO" | "FIRST_AND_LAST_FRAMES_2_VIDEO" | "REFERENCE_2_VIDEO";
 
 type VideoItem = { id: string; prompt: string; url: string };
 type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
@@ -396,9 +395,7 @@ type VideoRunContext = {
   };
   veo: {
     aspect: VeoRatio;
-    generation: VeoGenType;
     seed: string;
-    secondImage: string;
   };
   sora: {
     frames: "10" | "15" | "25";
@@ -516,9 +513,7 @@ export default function VideoStudioPage() {
   const [kling26Sound, setKling26Sound] = useState<boolean>(false);
 
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
-  const [veoGenType, setVeoGenType] = useState<VeoGenType>("TEXT_2_VIDEO");
   const [veoSeed, setVeoSeed] = useState("");
-  const [veoSecondImage, setVeoSecondImage] = useState("");
 
   const [soraFrames, setSoraFrames] = useState<"10" | "15" | "25">("15");
   const [soraAspect, setSoraAspect] = useState<"portrait" | "landscape">("landscape");
@@ -529,12 +524,11 @@ export default function VideoStudioPage() {
 
   const trimmedSoraImageUrl = soraImageUrl.trim();
   const finalReferenceUrl = isSora ? trimmedSoraImageUrl || resolvedVideoReferenceUrl : resolvedVideoReferenceUrl;
-  // Kling 2.6 doesn't require an image (auto-selects I2V/T2V based on availability)
-  const videoNeedsImage =
-    (isVeo && veoGenType !== "TEXT_2_VIDEO") ||
-    (isSora && videoModelDef.kind === "storyboard");
+  // Kling 2.6 and Veo don't require images (auto-selects mode based on availability)
+  // Only Sora Storyboard strictly requires images
+  const videoNeedsImage = isSora && videoModelDef.kind === "storyboard";
   const videoSomethingRunning = videoRuns.some((run) => run.status === "running");
-  const canStartVideo = videoPromptLines.length > 0 && (!videoNeedsImage || !!finalReferenceUrl || isVeo);
+  const canStartVideo = videoPromptLines.length > 0 && (!videoNeedsImage || !!finalReferenceUrl);
   const canStartBatch = batchVideoPrompt.trim().length > 0 && batchVideoImages.length > 0;
 
   async function runWithLimit<T>(limit: number, tasks: Array<() => Promise<T>>) {
@@ -590,7 +584,6 @@ export default function VideoStudioPage() {
     if (session.kling26Aspect) setKling26Aspect(session.kling26Aspect as any);
     if (typeof session.kling26Sound === "boolean") setKling26Sound(session.kling26Sound);
     if (session.veoAspect) setVeoAspect(session.veoAspect as any);
-    if (session.veoGenType) setVeoGenType(session.veoGenType as any);
     if (session.soraFrames) setSoraFrames(session.soraFrames as any);
     if (session.soraAspect) setSoraAspect(session.soraAspect as any);
     if (typeof session.videoParallel === "number") setVideoParallel(session.videoParallel);
@@ -622,7 +615,6 @@ export default function VideoStudioPage() {
       kling26Aspect,
       kling26Sound,
       veoAspect,
-      veoGenType,
       soraFrames,
       soraAspect,
       videoParallel,
@@ -640,7 +632,6 @@ export default function VideoStudioPage() {
     kling26Aspect,
     kling26Sound,
     veoAspect,
-    veoGenType,
     soraFrames,
     soraAspect,
     videoParallel,
@@ -843,7 +834,7 @@ export default function VideoStudioPage() {
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
-      veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
+      veo: { aspect: veoAspect, seed: veoSeed },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
 
@@ -886,7 +877,7 @@ export default function VideoStudioPage() {
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
-      veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
+      veo: { aspect: veoAspect, seed: veoSeed },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
     };
@@ -959,20 +950,25 @@ export default function VideoStudioPage() {
             };
           } else if (runIsVeo) {
             provider = "veo";
+            // In batch mode, each image becomes a separate video
             const imgs = [imageUrl];
-            if (context.veo.secondImage) imgs.push(context.veo.secondImage);
-            let effectiveGen = context.veo.generation;
-            if (run.modelId === "veo3" && context.veo.generation === "REFERENCE_2_VIDEO") {
-              effectiveGen = "TEXT_2_VIDEO";
+
+            // Parse seed (must be 10000-99999 if provided)
+            let seedVal: number | undefined;
+            if (context.veo.seed.trim()) {
+              const parsed = Number(context.veo.seed);
+              if (parsed >= 10000 && parsed <= 99999) {
+                seedVal = parsed;
+              }
             }
+
             body = {
               provider,
               model: run.modelId,
               prompt,
               aspectRatio: context.veo.aspect,
-              generationType: effectiveGen,
               imageUrls: imgs,
-              ...(context.veo.seed.trim() ? { seeds: Number(context.veo.seed) } : {}),
+              ...(seedVal ? { seeds: seedVal } : {}),
             };
           } else {
             provider = "sora";
@@ -1039,21 +1035,28 @@ export default function VideoStudioPage() {
             };
           } else if (runIsVeo) {
             provider = "veo";
-            const imgs: string[] = [];
-            if (context.referenceUrl) imgs.push(context.referenceUrl);
-            if (context.veo.secondImage) imgs.push(context.veo.secondImage);
-            let effectiveGen = context.veo.generation;
-            if (run.modelId === "veo3" && context.veo.generation === "REFERENCE_2_VIDEO") {
-              effectiveGen = "TEXT_2_VIDEO";
+            // Use all selected reference images for Veo (supports up to 3)
+            const imgs = context.referenceUrls?.length > 0
+              ? context.referenceUrls.slice(0, 3)
+              : (context.referenceUrl ? [context.referenceUrl] : []);
+
+            // Parse seed (must be 10000-99999 if provided)
+            let seedVal: number | undefined;
+            if (context.veo.seed.trim()) {
+              const parsed = Number(context.veo.seed);
+              if (parsed >= 10000 && parsed <= 99999) {
+                seedVal = parsed;
+              }
             }
+
             body = {
               provider,
               model: run.modelId,
               prompt: line,
               aspectRatio: context.veo.aspect,
-              generationType: effectiveGen,
+              // Let backend auto-determine generationType based on image count
               ...(imgs.length ? { imageUrls: imgs } : {}),
-              ...(context.veo.seed.trim() ? { seeds: Number(context.veo.seed) } : {}),
+              ...(seedVal ? { seeds: seedVal } : {}),
             };
           } else {
             provider = "sora";
@@ -1199,15 +1202,22 @@ export default function VideoStudioPage() {
                                  <div>
                                     <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
                                     <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={veoAspect} onChange={e => setVeoAspect(e.target.value as any)}>
-                                        <option value="16:9">16:9</option>
-                                        <option value="9:16">9:16</option>
+                                        <option value="16:9">16:9 (HD 1080p)</option>
+                                        <option value="9:16">9:16 (Portrait)</option>
+                                        <option value="Auto">Auto</option>
                                     </select>
                                 </div>
                                  <div>
                                     <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Seed</label>
-                                    <input className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="Random" value={veoSeed} onChange={e => setVeoSeed(e.target.value)} />
+                                    <input className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="10000-99999" value={veoSeed} onChange={e => setVeoSeed(e.target.value)} />
                                 </div>
                             </div>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                                {selectedRefs.length === 0 && "Text-to-Video mode"}
+                                {selectedRefs.length === 1 && "Image-to-Video: video unfolds from image"}
+                                {selectedRefs.length === 2 && "Frame transition: first image → last image"}
+                                {selectedRefs.length >= 3 && "Reference mode: style from images (max 3)"}
+                            </p>
                         </div>
                      )}
                  </div>
