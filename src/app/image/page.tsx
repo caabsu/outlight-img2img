@@ -25,10 +25,18 @@ import {
   type ImageStudioSession,
 } from "@/lib/session-storage";
 
-// Direct Supabase client for large file uploads (bypasses Vercel's 4.5MB API limit)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+// Lazy-initialized Supabase client for large file uploads (bypasses Vercel's 4.5MB API limit)
+// Can't initialize at module scope because env vars aren't available during build-time prerendering
+let _supabaseClient: ReturnType<typeof createClient> | null = null;
+function getSupabaseClient() {
+  if (!_supabaseClient) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) throw new Error("Supabase credentials not configured");
+    _supabaseClient = createClient(url, key);
+  }
+  return _supabaseClient;
+}
 
 type Product = {
   id: string;
@@ -1092,7 +1100,7 @@ export default function ImageStudioPage() {
       const filePath = `uploads/${filename}`;
 
       // Upload directly to Supabase
-      const { error: uploadError } = await supabaseClient.storage
+      const { error: uploadError } = await getSupabaseClient().storage
         .from("reference-images")
         .upload(filePath, blob, {
           contentType: mimeType,
@@ -1104,7 +1112,7 @@ export default function ImageStudioPage() {
       }
 
       // Get public URL
-      const { data: urlData } = supabaseClient.storage
+      const { data: urlData } = getSupabaseClient().storage
         .from("reference-images")
         .getPublicUrl(filePath);
 

@@ -13,10 +13,18 @@ import {
   type VideoStudioSession,
 } from "@/lib/session-storage";
 
-// Direct Supabase client for large file uploads (bypasses Vercel's 4.5MB API limit)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
+// Lazy-initialized Supabase client for large file uploads (bypasses Vercel's 4.5MB API limit)
+// Can't initialize at module scope because env vars aren't available during build-time prerendering
+let _supabaseClient: ReturnType<typeof createClient> | null = null;
+function getSupabaseClient() {
+  if (!_supabaseClient) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) throw new Error("Supabase credentials not configured");
+    _supabaseClient = createClient(url, key);
+  }
+  return _supabaseClient;
+}
 
 type Product = {
   id: string;
@@ -402,6 +410,8 @@ type VideoRunContext = {
   veo: {
     aspect: VeoRatio;
     seed: string;
+    startFrame: string; // URL or data URI
+    endFrame: string;   // URL or data URI (optional)
   };
   sora: {
     frames: "10" | "15" | "25";
@@ -520,6 +530,8 @@ export default function VideoStudioPage() {
 
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
   const [veoSeed, setVeoSeed] = useState("");
+  const [veoStartFrame, setVeoStartFrame] = useState<string>(""); // URL or data URI for start frame
+  const [veoEndFrame, setVeoEndFrame] = useState<string>(""); // URL or data URI for end frame
 
   const [soraFrames, setSoraFrames] = useState<"10" | "15" | "25">("15");
   const [soraAspect, setSoraAspect] = useState<"portrait" | "landscape">("landscape");
@@ -767,7 +779,7 @@ export default function VideoStudioPage() {
     const filePath = `uploads/${filename}`;
 
     // Upload directly to Supabase
-    const { error: uploadError } = await supabaseClient.storage
+    const { error: uploadError } = await getSupabaseClient().storage
       .from("reference-images")
       .upload(filePath, blob, {
         contentType: mimeType,
@@ -779,7 +791,7 @@ export default function VideoStudioPage() {
     }
 
     // Get public URL
-    const { data: urlData } = supabaseClient.storage
+    const { data: urlData } = getSupabaseClient().storage
       .from("reference-images")
       .getPublicUrl(filePath);
 
@@ -853,10 +865,7 @@ export default function VideoStudioPage() {
       setSaveToast({ message: "Add prompts and required reference first.", type: "error" });
       return;
     }
-    if (videoRuns.length >= MAX_VIDEO_RUNS) {
-      setSaveToast({ message: `Max ${MAX_VIDEO_RUNS} runs`, type: "error" });
-      return;
-    }
+    // Note: addRun() handles removing oldest run if at capacity
 
     const run: VideoRun = {
       id: crypto.randomUUID(),
@@ -883,7 +892,7 @@ export default function VideoStudioPage() {
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
-      veo: { aspect: veoAspect, seed: veoSeed },
+      veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
 
@@ -896,10 +905,7 @@ export default function VideoStudioPage() {
       setSaveToast({ message: "Provide a prompt and upload images.", type: "error" });
       return;
     }
-    if (videoRuns.length >= MAX_VIDEO_RUNS) {
-      setSaveToast({ message: `Max ${MAX_VIDEO_RUNS} runs`, type: "error" });
-      return;
-    }
+    // Note: addRun() handles removing oldest run if at capacity
 
     const run: VideoRun = {
       id: crypto.randomUUID(),
@@ -926,7 +932,7 @@ export default function VideoStudioPage() {
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
-      veo: { aspect: veoAspect, seed: veoSeed },
+      veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
     };
@@ -1086,11 +1092,11 @@ export default function VideoStudioPage() {
             };
           } else if (runIsVeo) {
             provider = "veo";
-            // Veo 3.1: max 2 images for FIRST_AND_LAST_FRAMES_2_VIDEO mode
+            // Veo 3.1: Build image array from dedicated start/end frame inputs
             // 0 images = TEXT_2_VIDEO, 1 image = start frame, 2 images = start→end transition
-            let imgs = context.referenceUrls?.length > 0
-              ? context.referenceUrls.slice(0, 2)
-              : (context.referenceUrl ? [context.referenceUrl] : []);
+            let imgs: string[] = [];
+            if (context.veo.startFrame) imgs.push(context.veo.startFrame);
+            if (context.veo.endFrame) imgs.push(context.veo.endFrame);
 
             // Upload any data URLs to storage (Veo requires public HTTP URLs, not data URIs)
             if (imgs.some((url) => url.startsWith("data:"))) {
@@ -1267,9 +1273,89 @@ export default function VideoStudioPage() {
                                     <input type="number" min="10000" max="99999" className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="10000-99999" value={veoSeed} onChange={e => setVeoSeed(e.target.value)} />
                                 </div>
                             </div>
+
+                            {/* Start Frame / End Frame Inputs */}
+                            <div className="space-y-2">
+                              <div>
+                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                  Start Frame
+                                  <span className="font-normal normal-case opacity-70">(optional)</span>
+                                </label>
+                                <div className="mt-1 flex gap-2">
+                                  <input
+                                    type="text"
+                                    className="flex-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                                    placeholder="Paste image URL or upload"
+                                    value={veoStartFrame}
+                                    onChange={e => setVeoStartFrame(e.target.value)}
+                                  />
+                                  <label className="cursor-pointer px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs text-slate-600 dark:text-slate-300 transition">
+                                    Upload
+                                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                                      const files = e.target.files;
+                                      if (files && files[0]) {
+                                        const reader = new FileReader();
+                                        reader.onload = () => setVeoStartFrame(reader.result as string);
+                                        reader.readAsDataURL(files[0]);
+                                      }
+                                      e.target.value = "";
+                                    }} />
+                                  </label>
+                                  {veoStartFrame && (
+                                    <button onClick={() => setVeoStartFrame("")} className="px-2 py-1.5 rounded-md border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 text-xs hover:bg-rose-100 dark:hover:bg-rose-900/50 transition">
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                                {veoStartFrame && (
+                                  <div className="mt-1.5 relative w-16 h-16 rounded overflow-hidden border border-slate-200 dark:border-slate-700">
+                                    <img src={veoStartFrame} alt="Start frame" className="w-full h-full object-cover" />
+                                  </div>
+                                )}
+                              </div>
+
+                              <div>
+                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                  End Frame
+                                  <span className="font-normal normal-case opacity-70">(optional - creates transition)</span>
+                                </label>
+                                <div className="mt-1 flex gap-2">
+                                  <input
+                                    type="text"
+                                    className="flex-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
+                                    placeholder="Paste image URL or upload"
+                                    value={veoEndFrame}
+                                    onChange={e => setVeoEndFrame(e.target.value)}
+                                  />
+                                  <label className="cursor-pointer px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs text-slate-600 dark:text-slate-300 transition">
+                                    Upload
+                                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                                      const files = e.target.files;
+                                      if (files && files[0]) {
+                                        const reader = new FileReader();
+                                        reader.onload = () => setVeoEndFrame(reader.result as string);
+                                        reader.readAsDataURL(files[0]);
+                                      }
+                                      e.target.value = "";
+                                    }} />
+                                  </label>
+                                  {veoEndFrame && (
+                                    <button onClick={() => setVeoEndFrame("")} className="px-2 py-1.5 rounded-md border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 text-xs hover:bg-rose-100 dark:hover:bg-rose-900/50 transition">
+                                      Clear
+                                    </button>
+                                  )}
+                                </div>
+                                {veoEndFrame && (
+                                  <div className="mt-1.5 relative w-16 h-16 rounded overflow-hidden border border-slate-200 dark:border-slate-700">
+                                    <img src={veoEndFrame} alt="End frame" className="w-full h-full object-cover" />
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
                             {/* Mode Indicator */}
-                            <div className={`p-2 rounded-lg text-xs ${selectedRefs.length === 0 ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
-                                {selectedRefs.length === 0 && (
+                            <div className={`p-2 rounded-lg text-xs ${!veoStartFrame && !veoEndFrame ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
+                                {!veoStartFrame && !veoEndFrame && (
                                   <div className="flex items-center gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
@@ -1278,7 +1364,7 @@ export default function VideoStudioPage() {
                                     <span className="opacity-70">— Generate from prompt only</span>
                                   </div>
                                 )}
-                                {selectedRefs.length === 1 && (
+                                {veoStartFrame && !veoEndFrame && (
                                   <div className="flex items-center gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
@@ -1287,13 +1373,22 @@ export default function VideoStudioPage() {
                                     <span className="opacity-70">— Video unfolds from start frame</span>
                                   </div>
                                 )}
-                                {selectedRefs.length >= 2 && (
+                                {veoStartFrame && veoEndFrame && (
                                   <div className="flex items-center gap-2">
                                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
                                       <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
                                     </svg>
                                     <span className="font-medium">Frame Transition</span>
-                                    <span className="opacity-70">— Start frame → End frame (using first 2 images)</span>
+                                    <span className="opacity-70">— Start frame → End frame</span>
+                                  </div>
+                                )}
+                                {!veoStartFrame && veoEndFrame && (
+                                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20">
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+                                    </svg>
+                                    <span className="font-medium">Missing Start Frame</span>
+                                    <span className="opacity-70">— Add a start frame to use transition mode</span>
                                   </div>
                                 )}
                             </div>
