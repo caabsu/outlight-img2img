@@ -133,15 +133,15 @@ export const debouncedSaveImageSession = createDebouncedSave<ImageStudioSession>
 export type SerializedVideoRun = {
   id: string;
   name: string;
+  productName?: string;
   startedAt: number;
   modelId: string;
-  modelNameDisplay: string;
-  profileId: string;
-  profileName: string;
+  modelLabel: string;
+  isBatch: boolean;
   prompts: string[];
   status: "idle" | "done" | "cancelled" | "error";
   error: string | null;
-  videos: Array<{ id: string; prompt: string; videoUrl: string; imageDataUrl?: string }>;
+  videos: Array<{ id: string; prompt: string; url: string }>;
   activeIdx: number;
   selectedIdx: number[];
   progress: { done: number; total: number };
@@ -176,15 +176,15 @@ export function serializeVideoRun(run: any): SerializedVideoRun {
   return {
     id: run.id,
     name: run.name,
+    productName: run.productName,
     startedAt: run.startedAt,
     modelId: run.modelId,
-    modelNameDisplay: run.modelNameDisplay,
-    profileId: run.profileId,
-    profileName: run.profileName,
+    modelLabel: run.modelLabel,
+    isBatch: run.isBatch ?? false,
     prompts: run.prompts,
     status: run.status === "running" ? "cancelled" : run.status,
     error: run.error,
-    videos: run.videos,
+    videos: run.videos || [],
     activeIdx: run.activeIdx,
     selectedIdx: Array.from(run.selectedIdx || []),
     progress: run.progress,
@@ -194,10 +194,22 @@ export function serializeVideoRun(run: any): SerializedVideoRun {
 
 export function deserializeVideoRun(data: SerializedVideoRun): any {
   return {
-    ...data,
+    id: data.id,
+    name: data.name,
+    productName: data.productName,
+    startedAt: data.startedAt,
+    modelId: data.modelId,
+    modelLabel: data.modelLabel,
+    isBatch: data.isBatch ?? false,
+    prompts: data.prompts,
+    status: data.status,
+    error: data.error,
+    videos: data.videos || [],
+    activeIdx: data.activeIdx,
     selectedIdx: new Set(data.selectedIdx || []),
-    controller: null,
-    debug: null,
+    progress: data.progress,
+    speed: data.speed,
+    controller: null, // Can't restore AbortController
   };
 }
 
