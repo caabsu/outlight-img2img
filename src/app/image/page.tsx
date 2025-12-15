@@ -1067,15 +1067,16 @@ export default function ImageStudioPage() {
         return;
       }
 
-      // For Seedream models, upload data URIs to storage first (KIE requires public URLs)
-      const isSeedreamModel = run.modelId.startsWith("seedream");
+      // Upload data URIs to storage first to avoid 413 (Content Too Large) errors
+      // This applies to Seedream (KIE requires public URLs) and Nano Banana (large base64 exceeds Vercel limits)
+      const needsUpload = run.modelId.startsWith("seedream") || run.modelId.startsWith("nanobanana");
       let resolvedRefs = currentRefSources;
 
-      if (isSeedreamModel && currentRefSources.length > 0) {
+      if (needsUpload && currentRefSources.length > 0) {
         const dataUriRefs = currentRefSources.filter((url) => url.startsWith("data:"));
         if (dataUriRefs.length > 0) {
           try {
-            setSaveToast({ message: "Uploading images for Seedream...", type: "success" });
+            setSaveToast({ message: "Uploading images...", type: "success" });
             const uploadPromises = currentRefSources.map(async (url) => {
               if (url.startsWith("data:")) {
                 return await uploadToStorage(url);
