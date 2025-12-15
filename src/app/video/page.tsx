@@ -532,6 +532,7 @@ export default function VideoStudioPage() {
   const [veoSeed, setVeoSeed] = useState("");
   const [veoStartFrame, setVeoStartFrame] = useState<string>(""); // URL or data URI for start frame
   const [veoEndFrame, setVeoEndFrame] = useState<string>(""); // URL or data URI for end frame
+  const [veoFrameTarget, setVeoFrameTarget] = useState<"start" | "end" | null>(null); // Which frame to set when selecting from products
 
   const [soraFrames, setSoraFrames] = useState<"10" | "15" | "25">("15");
   const [soraAspect, setSoraAspect] = useState<"portrait" | "landscape">("landscape");
@@ -1303,13 +1304,37 @@ export default function VideoStudioPage() {
                      {/* Veo: Start Frame / End Frame slots */}
                      {isVeo && (
                        <div className="space-y-3">
-                         <p className="text-[10px] text-slate-500 dark:text-slate-400">
-                           Add frames to control video generation. Start frame only = video unfolds from image. Both frames = transition animation.
-                         </p>
+                         <div className="flex items-center justify-between">
+                           <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                             Add frames to control video generation.
+                           </p>
+                           <button
+                             onClick={() => {
+                               setVeoFrameTarget("start");
+                               setShowRefProductModal(true);
+                             }}
+                             className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
+                           >
+                             Browse Products
+                           </button>
+                         </div>
                          <div className="grid grid-cols-2 gap-3">
                            {/* Start Frame */}
                            <div className="space-y-1.5">
-                             <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Start Frame</label>
+                             <div className="flex items-center justify-between">
+                               <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Start Frame</label>
+                               {!veoStartFrame && (
+                                 <button
+                                   onClick={() => {
+                                     setVeoFrameTarget("start");
+                                     setShowRefProductModal(true);
+                                   }}
+                                   className="text-[9px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400"
+                                 >
+                                   Products
+                                 </button>
+                               )}
+                             </div>
                              {veoStartFrame ? (
                                <div className="relative group aspect-video rounded-lg overflow-hidden border-2 border-emerald-500 ring-2 ring-emerald-500/20">
                                  <img src={veoStartFrame} alt="Start frame" className="w-full h-full object-cover" />
@@ -1344,14 +1369,27 @@ export default function VideoStudioPage() {
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400">
                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                  </svg>
-                                 <span className="text-[10px] text-slate-400 mt-1">Start Frame</span>
+                                 <span className="text-[10px] text-slate-400 mt-1">Upload</span>
                                </label>
                              )}
                            </div>
 
                            {/* End Frame */}
                            <div className="space-y-1.5">
-                             <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">End Frame <span className="font-normal normal-case opacity-60">(optional)</span></label>
+                             <div className="flex items-center justify-between">
+                               <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">End Frame <span className="font-normal normal-case opacity-60">(opt.)</span></label>
+                               {!veoEndFrame && (
+                                 <button
+                                   onClick={() => {
+                                     setVeoFrameTarget("end");
+                                     setShowRefProductModal(true);
+                                   }}
+                                   className="text-[9px] text-indigo-500 hover:text-indigo-600 dark:text-indigo-400"
+                                 >
+                                   Products
+                                 </button>
+                               )}
+                             </div>
                              {veoEndFrame ? (
                                <div className="relative group aspect-video rounded-lg overflow-hidden border-2 border-indigo-500 ring-2 ring-indigo-500/20">
                                  <img src={veoEndFrame} alt="End frame" className="w-full h-full object-cover" />
@@ -1386,7 +1424,7 @@ export default function VideoStudioPage() {
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400">
                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                  </svg>
-                                 <span className="text-[10px] text-slate-400 mt-1">End Frame</span>
+                                 <span className="text-[10px] text-slate-400 mt-1">Upload</span>
                                </label>
                              )}
                            </div>
@@ -1746,13 +1784,24 @@ export default function VideoStudioPage() {
         <ProductSelectorModal
           products={products}
           onSelect={(imageUrl) => {
-            setCustomVideoUrls((prev) => [...prev, imageUrl]);
+            // If selecting for Veo frame, set the appropriate frame
+            if (veoFrameTarget === "start") {
+              setVeoStartFrame(imageUrl);
+              setVeoFrameTarget(null);
+            } else if (veoFrameTarget === "end") {
+              setVeoEndFrame(imageUrl);
+              setVeoFrameTarget(null);
+            } else {
+              // Default: add to reference URLs for Kling/Sora
+              setCustomVideoUrls((prev) => [...prev, imageUrl]);
+            }
             setShowRefProductModal(false);
             setRefSearchQuery("");
           }}
           onClose={() => {
             setShowRefProductModal(false);
             setRefSearchQuery("");
+            setVeoFrameTarget(null);
           }}
           searchQuery={refSearchQuery}
           setSearchQuery={setRefSearchQuery}
