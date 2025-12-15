@@ -228,6 +228,11 @@ async function callGeminiImageEdit({
   options?: PostBody["options"];
 }) {
   const { generationConfig } = buildGeminiConfigs(options, modelId);
+  const apiUrl = getGeminiApiUrl(modelId);
+
+  console.log("[Gemini Edit] URL:", apiUrl);
+  console.log("[Gemini Edit] Images count:", images.length, "Image sizes:", images.map(i => i.base64.length));
+
   const payload = {
     contents: [
       {
@@ -248,12 +253,18 @@ async function callGeminiImageEdit({
     generationConfig,
   };
 
-  const nbRes = await fetch(getGeminiApiUrl(modelId), {
+  const nbRes = await fetch(apiUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json", [NB_AUTH_HEADER]: NB_API_KEY },
     body: JSON.stringify(payload),
   });
   const nbJson = await nbRes.json().catch(() => ({}));
+
+  console.log("[Gemini Edit] Response status:", nbRes.status, nbRes.statusText);
+  if (!nbRes.ok) {
+    console.log("[Gemini Edit] Error response:", JSON.stringify(nbJson, null, 2));
+  }
+
   return { nbRes, nbJson };
 }
 
