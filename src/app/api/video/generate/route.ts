@@ -101,7 +101,7 @@ async function veoGenerate(payload: {
   aspectRatio: "16:9" | "9:16";
   imageUrls?: string[];
   seeds?: number;
-}) {
+}, maxRetries = 3) {
   // Build request body per API spec
   const requestBody: Record<string, any> = {
     prompt: payload.prompt,
@@ -124,32 +124,58 @@ async function veoGenerate(payload: {
 
   console.log("[Veo] Request:", JSON.stringify(requestBody, null, 2));
 
-  const res = await fetch(`${KIE_BASE}/api/v1/veo/generate`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${KIE_KEY}`,
-    },
-    body: JSON.stringify(requestBody),
-  });
+  let lastError: Error | null = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const res = await fetch(`${KIE_BASE}/api/v1/veo/generate`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${KIE_KEY}`,
+        },
+        body: JSON.stringify(requestBody),
+      });
 
-  const json = await res.json().catch(() => ({}));
-  console.log("[Veo] Response:", JSON.stringify(json, null, 2));
+      const json = await res.json().catch(() => ({}));
+      console.log(`[Veo] Response (attempt ${attempt}):`, JSON.stringify(json, null, 2));
 
-  if (!res.ok || json?.code !== 200) {
-    const msg = json?.message || json?.msg || `Veo generate failed (${res.status})`;
-    throw new Error(msg);
+      // Handle rate limiting and temporary errors with retry
+      if (json?.code === 429 || json?.code === 503 || json?.code === 500 || res.status === 429 || res.status === 503) {
+        console.log(`[Veo] Rate limited or server error (attempt ${attempt}/${maxRetries}), waiting before retry...`);
+        lastError = new Error(json?.message || json?.msg || `Veo temporarily unavailable (${json?.code || res.status})`);
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, 5000 * attempt)); // Exponential backoff
+          continue;
+        }
+        throw lastError;
+      }
+
+      if (!res.ok || json?.code !== 200) {
+        const msg = json?.message || json?.msg || `Veo generate failed (${res.status})`;
+        throw new Error(msg);
+      }
+
+      const taskId = json?.data?.taskId as string | undefined;
+      if (!taskId) throw new Error("Veo taskId missing");
+      return taskId;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < maxRetries && (err.message?.includes("rate") || err.message?.includes("limit") || err.message?.includes("unavailable"))) {
+        console.log(`[Veo] Error on attempt ${attempt}/${maxRetries}: ${err.message}, retrying...`);
+        await new Promise((r) => setTimeout(r, 5000 * attempt));
+        continue;
+      }
+      throw err;
+    }
   }
-
-  const taskId = json?.data?.taskId as string | undefined;
-  if (!taskId) throw new Error("Veo taskId missing");
-  return taskId;
+  throw lastError || new Error("Veo generate failed after retries");
 }
 
 async function veoPoll(taskId: string, maxMs = 420_000) {
   const start = Date.now();
   let lastFlag = 0;
   let pollCount = 0;
+  let lastErrorData: any = null;
 
   while (Date.now() - start < maxMs) {
     await new Promise((r) => setTimeout(r, 4000)); // Poll every 4s for Veo
@@ -164,16 +190,24 @@ async function veoPoll(taskId: string, maxMs = 420_000) {
     // Handle non-200 response codes
     if (json?.code && json.code !== 200) {
       // Some error codes indicate the task is still processing
-      if (json.code === 400 && json.msg?.includes("processing")) {
+      if (json.code === 400 && (json.msg?.includes("processing") || json.msg?.includes("pending"))) {
         console.log(`[Veo] Poll #${pollCount}: Still processing...`);
         continue;
       }
+      // Rate limit or temporary errors - wait and retry
+      if (json.code === 429 || json.code === 503 || json.code === 500) {
+        console.log(`[Veo] Poll #${pollCount}: Temporary error (${json.code}), retrying...`);
+        await new Promise((r) => setTimeout(r, 5000)); // Extra wait for rate limits
+        continue;
+      }
+      console.error(`[Veo] Poll #${pollCount}: Error response:`, JSON.stringify(json, null, 2));
       const msg = json?.message || json?.msg || `Veo query failed (code: ${json.code})`;
       throw new Error(msg);
     }
 
     const data = json?.data;
     lastFlag = data?.successFlag ?? 0;
+    lastErrorData = data;
 
     console.log(`[Veo] Poll #${pollCount}: successFlag=${lastFlag}`);
 
@@ -184,10 +218,13 @@ async function veoPoll(taskId: string, maxMs = 420_000) {
       return { url: urls[0] as string };
     }
     if (lastFlag === 2 || lastFlag === 3) {
-      const errMsg = data?.errorMessage || data?.response?.errorMessage || "Veo generation failed";
+      // Log full error data for debugging
+      console.error(`[Veo] Generation failed. Full data:`, JSON.stringify(data, null, 2));
+      const errMsg = data?.errorMessage || data?.response?.errorMessage || data?.failReason || "Veo generation failed";
       throw new Error(errMsg);
     }
   }
+  console.error(`[Veo] Timeout. Last data:`, JSON.stringify(lastErrorData, null, 2));
   throw new Error(`Veo generation timed out after ${Math.round((Date.now() - start) / 1000)}s (last flag: ${lastFlag})`);
 }
 
