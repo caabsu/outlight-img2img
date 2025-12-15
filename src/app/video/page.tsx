@@ -1273,138 +1273,24 @@ export default function VideoStudioPage() {
                                     <input type="number" min="10000" max="99999" className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="10000-99999" value={veoSeed} onChange={e => setVeoSeed(e.target.value)} />
                                 </div>
                             </div>
-
-                            {/* Start Frame / End Frame Inputs */}
-                            <div className="space-y-2">
-                              <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                                  Start Frame
-                                  <span className="font-normal normal-case opacity-70">(optional)</span>
-                                </label>
-                                <div className="mt-1 flex gap-2">
-                                  <input
-                                    type="text"
-                                    className="flex-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
-                                    placeholder="Paste image URL or upload"
-                                    value={veoStartFrame}
-                                    onChange={e => setVeoStartFrame(e.target.value)}
-                                  />
-                                  <label className="cursor-pointer px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs text-slate-600 dark:text-slate-300 transition">
-                                    Upload
-                                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                                      const files = e.target.files;
-                                      if (files && files[0]) {
-                                        const reader = new FileReader();
-                                        reader.onload = () => setVeoStartFrame(reader.result as string);
-                                        reader.readAsDataURL(files[0]);
-                                      }
-                                      e.target.value = "";
-                                    }} />
-                                  </label>
-                                  {veoStartFrame && (
-                                    <button onClick={() => setVeoStartFrame("")} className="px-2 py-1.5 rounded-md border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 text-xs hover:bg-rose-100 dark:hover:bg-rose-900/50 transition">
-                                      Clear
-                                    </button>
-                                  )}
-                                </div>
-                                {veoStartFrame && (
-                                  <div className="mt-1.5 relative w-16 h-16 rounded overflow-hidden border border-slate-200 dark:border-slate-700">
-                                    <img src={veoStartFrame} alt="Start frame" className="w-full h-full object-cover" />
-                                  </div>
-                                )}
-                              </div>
-
-                              <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500 flex items-center gap-1">
-                                  End Frame
-                                  <span className="font-normal normal-case opacity-70">(optional - creates transition)</span>
-                                </label>
-                                <div className="mt-1 flex gap-2">
-                                  <input
-                                    type="text"
-                                    className="flex-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100"
-                                    placeholder="Paste image URL or upload"
-                                    value={veoEndFrame}
-                                    onChange={e => setVeoEndFrame(e.target.value)}
-                                  />
-                                  <label className="cursor-pointer px-2 py-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs text-slate-600 dark:text-slate-300 transition">
-                                    Upload
-                                    <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
-                                      const files = e.target.files;
-                                      if (files && files[0]) {
-                                        const reader = new FileReader();
-                                        reader.onload = () => setVeoEndFrame(reader.result as string);
-                                        reader.readAsDataURL(files[0]);
-                                      }
-                                      e.target.value = "";
-                                    }} />
-                                  </label>
-                                  {veoEndFrame && (
-                                    <button onClick={() => setVeoEndFrame("")} className="px-2 py-1.5 rounded-md border border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 text-xs hover:bg-rose-100 dark:hover:bg-rose-900/50 transition">
-                                      Clear
-                                    </button>
-                                  )}
-                                </div>
-                                {veoEndFrame && (
-                                  <div className="mt-1.5 relative w-16 h-16 rounded overflow-hidden border border-slate-200 dark:border-slate-700">
-                                    <img src={veoEndFrame} alt="End frame" className="w-full h-full object-cover" />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Mode Indicator */}
-                            <div className={`p-2 rounded-lg text-xs ${!veoStartFrame && !veoEndFrame ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300" : "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
-                                {!veoStartFrame && !veoEndFrame && (
-                                  <div className="flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
-                                    </svg>
-                                    <span className="font-medium">Text-to-Video</span>
-                                    <span className="opacity-70">— Generate from prompt only</span>
-                                  </div>
-                                )}
-                                {veoStartFrame && !veoEndFrame && (
-                                  <div className="flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 0 0 1.5-1.5V6a1.5 1.5 0 0 0-1.5-1.5H3.75A1.5 1.5 0 0 0 2.25 6v12a1.5 1.5 0 0 0 1.5 1.5Zm10.5-11.25h.008v.008h-.008V8.25Zm.375 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" />
-                                    </svg>
-                                    <span className="font-medium">Image-to-Video</span>
-                                    <span className="opacity-70">— Video unfolds from start frame</span>
-                                  </div>
-                                )}
-                                {veoStartFrame && veoEndFrame && (
-                                  <div className="flex items-center gap-2">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
-                                    </svg>
-                                    <span className="font-medium">Frame Transition</span>
-                                    <span className="opacity-70">— Start frame → End frame</span>
-                                  </div>
-                                )}
-                                {!veoStartFrame && veoEndFrame && (
-                                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20">
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
-                                    </svg>
-                                    <span className="font-medium">Missing Start Frame</span>
-                                    <span className="opacity-70">— Add a start frame to use transition mode</span>
-                                  </div>
-                                )}
-                            </div>
                         </div>
                      )}
                  </div>
              </div>
 
-             {/* Context / Reference - Now supports multiple images */}
+             {/* Context / Reference */}
              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
                  <div className="mb-4 flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Context</h2>
                     <div className="flex items-center gap-2">
-                      {selectedRefs.length > 0 && (
+                      {!isVeo && selectedRefs.length > 0 && (
                         <span className="text-[10px] text-slate-500 dark:text-slate-400">
                           {selectedRefs.length} selected
+                        </span>
+                      )}
+                      {isVeo && (veoStartFrame || veoEndFrame) && (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                          {veoStartFrame && veoEndFrame ? "Frame Transition" : "Image-to-Video"}
                         </span>
                       )}
                       {videoNeedsImage && (
@@ -1414,133 +1300,239 @@ export default function VideoStudioPage() {
                  </div>
 
                  <div className="space-y-4">
-                     {/* Reference Images Grid */}
-                     <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
-                          <button
-                            onClick={() => setShowRefProductModal(true)}
-                            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
-                          >
-                            Browse Products
-                          </button>
-                        </div>
+                     {/* Veo: Start Frame / End Frame slots */}
+                     {isVeo && (
+                       <div className="space-y-3">
+                         <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                           Add frames to control video generation. Start frame only = video unfolds from image. Both frames = transition animation.
+                         </p>
+                         <div className="grid grid-cols-2 gap-3">
+                           {/* Start Frame */}
+                           <div className="space-y-1.5">
+                             <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">Start Frame</label>
+                             {veoStartFrame ? (
+                               <div className="relative group aspect-video rounded-lg overflow-hidden border-2 border-emerald-500 ring-2 ring-emerald-500/20">
+                                 <img src={veoStartFrame} alt="Start frame" className="w-full h-full object-cover" />
+                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                   <button
+                                     onClick={() => setVeoStartFrame("")}
+                                     className="p-1.5 rounded-full bg-rose-500 text-white hover:bg-rose-600"
+                                   >
+                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                       <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                     </svg>
+                                   </button>
+                                 </div>
+                                 <div className="absolute bottom-1 left-1 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">START</div>
+                               </div>
+                             ) : (
+                               <label className="aspect-video flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition">
+                                 <input
+                                   type="file"
+                                   accept="image/*"
+                                   className="hidden"
+                                   onChange={async (e) => {
+                                     const files = e.target.files;
+                                     if (files && files[0]) {
+                                       const reader = new FileReader();
+                                       reader.onload = () => setVeoStartFrame(reader.result as string);
+                                       reader.readAsDataURL(files[0]);
+                                     }
+                                     e.target.value = "";
+                                   }}
+                                 />
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400">
+                                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                 </svg>
+                                 <span className="text-[10px] text-slate-400 mt-1">Start Frame</span>
+                               </label>
+                             )}
+                           </div>
 
-                        {/* Image Grid */}
-                        <div className="grid grid-cols-3 gap-2">
-                          {/* Upload Button */}
-                          <label className="aspect-square flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition">
-                            <input
-                              type="file"
-                              accept="image/*"
-                              multiple
-                              className="hidden"
-                              onChange={(e) => handleReferenceUpload(e.target.files)}
-                            />
-                            <div className="text-center">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mx-auto text-slate-400">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                              </svg>
-                              <span className="text-[9px] text-slate-400 mt-0.5 block">Upload</span>
-                            </div>
-                          </label>
+                           {/* End Frame */}
+                           <div className="space-y-1.5">
+                             <label className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">End Frame <span className="font-normal normal-case opacity-60">(optional)</span></label>
+                             {veoEndFrame ? (
+                               <div className="relative group aspect-video rounded-lg overflow-hidden border-2 border-indigo-500 ring-2 ring-indigo-500/20">
+                                 <img src={veoEndFrame} alt="End frame" className="w-full h-full object-cover" />
+                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                   <button
+                                     onClick={() => setVeoEndFrame("")}
+                                     className="p-1.5 rounded-full bg-rose-500 text-white hover:bg-rose-600"
+                                   >
+                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                       <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                     </svg>
+                                   </button>
+                                 </div>
+                                 <div className="absolute bottom-1 left-1 bg-indigo-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">END</div>
+                               </div>
+                             ) : (
+                               <label className={`aspect-video flex flex-col items-center justify-center rounded-lg border-2 border-dashed ${veoStartFrame ? "border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500" : "border-slate-200 dark:border-slate-700"} hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition`}>
+                                 <input
+                                   type="file"
+                                   accept="image/*"
+                                   className="hidden"
+                                   onChange={async (e) => {
+                                     const files = e.target.files;
+                                     if (files && files[0]) {
+                                       const reader = new FileReader();
+                                       reader.onload = () => setVeoEndFrame(reader.result as string);
+                                       reader.readAsDataURL(files[0]);
+                                     }
+                                     e.target.value = "";
+                                   }}
+                                 />
+                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400">
+                                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                 </svg>
+                                 <span className="text-[10px] text-slate-400 mt-1">End Frame</span>
+                               </label>
+                             )}
+                           </div>
+                         </div>
 
-                          {/* Existing References */}
-                          {refSources.map((src, idx) => {
-                            const isSelected = selectedRefs.includes(src);
-                            return (
-                              <div key={idx} className="relative group">
-                                <button
-                                  onClick={() => {
-                                    setSelectedRefs((prev) =>
-                                      prev.includes(src)
-                                        ? prev.filter((s) => s !== src)
-                                        : [...prev, src]
-                                    );
-                                  }}
-                                  className={`aspect-square w-full rounded-lg border-2 overflow-hidden transition ${
-                                    isSelected
-                                      ? "border-indigo-500 ring-2 ring-indigo-500/20"
-                                      : "border-slate-200 dark:border-slate-700 opacity-60 hover:opacity-100"
-                                  }`}
-                                >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={src}
-                                    alt=""
-                                    className="h-full w-full object-cover"
-                                  />
-                                  {isSelected && (
-                                    <div className="absolute top-1 left-1 bg-indigo-500 text-white rounded-full p-0.5">
-                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                                        <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                                      </svg>
-                                    </div>
-                                  )}
-                                </button>
-                                {/* Preview & Remove buttons */}
-                                <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setReferenceUploadPreview(src);
-                                    }}
-                                    className="bg-black/60 text-white rounded p-0.5 hover:bg-black/80"
-                                    title="Preview"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                                      <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
-                                      <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      removeUploadSrc(src);
-                                    }}
-                                    className="bg-rose-500/80 text-white rounded p-0.5 hover:bg-rose-600"
-                                    title="Remove"
-                                  >
-                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
-                                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                     </div>
-
-                     {/* URL Input */}
-                     <div className="space-y-2">
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Add by URL</label>
-                        <input
-                          className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                          placeholder="Paste image URL and press Enter..."
-                          value={customVideoUrl}
-                          onChange={(e) => setCustomVideoUrl(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && customVideoUrl.trim()) {
-                              setCustomVideoUrls((prev) => [...prev, customVideoUrl.trim()]);
-                              setCustomVideoUrl("");
-                            }
-                          }}
-                        />
-                     </div>
-
-                     {/* Kling 2.6 multiple images hint */}
-                     {isKling && selectedRefs.length > 1 && (
-                       <p className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded">
-                         Kling 2.6 will use all {selectedRefs.length} selected images as reference elements.
-                       </p>
+                         {/* Veo mode indicator */}
+                         <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                           {!veoStartFrame && !veoEndFrame && "Text-to-Video mode (no frames)"}
+                           {veoStartFrame && !veoEndFrame && "Image-to-Video mode (video unfolds from start frame)"}
+                           {veoStartFrame && veoEndFrame && "Frame Transition mode (animates from start to end)"}
+                           {!veoStartFrame && veoEndFrame && "⚠️ Add a start frame to use transition mode"}
+                         </p>
+                       </div>
                      )}
 
-                     {/* Mode indicator for Kling 2.6 */}
-                     {isKling && (
-                       <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
-                         {selectedRefs.length > 0 ? "Image-to-Video mode" : "Text-to-Video mode (no images)"}
-                       </p>
+                     {/* Kling/Sora: Reference Images Grid */}
+                     {!isVeo && (
+                       <>
+                         <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
+                              <button
+                                onClick={() => setShowRefProductModal(true)}
+                                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
+                              >
+                                Browse Products
+                              </button>
+                            </div>
+
+                            {/* Image Grid */}
+                            <div className="grid grid-cols-3 gap-2">
+                              {/* Upload Button */}
+                              <label className="aspect-square flex items-center justify-center rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className="hidden"
+                                  onChange={(e) => handleReferenceUpload(e.target.files)}
+                                />
+                                <div className="text-center">
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mx-auto text-slate-400">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                                  </svg>
+                                  <span className="text-[9px] text-slate-400 mt-0.5 block">Upload</span>
+                                </div>
+                              </label>
+
+                              {/* Existing References */}
+                              {refSources.map((src, idx) => {
+                                const isSelected = selectedRefs.includes(src);
+                                return (
+                                  <div key={idx} className="relative group">
+                                    <button
+                                      onClick={() => {
+                                        setSelectedRefs((prev) =>
+                                          prev.includes(src)
+                                            ? prev.filter((s) => s !== src)
+                                            : [...prev, src]
+                                        );
+                                      }}
+                                      className={`aspect-square w-full rounded-lg border-2 overflow-hidden transition ${
+                                        isSelected
+                                          ? "border-indigo-500 ring-2 ring-indigo-500/20"
+                                          : "border-slate-200 dark:border-slate-700 opacity-60 hover:opacity-100"
+                                      }`}
+                                    >
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img
+                                        src={src}
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                      />
+                                      {isSelected && (
+                                        <div className="absolute top-1 left-1 bg-indigo-500 text-white rounded-full p-0.5">
+                                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                            <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                                          </svg>
+                                        </div>
+                                      )}
+                                    </button>
+                                    {/* Preview & Remove buttons */}
+                                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setReferenceUploadPreview(src);
+                                        }}
+                                        className="bg-black/60 text-white rounded p-0.5 hover:bg-black/80"
+                                        title="Preview"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                          <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+                                          <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
+                                        </svg>
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          removeUploadSrc(src);
+                                        }}
+                                        className="bg-rose-500/80 text-white rounded p-0.5 hover:bg-rose-600"
+                                        title="Remove"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                          <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                         </div>
+
+                         {/* URL Input */}
+                         <div className="space-y-2">
+                            <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Add by URL</label>
+                            <input
+                              className="w-full rounded-lg border border-slate-200 dark:border-slate-800 px-3 py-2 text-xs bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                              placeholder="Paste image URL and press Enter..."
+                              value={customVideoUrl}
+                              onChange={(e) => setCustomVideoUrl(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && customVideoUrl.trim()) {
+                                  setCustomVideoUrls((prev) => [...prev, customVideoUrl.trim()]);
+                                  setCustomVideoUrl("");
+                                }
+                              }}
+                            />
+                         </div>
+
+                         {/* Kling 2.6 multiple images hint */}
+                         {isKling && selectedRefs.length > 1 && (
+                           <p className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded">
+                             Kling 2.6 will use all {selectedRefs.length} selected images as reference elements.
+                           </p>
+                         )}
+
+                         {/* Mode indicator for Kling 2.6 */}
+                         {isKling && (
+                           <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                             {selectedRefs.length > 0 ? "Image-to-Video mode" : "Text-to-Video mode (no images)"}
+                           </p>
+                         )}
+                       </>
                      )}
                  </div>
              </div>
