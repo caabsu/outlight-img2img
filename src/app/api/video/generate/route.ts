@@ -93,56 +93,89 @@ async function kiePoll(taskId: string, maxMs = 240_000) {
 }
 
 // ---- Veo 3.1 Dedicated API ----
+// Supports TEXT_2_VIDEO (no images) and FIRST_AND_LAST_FRAMES_2_VIDEO (1-2 images)
 async function veoGenerate(payload: {
   prompt: string;
-  model?: string;
+  model: string;
+  generationType: "TEXT_2_VIDEO" | "FIRST_AND_LAST_FRAMES_2_VIDEO";
+  aspectRatio: "16:9" | "9:16";
   imageUrls?: string[];
-  generationType?: string;
-  aspectRatio?: string;
   seeds?: number;
 }) {
+  // Build request body per API spec
+  const requestBody: Record<string, any> = {
+    prompt: payload.prompt,
+    model: payload.model,
+    generationType: payload.generationType,
+    aspectRatio: payload.aspectRatio,
+    enableTranslation: true,
+  };
+
+  // Add imageUrls only for image-to-video mode
+  if (payload.generationType === "FIRST_AND_LAST_FRAMES_2_VIDEO" && payload.imageUrls && payload.imageUrls.length > 0) {
+    // Limit to max 2 images for this mode
+    requestBody.imageUrls = payload.imageUrls.slice(0, 2);
+  }
+
+  // Add seed if valid (10000-99999)
+  if (typeof payload.seeds === "number" && payload.seeds >= 10000 && payload.seeds <= 99999) {
+    requestBody.seeds = payload.seeds;
+  }
+
+  console.log("[Veo] Request:", JSON.stringify(requestBody, null, 2));
+
   const res = await fetch(`${KIE_BASE}/api/v1/veo/generate`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${KIE_KEY}`,
     },
-    body: JSON.stringify({
-      prompt: payload.prompt,
-      model: payload.model || "veo3_fast",
-      ...(payload.imageUrls && payload.imageUrls.length > 0 ? { imageUrls: payload.imageUrls } : {}),
-      ...(payload.generationType ? { generationType: payload.generationType } : {}),
-      ...(payload.aspectRatio ? { aspectRatio: payload.aspectRatio } : {}),
-      ...(typeof payload.seeds === "number" ? { seeds: payload.seeds } : {}),
-      enableTranslation: true,
-    }),
+    body: JSON.stringify(requestBody),
   });
+
   const json = await res.json().catch(() => ({}));
+  console.log("[Veo] Response:", JSON.stringify(json, null, 2));
+
   if (!res.ok || json?.code !== 200) {
     const msg = json?.message || json?.msg || `Veo generate failed (${res.status})`;
     throw new Error(msg);
   }
+
   const taskId = json?.data?.taskId as string | undefined;
   if (!taskId) throw new Error("Veo taskId missing");
   return taskId;
 }
 
-async function veoPoll(taskId: string, maxMs = 360_000) {
+async function veoPoll(taskId: string, maxMs = 420_000) {
   const start = Date.now();
   let lastFlag = 0;
+  let pollCount = 0;
+
   while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 3000)); // Poll every 3s for Veo
+    await new Promise((r) => setTimeout(r, 4000)); // Poll every 4s for Veo
+    pollCount++;
+
     const res = await fetch(`${KIE_BASE}/api/v1/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
       headers: { Authorization: `Bearer ${KIE_KEY}` },
     });
+
     const json = await res.json().catch(() => ({}));
-    if (!res.ok || json?.code !== 200) {
-      const msg = json?.message || json?.msg || "Veo query failed";
+
+    // Handle non-200 response codes
+    if (json?.code && json.code !== 200) {
+      // Some error codes indicate the task is still processing
+      if (json.code === 400 && json.msg?.includes("processing")) {
+        console.log(`[Veo] Poll #${pollCount}: Still processing...`);
+        continue;
+      }
+      const msg = json?.message || json?.msg || `Veo query failed (code: ${json.code})`;
       throw new Error(msg);
     }
 
     const data = json?.data;
     lastFlag = data?.successFlag ?? 0;
+
+    console.log(`[Veo] Poll #${pollCount}: successFlag=${lastFlag}`);
 
     // successFlag: 0 = generating, 1 = success, 2 = failed, 3 = generation failed
     if (lastFlag === 1) {
@@ -155,7 +188,7 @@ async function veoPoll(taskId: string, maxMs = 360_000) {
       throw new Error(errMsg);
     }
   }
-  throw new Error(`Veo generation timed out (last flag: ${lastFlag})`);
+  throw new Error(`Veo generation timed out after ${Math.round((Date.now() - start) / 1000)}s (last flag: ${lastFlag})`);
 }
 
 export async function POST(req: Request) {
@@ -219,27 +252,27 @@ export async function POST(req: Request) {
 
     /* -------- VEO 3.1 (Google DeepMind) -------- */
     if (provider === "veo") {
-      // Determine generation type based on images
-      let effectiveGenType = generationType;
-      if (!effectiveGenType) {
-        if (imageUrls && imageUrls.length > 0) {
-          // Auto-detect: 1-2 images = FIRST_AND_LAST_FRAMES_2_VIDEO, 3+ = REFERENCE_2_VIDEO
-          effectiveGenType = imageUrls.length >= 3 ? "REFERENCE_2_VIDEO" : "FIRST_AND_LAST_FRAMES_2_VIDEO";
-        } else {
-          effectiveGenType = "TEXT_2_VIDEO";
-        }
+      // Determine generation type: TEXT_2_VIDEO (no images) or FIRST_AND_LAST_FRAMES_2_VIDEO (1-2 images)
+      const hasImages = imageUrls && imageUrls.length > 0;
+      const genType: "TEXT_2_VIDEO" | "FIRST_AND_LAST_FRAMES_2_VIDEO" = hasImages
+        ? "FIRST_AND_LAST_FRAMES_2_VIDEO"
+        : "TEXT_2_VIDEO";
+
+      // Validate aspect ratio (only 16:9 and 9:16 supported, not Auto)
+      let aspect: "16:9" | "9:16" = "16:9";
+      if (aspectRatio === "9:16") {
+        aspect = "9:16";
       }
 
-      // REFERENCE_2_VIDEO only supports veo3_fast and 16:9
-      const effectiveModel = effectiveGenType === "REFERENCE_2_VIDEO" ? "veo3_fast" : (model || "veo3_fast");
-      const effectiveAspect = effectiveGenType === "REFERENCE_2_VIDEO" ? "16:9" : (aspectRatio || "16:9");
+      // Use provided model or default to veo3_fast
+      const veoModel = model === "veo3" ? "veo3" : "veo3_fast";
 
       const taskId = await veoGenerate({
         prompt,
-        model: effectiveModel,
-        imageUrls: imageUrls && imageUrls.length > 0 ? imageUrls : undefined,
-        generationType: effectiveGenType,
-        aspectRatio: effectiveAspect,
+        model: veoModel,
+        generationType: genType,
+        aspectRatio: aspect,
+        imageUrls: hasImages ? imageUrls : undefined,
         seeds: typeof seeds === "number" ? seeds : undefined,
       });
 
