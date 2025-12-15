@@ -951,7 +951,9 @@ export default function VideoStudioPage() {
           } else if (runIsVeo) {
             provider = "veo";
             // In batch mode, each image becomes a separate video
-            const imgs = [imageUrl];
+            // Upload data URL to storage if needed (Veo requires public HTTP URLs)
+            const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
+            const imgs = [uploadedUrl];
 
             // Parse seed (must be 10000-99999 if provided)
             let seedVal: number | undefined;
@@ -1037,9 +1039,14 @@ export default function VideoStudioPage() {
             provider = "veo";
             // Veo 3.1: max 2 images for FIRST_AND_LAST_FRAMES_2_VIDEO mode
             // 0 images = TEXT_2_VIDEO, 1 image = start frame, 2 images = start→end transition
-            const imgs = context.referenceUrls?.length > 0
+            let imgs = context.referenceUrls?.length > 0
               ? context.referenceUrls.slice(0, 2)
               : (context.referenceUrl ? [context.referenceUrl] : []);
+
+            // Upload any data URLs to storage (Veo requires public HTTP URLs, not data URIs)
+            if (imgs.some((url) => url.startsWith("data:"))) {
+              imgs = await Promise.all(imgs.map((url) => uploadToStorage(url)));
+            }
 
             // Parse seed (must be 10000-99999 if provided)
             let seedVal: number | undefined;
