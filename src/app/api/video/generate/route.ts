@@ -2,11 +2,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 
 // ---- ENV ----
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY!;
 
@@ -16,18 +13,11 @@ type VideoProvider = "kling" | "veo" | "sora";
 type PostBody = {
   provider?: VideoProvider;
   model?: string;
-  // mode: "image-to-video" | "text-to-video" | "kling26" (for Kling)
-  mode?: "image-to-video" | "text-to-video" | "kling26";
+  mode?: "kling26";
   // shared
   prompt: string;
   duration?: "5" | "10";          // KIE expects string "5" | "10"
-  negative_prompt?: string;
-  cfg_scale?: number;             // 0..1
   aspect_ratio?: "16:9" | "9:16" | "1:1"; // text2video and kling26
-
-  // image-to-video reference (Kling legacy)
-  productId?: string | null;
-  customUrl?: string | null;      // direct URL if using custom
 
   // Kling 2.6 specific
   image_urls?: string[];          // Array of image URLs for Kling 2.6
@@ -47,21 +37,6 @@ type PostBody = {
     shots?: Array<{ duration: number; scene: string }>;
   };
 };
-
-async function getReferenceUrl(productId: string | null | undefined, customUrl: string | null | undefined) {
-  const trimmedCustom = customUrl?.trim();
-  if (trimmedCustom) return trimmedCustom;
-  if (!productId) throw new Error("Reference image URL required (image-to-video).");
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  const { data, error } = await supabase
-    .from("products")
-    .select("image_url")
-    .eq("id", productId)
-    .single();
-  if (error) throw new Error(`DB error: ${error.message}`);
-  if (!data?.image_url) throw new Error("No image_url found for product");
-  return data.image_url as string;
-}
 
 async function kieCreateTask(payload: any) {
   const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
@@ -125,15 +100,10 @@ export async function POST(req: Request) {
     const body = (await req.json()) as PostBody;
     const {
       provider = "kling",
-      mode,
       model,
       prompt,
       duration = "5",
-      negative_prompt,
-      cfg_scale,
       aspect_ratio,
-      productId = null,
-      customUrl = null,
       // Kling 2.6 specific
       image_urls,
       sound,
@@ -148,76 +118,33 @@ export async function POST(req: Request) {
 
     if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
 
-    /* -------- KLING -------- */
+    /* -------- KLING 2.6 -------- */
     if (provider === "kling") {
-      /* -------- KLING 2.6 -------- */
-      if (mode === "kling26") {
-        // Kling 2.6 uses different payload structure
-        // Model is determined by whether image_urls are provided
-        const isImageToVideo = image_urls && image_urls.length > 0;
-        const kling26Model = model || (isImageToVideo ? "kling-2.6/image-to-video" : "kling-2.6/text-to-video");
+      // Kling 2.6 uses different payload structure
+      // Model is determined by whether image_urls are provided
+      const isImageToVideo = image_urls && image_urls.length > 0;
+      const kling26Model = model || (isImageToVideo ? "kling-2.6/image-to-video" : "kling-2.6/text-to-video");
 
-        const payload: any = {
-          model: kling26Model,
-          callBackUrl: "",
-          input: {
-            prompt,
-            sound: sound ?? false,
-            duration,
-          },
-        };
-
-        // Add image_urls for image-to-video
-        if (isImageToVideo) {
-          payload.input.image_urls = image_urls;
-        } else {
-          // Text-to-video requires aspect_ratio
-          if (aspect_ratio) {
-            payload.input.aspect_ratio = aspect_ratio;
-          }
-        }
-
-        const taskId = await kieCreateTask(payload);
-        const { url } = await kiePoll(taskId, 300_000); // 5 minutes max
-        return NextResponse.json({ videoUrl: url });
-      }
-
-      /* -------- KLING LEGACY (v2.1, v2.5) -------- */
-      if (mode !== "image-to-video" && mode !== "text-to-video") {
-        return NextResponse.json({ error: "Invalid mode for Kling" }, { status: 400 });
-      }
-
-      // Build payloads exactly per KIE docs
-      if (mode === "image-to-video") {
-        const image_url = await getReferenceUrl(productId, customUrl);
-        const payload = {
-          model: model || "kling/v2-5-turbo-image-to-video-pro",
-          callBackUrl: "", // optional; leave blank for polling
-          input: {
-            prompt,
-            image_url,                 // must be a PUBLIC url < 10MB
-            duration,                  // "5" | "10"
-            ...(negative_prompt ? { negative_prompt } : {}),
-            ...(typeof cfg_scale === "number" ? { cfg_scale } : {}),
-          },
-        };
-        const taskId = await kieCreateTask(payload);
-        const { url } = await kiePoll(taskId, 300_000); // 5 minutes max
-        return NextResponse.json({ videoUrl: url });
-      }
-
-      // text-to-video
-      const payload = {
-        model: model || "kling/v2-5-turbo-text-to-video-pro",
+      const payload: any = {
+        model: kling26Model,
         callBackUrl: "",
         input: {
           prompt,
+          sound: sound ?? false,
           duration,
-          ...(aspect_ratio ? { aspect_ratio } : {}),
-          ...(negative_prompt ? { negative_prompt } : {}),
-          ...(typeof cfg_scale === "number" ? { cfg_scale } : {}),
         },
       };
+
+      // Add image_urls for image-to-video
+      if (isImageToVideo) {
+        payload.input.image_urls = image_urls;
+      } else {
+        // Text-to-video requires aspect_ratio
+        if (aspect_ratio) {
+          payload.input.aspect_ratio = aspect_ratio;
+        }
+      }
+
       const taskId = await kieCreateTask(payload);
       const { url } = await kiePoll(taskId, 300_000); // 5 minutes max
       return NextResponse.json({ videoUrl: url });

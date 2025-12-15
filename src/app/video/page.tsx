@@ -346,7 +346,7 @@ function ProductSelectorModal({
 }
 
 type VideoProvider = "kling" | "veo" | "sora";
-type VideoModelKind = "image-to-video" | "text-to-video" | "veo" | "storyboard" | "kling26";
+type VideoModelKind = "veo" | "storyboard" | "kling26";
 
 type VideoModelOption = {
   id: string;
@@ -389,12 +389,6 @@ type VideoRunContext = {
   customUrl: string | null;
   referenceUrl: string | null;
   referenceUrls: string[]; // Multiple reference URLs for Kling 2.6
-  kling: {
-    duration: "5" | "10";
-    aspect: "16:9" | "9:16" | "1:1";
-    negative: string;
-    cfg: string;
-  };
   kling26: {
     duration: "5" | "10";
     aspect: "16:9" | "9:16" | "1:1";
@@ -420,10 +414,6 @@ const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> 
     label: "Kling (KIE)",
     options: [
       { id: "kling-2.6", provider: "kling", label: "Kling 2.6 (Auto I2V/T2V)", kind: "kling26" },
-      { id: "kling/v2-5-turbo-image-to-video-pro", provider: "kling", label: "Kling 2.5 Turbo I2V Pro", kind: "image-to-video", requiresImage: true },
-      { id: "kling/v2-5-turbo-text-to-video-pro", provider: "kling", label: "Kling 2.5 Turbo T2V Pro", kind: "text-to-video" },
-      { id: "kling/v2-1-image-to-video", provider: "kling", label: "Kling 2.1 Image-to-Video", kind: "image-to-video", requiresImage: true },
-      { id: "kling/v2-1-text-to-video", provider: "kling", label: "Kling 2.1 Text-to-Video", kind: "text-to-video" },
     ],
   },
   {
@@ -517,19 +507,10 @@ export default function VideoStudioPage() {
   const resolvedVideoReferenceUrl = selectedRefs[0] || "";
 
   const isKling = videoModelDef.provider === "kling";
-  const isKling26 = isKling && videoModelDef.kind === "kling26";
-  const isKlingText = isKling && videoModelDef.kind === "text-to-video";
-  const isKlingImage = isKling && videoModelDef.kind === "image-to-video";
-  const isKlingLegacy = isKlingText || isKlingImage;
   const isVeo = videoModelDef.provider === "veo";
   const isSora = videoModelDef.provider === "sora";
 
-  const [klingDuration, setKlingDuration] = useState<"5" | "10">("5");
-  const [klingAspect, setKlingAspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
-  const [klingNeg, setKlingNeg] = useState("");
-  const [klingCfg, setKlingCfg] = useState<string>("0.5");
-
-  // Kling 2.6 specific states
+  // Kling 2.6 states
   const [kling26Duration, setKling26Duration] = useState<"5" | "10">("5");
   const [kling26Aspect, setKling26Aspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [kling26Sound, setKling26Sound] = useState<boolean>(false);
@@ -550,7 +531,6 @@ export default function VideoStudioPage() {
   const finalReferenceUrl = isSora ? trimmedSoraImageUrl || resolvedVideoReferenceUrl : resolvedVideoReferenceUrl;
   // Kling 2.6 doesn't require an image (auto-selects I2V/T2V based on availability)
   const videoNeedsImage =
-    isKlingImage ||
     (isVeo && veoGenType !== "TEXT_2_VIDEO") ||
     (isSora && videoModelDef.kind === "storyboard");
   const videoSomethingRunning = videoRuns.some((run) => run.status === "running");
@@ -605,9 +585,6 @@ export default function VideoStudioPage() {
     if (session.videoModel && allVideoModelIds.includes(session.videoModel)) {
       setVideoModel(session.videoModel);
     }
-    if (session.klingDuration) setKlingDuration(session.klingDuration as any);
-    if (session.klingAspect) setKlingAspect(session.klingAspect as any);
-    if (session.klingCfg) setKlingCfg(session.klingCfg);
     // Kling 2.6 settings
     if (session.kling26Duration) setKling26Duration(session.kling26Duration as any);
     if (session.kling26Aspect) setKling26Aspect(session.kling26Aspect as any);
@@ -641,9 +618,6 @@ export default function VideoStudioPage() {
       savedAt: Date.now(),
       promptsText: videoPrompts,
       videoModel,
-      klingDuration,
-      klingAspect,
-      klingCfg,
       kling26Duration,
       kling26Aspect,
       kling26Sound,
@@ -662,9 +636,6 @@ export default function VideoStudioPage() {
   }, [
     videoPrompts,
     videoModel,
-    klingDuration,
-    klingAspect,
-    klingCfg,
     kling26Duration,
     kling26Aspect,
     kling26Sound,
@@ -871,7 +842,6 @@ export default function VideoStudioPage() {
       customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
-      kling: { duration: klingDuration, aspect: klingAspect, negative: klingNeg, cfg: klingCfg },
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
@@ -915,7 +885,6 @@ export default function VideoStudioPage() {
       customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
-      kling: { duration: klingDuration, aspect: klingAspect, negative: klingNeg, cfg: klingCfg },
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, generation: veoGenType, seed: veoSeed, secondImage: veoSecondImage.trim() },
       sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
@@ -933,10 +902,6 @@ export default function VideoStudioPage() {
       VIDEO_MODEL_GROUPS.flatMap((group) => group.options).find((opt) => opt.id === run.modelId) ??
       VIDEO_MODEL_GROUPS[0].options[0];
     const runIsKling = modelOption.provider === "kling";
-    const runIsKling26 = runIsKling && modelOption.kind === "kling26";
-    const runIsKlingText = runIsKling && modelOption.kind === "text-to-video";
-    const runIsKlingImage = runIsKling && modelOption.kind === "image-to-video";
-    const runIsKlingLegacy = runIsKlingText || runIsKlingImage;
     const runIsVeo = modelOption.provider === "veo";
     const runIsSora = modelOption.provider === "sora";
 
@@ -973,13 +938,13 @@ export default function VideoStudioPage() {
     const tasks: Array<() => Promise<void>> = [];
 
     if (run.isBatch) {
-        // ... (batch logic same as before)
+        // Batch mode: one prompt with multiple images
         const prompt = run.prompts[0];
       (context.batchImages || []).forEach((imageUrl, index) => {
         tasks.push(async () => {
           let provider: VideoProvider = "kling";
           let body: any = {};
-          if (runIsKling26) {
+          if (runIsKling) {
             // Kling 2.6 uses image_urls array and sound parameter
             provider = "kling";
             body = {
@@ -991,19 +956,6 @@ export default function VideoStudioPage() {
               aspect_ratio: context.kling26.aspect,
               sound: context.kling26.sound,
               image_urls: [imageUrl],
-            };
-          } else if (runIsKlingLegacy) {
-            const cfgVal = Number.isFinite(Number(context.kling.cfg)) ? Number(context.kling.cfg) : undefined;
-            provider = "kling";
-            body = {
-              provider,
-              model: run.modelId,
-              mode: "image-to-video",
-              prompt,
-              duration: context.kling.duration,
-              imageUrl,
-              ...(context.kling.negative.trim() ? { negative_prompt: context.kling.negative.trim() } : {}),
-              ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
             };
           } else if (runIsVeo) {
             provider = "veo";
@@ -1063,7 +1015,7 @@ export default function VideoStudioPage() {
         tasks.push(async () => {
            let provider: VideoProvider = "kling";
           let body: any = {};
-          if (runIsKling26) {
+          if (runIsKling) {
             // Kling 2.6 auto-selects I2V or T2V based on reference image availability
             // Supports multiple images via context.referenceUrls
             provider = "kling";
@@ -1084,25 +1036,6 @@ export default function VideoStudioPage() {
               aspect_ratio: context.kling26.aspect,
               sound: context.kling26.sound,
               ...(hasImage ? { image_urls: imageUrls } : {}),
-            };
-          } else if (runIsKlingLegacy) {
-            const cfgVal = Number.isFinite(Number(context.kling.cfg)) ? Number(context.kling.cfg) : undefined;
-            provider = "kling";
-            body = {
-              provider,
-              model: run.modelId,
-              mode: runIsKlingText ? "text-to-video" : "image-to-video",
-              prompt: line,
-              duration: context.kling.duration,
-              ...(runIsKlingText ? { aspect_ratio: context.kling.aspect } : {}),
-              ...(context.kling.negative.trim() ? { negative_prompt: context.kling.negative.trim() } : {}),
-              ...(typeof cfgVal === "number" ? { cfg_scale: cfgVal } : {}),
-              ...(runIsKlingImage
-                ? {
-                    productId: context.productId,
-                    customUrl: context.customUrl,
-                  }
-                : {}),
             };
           } else if (runIsVeo) {
             provider = "veo";
@@ -1231,7 +1164,7 @@ export default function VideoStudioPage() {
                  {/* Model Specific Params */}
                  <div className="mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
                      {/* Kling 2.6 Params */}
-                     {isKling26 && (
+                     {isKling && (
                          <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
@@ -1257,34 +1190,6 @@ export default function VideoStudioPage() {
                             <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
                                 {finalReferenceUrl ? "Image provided: using Image-to-Video" : "No image: using Text-to-Video"}
                             </p>
-                         </div>
-                     )}
-                     {/* Kling Legacy Params */}
-                     {isKlingLegacy && (
-                         <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Duration</label>
-                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={klingDuration} onChange={e => setKlingDuration(e.target.value as any)}>
-                                        <option value="5">5s</option>
-                                        <option value="10">10s</option>
-                                    </select>
-                                </div>
-                                {isKlingText && (
-                                    <div>
-                                        <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
-                                        <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={klingAspect} onChange={e => setKlingAspect(e.target.value as any)}>
-                                            <option value="16:9">16:9</option>
-                                            <option value="9:16">9:16</option>
-                                            <option value="1:1">1:1</option>
-                                        </select>
-                                    </div>
-                                )}
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Negative</label>
-                                <input className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="Optional" value={klingNeg} onChange={e => setKlingNeg(e.target.value)} />
-                            </div>
                          </div>
                      )}
                      {/* Veo Params */}
@@ -1441,14 +1346,14 @@ export default function VideoStudioPage() {
                      </div>
 
                      {/* Kling 2.6 multiple images hint */}
-                     {isKling26 && selectedRefs.length > 1 && (
+                     {isKling && selectedRefs.length > 1 && (
                        <p className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded">
                          Kling 2.6 will use all {selectedRefs.length} selected images as reference elements.
                        </p>
                      )}
 
                      {/* Mode indicator for Kling 2.6 */}
-                     {isKling26 && (
+                     {isKling && (
                        <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
                          {selectedRefs.length > 0 ? "Image-to-Video mode" : "Text-to-Video mode (no images)"}
                        </p>

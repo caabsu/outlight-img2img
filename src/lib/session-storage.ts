@@ -153,10 +153,6 @@ export type VideoStudioSession = {
   savedAt: number;
   promptsText: string;
   videoModel: string;
-  // Model options - Kling Legacy
-  klingDuration: string;
-  klingAspect: string;
-  klingCfg: string;
   // Model options - Kling 2.6
   kling26Duration?: string;
   kling26Aspect?: string;
