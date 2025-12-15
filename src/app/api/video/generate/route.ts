@@ -192,12 +192,22 @@ async function veoPoll(taskId: string, maxMs = 420_000) {
 }
 
 export async function POST(req: Request) {
+  console.log("[Video Generate] Request received");
+
   try {
     if (!KIE_KEY) {
+      console.log("[Video Generate] ERROR: KIE_API_KEY missing");
       return NextResponse.json({ error: "KIE_API_KEY missing" }, { status: 500 });
     }
 
-    const body = (await req.json()) as PostBody;
+    let body: PostBody;
+    try {
+      body = (await req.json()) as PostBody;
+      console.log("[Video Generate] Request body:", JSON.stringify(body, null, 2));
+    } catch (parseError: any) {
+      console.log("[Video Generate] ERROR parsing request body:", parseError?.message);
+      return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    }
     const {
       provider = "kling",
       model,
@@ -252,6 +262,8 @@ export async function POST(req: Request) {
 
     /* -------- VEO 3.1 (Google DeepMind) -------- */
     if (provider === "veo") {
+      console.log("[Video Generate] Processing Veo request");
+
       // Determine generation type: TEXT_2_VIDEO (no images) or FIRST_AND_LAST_FRAMES_2_VIDEO (1-2 images)
       const hasImages = imageUrls && imageUrls.length > 0;
       const genType: "TEXT_2_VIDEO" | "FIRST_AND_LAST_FRAMES_2_VIDEO" = hasImages
@@ -267,17 +279,27 @@ export async function POST(req: Request) {
       // Use provided model or default to veo3_fast
       const veoModel = model === "veo3" ? "veo3" : "veo3_fast";
 
-      const taskId = await veoGenerate({
-        prompt,
-        model: veoModel,
-        generationType: genType,
-        aspectRatio: aspect,
-        imageUrls: hasImages ? imageUrls : undefined,
-        seeds: typeof seeds === "number" ? seeds : undefined,
-      });
+      console.log("[Video Generate] Veo params:", { genType, aspect, veoModel, hasImages, imageCount: imageUrls?.length || 0 });
 
-      const { url } = await veoPoll(taskId, 420_000); // 7 minutes max for Veo
-      return NextResponse.json({ videoUrl: url });
+      try {
+        const taskId = await veoGenerate({
+          prompt,
+          model: veoModel,
+          generationType: genType,
+          aspectRatio: aspect,
+          imageUrls: hasImages ? imageUrls : undefined,
+          seeds: typeof seeds === "number" ? seeds : undefined,
+        });
+
+        console.log("[Video Generate] Veo taskId:", taskId);
+
+        const { url } = await veoPoll(taskId, 420_000); // 7 minutes max for Veo
+        console.log("[Video Generate] Veo completed, url:", url);
+        return NextResponse.json({ videoUrl: url });
+      } catch (veoError: any) {
+        console.log("[Video Generate] Veo error:", veoError?.message);
+        throw veoError;
+      }
     }
 
     /* -------- SORA (OpenAI Storyboard) -------- */
@@ -305,6 +327,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ error: `Provider ${provider} not supported` }, { status: 400 });
   } catch (err: any) {
+    console.log("[Video Generate] Unhandled error:", err?.message, err?.stack);
     return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
 }
