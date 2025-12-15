@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import JSZip from "jszip";
+import { createClient } from "@supabase/supabase-js";
 import {
   MODEL_LIST,
   getModelById,
@@ -15,6 +16,7 @@ import {
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
+
 import {
   loadImageStudioSession,
   debouncedSaveImageSession,
@@ -22,6 +24,11 @@ import {
   deserializeImageRun,
   type ImageStudioSession,
 } from "@/lib/session-storage";
+
+// Direct Supabase client for large file uploads (bypasses Vercel's 4.5MB API limit)
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseClient = createClient(supabaseUrl, supabaseAnonKey);
 
 type Product = {
   id: string;
@@ -1047,18 +1054,65 @@ export default function ImageStudioPage() {
       startRunWithPrompts(promptLines, selectedRefs);
     }
 
-    // Upload a data URI to Supabase storage and return the public URL
+    // Upload a data URI directly to Supabase storage (bypasses Vercel's 4.5MB API limit)
     async function uploadToStorage(dataUrl: string): Promise<string> {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataUrl }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.url) {
-        throw new Error(json.error || "Failed to upload image");
+      // If already an HTTP URL, return as-is
+      if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
+        return dataUrl;
       }
-      return json.url;
+
+      // Parse data URI
+      const match = /^data:([^;]+);base64,(.*)$/i.exec(dataUrl);
+      if (!match) {
+        throw new Error("Invalid data URL format");
+      }
+
+      const mimeType = match[1] || "image/png";
+      const base64Data = match[2];
+
+      // Convert base64 to Blob
+      const byteCharacters = atob(base64Data);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+
+      // Determine file extension
+      const extMap: Record<string, string> = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/jpg": "jpg",
+        "image/webp": "webp",
+        "image/gif": "gif",
+      };
+      const ext = extMap[mimeType] || "png";
+      const filename = `${crypto.randomUUID()}.${ext}`;
+      const filePath = `uploads/${filename}`;
+
+      // Upload directly to Supabase
+      const { error: uploadError } = await supabaseClient.storage
+        .from("reference-images")
+        .upload(filePath, blob, {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (uploadError) {
+        throw new Error(uploadError.message || "Upload failed");
+      }
+
+      // Get public URL
+      const { data: urlData } = supabaseClient.storage
+        .from("reference-images")
+        .getPublicUrl(filePath);
+
+      if (!urlData?.publicUrl) {
+        throw new Error("Failed to get public URL");
+      }
+
+      return urlData.publicUrl;
     }
 
     async function runGenerator(run: Run, currentRefSources: string[]) {
