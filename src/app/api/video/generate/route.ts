@@ -103,13 +103,13 @@ async function veoGenerate(payload: {
   seeds?: number;
 }, maxRetries = 3) {
   // Build request body per API spec
+  // Note: enableFallback is deprecated - KIE now auto-handles content review
   const requestBody: Record<string, any> = {
     prompt: payload.prompt,
     model: payload.model,
     generationType: payload.generationType,
     aspectRatio: payload.aspectRatio,
     enableTranslation: true,
-    enableFallback: true, // Enable fallback API to bypass stricter content policies
   };
 
   // Add imageUrls only for image-to-video mode
