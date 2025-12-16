@@ -109,6 +109,7 @@ async function veoGenerate(payload: {
     generationType: payload.generationType,
     aspectRatio: payload.aspectRatio,
     enableTranslation: true,
+    enableFallback: true, // Enable fallback API to bypass stricter content policies
   };
 
   // Add imageUrls only for image-to-video mode
