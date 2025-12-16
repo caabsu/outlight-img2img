@@ -711,6 +711,8 @@ export default function VideoStudioPage() {
   async function handleBatchVideoUpload(files: FileList | null) {
     if (!files || files.length === 0) return;
     setBatchVideoUploading(true);
+    // Clear old images immediately to prevent using stale session data
+    setBatchVideoImages([]);
     try {
       // Convert files to data URLs for previews
       const previews = await filesToDataUrls(files);
