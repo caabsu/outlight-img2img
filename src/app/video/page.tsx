@@ -712,16 +712,19 @@ export default function VideoStudioPage() {
     if (!files || files.length === 0) return;
     setBatchVideoUploading(true);
     try {
+      // Convert files to data URLs for previews
       const previews = await filesToDataUrls(files);
       setBatchVideoPreviews(previews);
 
-      const formData = new FormData();
-      Array.from(files).forEach((file) => formData.append("files", file));
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Upload failed");
-      setBatchVideoImages(json.urls || []);
-      setSaveToast({ message: `${json.urls.length} images uploaded`, type: "success" });
+      // Upload each image directly to Supabase (bypasses Vercel's 4.5MB limit)
+      const urls: string[] = [];
+      for (const dataUrl of previews) {
+        const url = await uploadToStorage(dataUrl);
+        urls.push(url);
+      }
+
+      setBatchVideoImages(urls);
+      setSaveToast({ message: `${urls.length} images uploaded`, type: "success" });
     } catch (error: any) {
       setSaveToast({ message: error?.message || "Upload failed", type: "error" });
       setBatchVideoPreviews([]);
