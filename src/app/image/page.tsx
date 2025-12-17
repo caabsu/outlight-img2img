@@ -1136,6 +1136,8 @@ export default function ImageStudioPage() {
 
       if (needsUpload && currentRefSources.length > 0) {
         const dataUriRefs = currentRefSources.filter((url) => url.startsWith("data:"));
+        console.log("[Frontend] currentRefSources:", currentRefSources.length, currentRefSources.map(u => u.slice(0, 50)));
+        console.log("[Frontend] dataUriRefs count:", dataUriRefs.length);
         if (dataUriRefs.length > 0) {
           try {
             setSaveToast({ message: "Uploading images...", type: "success" });
@@ -1146,12 +1148,14 @@ export default function ImageStudioPage() {
               return url; // Already an HTTP URL
             });
             resolvedRefs = await Promise.all(uploadPromises);
+            console.log("[Frontend] resolvedRefs after upload:", resolvedRefs.map(u => u.slice(0, 50)));
           } catch (err: any) {
             setSaveToast({ message: err?.message || "Failed to upload images", type: "error" });
             return;
           }
         }
       }
+      console.log("[Frontend] Final resolvedRefs sent to API:", resolvedRefs.map(u => u.slice(0, 80)));
 
       let cursor = 0;
       const total = run.prompts.length;

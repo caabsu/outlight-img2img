@@ -564,60 +564,15 @@ export async function POST(req: Request) {
       const hasDataRefs = referenceUrls.length > httpRefs.length;
       const isPro = modelId === "nanobanana-3-pro";
 
-      // Nano Banana Pro: always use Gemini directly (KIE nano-banana-pro doesn't work well with image inputs)
-      if (isPro) {
-        // For text-to-image (no reference images), use Gemini directly
-        if (referenceUrls.length === 0) {
-          const { nbRes, nbJson } = await callGeminiTextToImage(prompt, modelId, options);
-          if (!nbRes.ok) {
-            const msg =
-              nbJson?.error?.message ||
-              nbJson?.error?.status ||
-              nbJson?.error?.code ||
-              "Nano Banana Pro text-to-image failed";
-            return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
-          }
-          const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
-          if (!dataUrl && !url) {
-            return NextResponse.json(
-              { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
-              { status: 502 }
-            );
-          }
-          await logUsage(profileId, modelId);
-          return NextResponse.json({ imageDataUrl: dataUrl || url });
-        }
-
-        // For image editing (with references), always use Gemini directly
-        // Fetch all images as base64 (works for both data URIs and HTTP URLs)
-        const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
-        const { nbRes, nbJson } = await callGeminiImageEdit({
-          images,
-          text: prompt,
-          modelId,
-          options,
-        });
-        if (!nbRes.ok) {
-          const msg =
-            nbJson?.error?.message ||
-            nbJson?.error?.status ||
-            nbJson?.error?.code ||
-            "Nano Banana Pro edit failed";
-          return NextResponse.json({ error: msg, debug: nbJson || null }, { status: 502 });
-        }
-        const { dataUrl, url, reason, debug } = extractGeminiImage(nbJson);
-        if (!dataUrl && !url) {
-          return NextResponse.json(
-            { error: reason || "Nano Banana Pro returned no image", debug: debug || nbJson || null },
-            { status: 502 }
-          );
-        }
-        await logUsage(profileId, modelId);
-        return NextResponse.json({ imageDataUrl: dataUrl || url });
-      }
+      console.log("[Nano Banana] modelId:", modelId, "isPro:", isPro);
+      console.log("[Nano Banana] referenceUrls:", referenceUrls.length, referenceUrls.map(u => u.slice(0, 50)));
+      console.log("[Nano Banana] httpRefs:", httpRefs.length, "hasDataRefs:", hasDataRefs);
+      console.log("[Nano Banana] options from request:", options);
 
       // If any refs are data: URIs/uploads, fall back to direct Gemini with inline_data support.
+      // Note: Gemini doesn't support aspect_ratio, so data URI inputs won't respect aspect ratio settings.
       if (hasDataRefs) {
+        console.log("[Nano Banana] FALLBACK TO GEMINI (has data URIs)");
         const images = await Promise.all(referenceUrls.map((url) => fetchImageAsBase64(url)));
         const nanoOpts = normalizeNano(modelId, true); // allow image_size only for Gemini (Pro)
         const { nbRes, nbJson } = await callGeminiImageEdit({
@@ -646,14 +601,30 @@ export async function POST(req: Request) {
         return NextResponse.json({ imageDataUrl: dataUrl || url });
       }
 
-      const nanoModel =
-        referenceUrls.length > 0 ? "google/nano-banana-edit" : "google/nano-banana";
-      const nanoOpts = normalizeNano(modelId, false); // KIE rejects image_size, so disable
+      console.log("[Nano Banana] USING KIE API");
+
+      // nano-banana-pro uses different model name and param (image_input vs image_urls)
+      const nanoModel = isPro
+        ? "nano-banana-pro"
+        : (referenceUrls.length > 0 ? "google/nano-banana-edit" : "google/nano-banana");
+      // KIE nano-banana-pro supports resolution, others don't
+      const nanoOpts = normalizeNano(modelId, isPro);
+
+      console.log("[Nano Banana KIE] model:", nanoModel);
+      console.log("[Nano Banana KIE] nanoOpts normalized:", nanoOpts);
+
       const inputPayload: Record<string, any> = {
         prompt,
         output_format: "png",
       };
-      if (httpRefs.length) inputPayload.image_urls = httpRefs;
+      if (httpRefs.length) {
+        // nano-banana-pro uses image_input, others use image_urls
+        if (isPro) {
+          inputPayload.image_input = httpRefs;
+        } else {
+          inputPayload.image_urls = httpRefs;
+        }
+      }
       const ar = nanoOpts.aspect_ratio || undefined;
       if (ar) inputPayload.aspect_ratio = ar;
       if (nanoOpts.resolution) inputPayload.resolution = nanoOpts.resolution;
@@ -663,6 +634,8 @@ export async function POST(req: Request) {
         callBackUrl: "",
         input: inputPayload,
       };
+
+      console.log("[Nano Banana KIE] Final payload:", JSON.stringify(payload, null, 2));
 
       const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
         method: "POST",

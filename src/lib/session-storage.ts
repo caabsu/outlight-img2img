@@ -18,11 +18,31 @@ function debounce<T extends (...args: any[]) => void>(fn: T, ms: number): T {
 // Generic save/load functions
 export function saveToStorage<T>(key: string, data: T): void {
   if (typeof window === "undefined") return;
+  const json = JSON.stringify(data);
   try {
-    const json = JSON.stringify(data);
     localStorage.setItem(key, json);
-  } catch (err) {
-    console.warn("Failed to save to localStorage:", err);
+  } catch (err: any) {
+    // Handle quota exceeded error by clearing old data and retrying
+    if (err?.name === "QuotaExceededError" || err?.code === 22) {
+      console.warn("localStorage quota exceeded, clearing old session data...");
+      try {
+        // Clear the specific key and retry
+        localStorage.removeItem(key);
+        localStorage.setItem(key, json);
+      } catch {
+        // If still failing, clear all our session keys
+        console.warn("Still failing, clearing all session storage...");
+        localStorage.removeItem(STORAGE_KEYS.IMAGE_STUDIO);
+        localStorage.removeItem(STORAGE_KEYS.VIDEO_STUDIO);
+        try {
+          localStorage.setItem(key, json);
+        } catch {
+          console.error("Failed to save even after clearing storage");
+        }
+      }
+    } else {
+      console.warn("Failed to save to localStorage:", err);
+    }
   }
 }
 
@@ -86,6 +106,11 @@ export type ImageStudioSession = {
 };
 
 export function serializeImageRun(run: any): SerializedRun {
+  // Filter images to only keep HTTP URLs (not large data URIs) to avoid localStorage quota issues
+  const filteredImages = (run.images || [])
+    .filter((img: any) => img.imageDataUrl && img.imageDataUrl.startsWith("http"))
+    .slice(-20); // Keep only last 20 images per run to limit storage
+
   return {
     id: run.id,
     name: run.name,
@@ -98,9 +123,9 @@ export function serializeImageRun(run: any): SerializedRun {
     // Convert running to cancelled since we can't resume
     status: run.status === "running" ? "cancelled" : run.status,
     error: run.error,
-    images: run.images,
-    activeIdx: run.activeIdx,
-    selectedIdx: Array.from(run.selectedIdx || []),
+    images: filteredImages,
+    activeIdx: filteredImages.length > 0 ? Math.min(run.activeIdx, filteredImages.length - 1) : 0,
+    selectedIdx: (Array.from(run.selectedIdx || []) as number[]).filter((idx) => idx < filteredImages.length),
     progress: run.progress,
     speed: run.speed,
   };
