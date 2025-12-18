@@ -20,6 +20,8 @@ export type ModelDef = {
   supportsResolution?: boolean;
   supportsMaxImages?: boolean;
   supportsSeed?: boolean;
+  // Max concurrent requests (for APIs with rate limits like KIE)
+  maxConcurrency?: number;
 };
 
 export const MODEL_LIST: ModelDef[] = [
@@ -30,6 +32,7 @@ export const MODEL_LIST: ModelDef[] = [
     provider: "nanobanana",
     providerName: "gemini-2.5-flash-image",
     requiresReference: false,
+    maxConcurrency: 5,  // Allow concurrent requests for faster batch generation
   },
   {
     id: "nanobanana-3-pro",
@@ -51,6 +54,9 @@ export const MODEL_LIST: ModelDef[] = [
       "21:9",
     ],
     resolutionOptions: ["1K", "2K", "4K"],
+    // KIE API supports concurrent tasks - each request creates its own async task
+    // Allow up to 5 concurrent requests to significantly speed up batch generation
+    maxConcurrency: 5,
   },
   {
     id: "seedream-4.5",
@@ -70,6 +76,7 @@ export const MODEL_LIST: ModelDef[] = [
       "21:9",
     ],
     qualityOptions: ["basic", "high"],
+    maxConcurrency: 5,  // Allow concurrent requests for faster batch generation
   },
 ];
 

@@ -430,7 +430,7 @@ export async function POST(req: Request) {
 
       // 2) poll recordInfo
       const started = Date.now();
-      const MAX_MS = 180_000;
+      const MAX_MS = 300_000;  // 5 minutes total timeout for concurrent requests
       let resultUrl: string | null = null;
       let lastState = "waiting";
 
@@ -516,7 +516,7 @@ export async function POST(req: Request) {
 
       // 2) poll recordInfo
       const started = Date.now();
-      const MAX_MS = 180_000;
+      const MAX_MS = 300_000;  // 5 minutes total timeout for concurrent requests
       let resultUrl: string | null = null;
       let lastState = "waiting";
 
@@ -643,6 +643,7 @@ export async function POST(req: Request) {
         body: JSON.stringify(payload),
       });
       const createJson = await createRes.json().catch(() => ({}));
+      console.log("[Nano Banana] createTask response:", JSON.stringify(createJson, null, 2));
       if (!createRes.ok || createJson?.code !== 200) {
         const msg = createJson?.message || createJson?.msg || "Nano Banana createTask failed";
         console.error("Nano Banana createTask error", { status: createRes.status, body: createJson });
@@ -652,12 +653,19 @@ export async function POST(req: Request) {
       if (!taskId) return NextResponse.json({ error: "Nano Banana taskId missing" }, { status: 502 });
 
       const started = Date.now();
-      const MAX_MS = 180_000;
+      const MAX_MS = 300_000;  // 5 minutes total timeout for concurrent requests
+      const MAX_WAITING_MS = 120_000; // 2 minutes waiting state tolerance for queued requests
       let resultUrl: string | null = null;
       let lastState = "waiting";
+      let pollCount = 0;
+      let waitingStarted = Date.now();
+      let everStartedRunning = false;
+
+      console.log(`[Nano Banana] Task ${taskId} created, starting poll loop`);
 
       while (Date.now() - started < MAX_MS) {
         await new Promise((r) => setTimeout(r, 2000));
+        pollCount++;
         const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
           headers: { Authorization: `Bearer ${KIE_KEY}` },
         });
@@ -669,6 +677,28 @@ export async function POST(req: Request) {
         }
 
         lastState = qJson?.data?.state as string;
+        // Log full response on first poll or when state changes
+        if (pollCount === 1 || pollCount % 10 === 0) {
+          console.log(`[Nano Banana] Task ${taskId} poll #${pollCount} FULL response:`, JSON.stringify(qJson, null, 2));
+        } else {
+          console.log(`[Nano Banana] Task ${taskId} poll #${pollCount}: state=${lastState}`);
+        }
+
+        // Track if task ever started running
+        if (lastState === "running" || lastState === "processing") {
+          everStartedRunning = true;
+          waitingStarted = Date.now(); // Reset waiting timer when task starts
+        }
+
+        // Check for stuck in "waiting" state - fail early if never started running
+        if (lastState === "waiting" && !everStartedRunning && Date.now() - waitingStarted > MAX_WAITING_MS) {
+          console.error(`[Nano Banana] Task ${taskId} stuck in waiting state for ${MAX_WAITING_MS}ms - likely API queue issue`);
+          return NextResponse.json({
+            error: "Nano Banana API queue congested - task stuck in waiting state. Please try again in a moment.",
+            debug: { taskId, pollCount, waitedMs: Date.now() - waitingStarted }
+          }, { status: 503 });
+        }
+
         if (lastState === "success") {
           try {
             const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
@@ -687,6 +717,7 @@ export async function POST(req: Request) {
       }
 
       if (!resultUrl) {
+        console.error(`[Nano Banana] Task ${taskId} TIMED OUT after ${pollCount} polls, lastState=${lastState}`);
         return NextResponse.json({ error: `Nano Banana generation timed out (last state: ${lastState})` }, { status: 504 });
       }
       await logUsage(profileId, modelId);
