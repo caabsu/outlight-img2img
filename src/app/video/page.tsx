@@ -1617,7 +1617,7 @@ export default function VideoStudioPage() {
                 </div>
                 
                 {batchVideoMode ? (
-                    <div className="flex-1 p-6 space-y-6">
+                    <div className="flex-1 p-6 space-y-6 overflow-y-auto">
                         <div className="p-4 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
                             <h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-300 mb-2">Batch Mode Active</h3>
                             <p className="text-xs text-indigo-700 dark:text-indigo-400">One prompt will be applied to all uploaded images.</p>
