@@ -518,6 +518,7 @@ export default function ImageStudioPage() {
   const activeRun = runs.find((r) => r.id === activeRunId) ?? runs[0] ?? null;
   const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
+  const [expandedImage, setExpandedImage] = useState(false);
   const [showNanoGuide, setShowNanoGuide] = useState(false);
   const [clientId, setClientId] = useState<string>("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -845,14 +846,24 @@ export default function ImageStudioPage() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+          if (expandedImage) setExpandedImage(false);
           if (refPreviewUrl) setRefPreviewUrl(null);
           // if (showProductModal) setShowProductModal(false); // Removed
           if (showRefProductModal) setShowRefProductModal(false);
       }
+      // Arrow key navigation in expanded image modal
+      if (expandedImage && activeRun) {
+        if (event.key === "ArrowLeft" && activeRun.activeIdx > 0) {
+          stepActiveImage(activeRun.id, -1);
+        }
+        if (event.key === "ArrowRight" && activeRun.activeIdx < activeRun.images.length - 1) {
+          stepActiveImage(activeRun.id, 1);
+        }
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [refPreviewUrl, showRefProductModal]);
+  }, [refPreviewUrl, showRefProductModal, expandedImage, activeRun]);
 
   useEffect(() => {
     const intent = consumeStudioIntent();
@@ -1589,25 +1600,28 @@ export default function ImageStudioPage() {
                               <span className="text-[11px] font-medium text-slate-600 dark:text-slate-300">{activeRun.activeIdx + 1} of {activeRun.images.length}</span>
                             </div>
 
-                            <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 border-b border-slate-100 dark:border-slate-800">
+                            <div className="flex gap-3 overflow-x-auto pb-3 -mx-1 px-1 border-b border-slate-100 dark:border-slate-800">
                               {activeRun.images.map((img, idx) => (
                                 <button
                                   key={img.id}
                                   onClick={() => {
                                     setRuns(prev => prev.map(r => r.id === activeRun.id ? { ...r, activeIdx: idx } : r));
                                   }}
-                                  className={`relative flex-none h-20 w-20 rounded-md overflow-hidden border transition ${activeRun.activeIdx === idx
-                                    ? "border-slate-900 dark:border-slate-50 ring-1 ring-slate-900 dark:ring-slate-50"
-                                    : "border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100"}`}
+                                  className={`relative flex-none h-24 w-24 rounded-lg overflow-hidden border-2 transition ${activeRun.activeIdx === idx
+                                    ? "border-indigo-500 ring-2 ring-indigo-500/50"
+                                    : "border-slate-200 dark:border-slate-700 opacity-80 hover:opacity-100 hover:border-slate-400 dark:hover:border-slate-500"}`}
                                 >
                                   {/* eslint-disable-next-line @next/next/no-img-element */}
                                   <img src={img.imageDataUrl} className="h-full w-full object-cover" alt="" />
+                                  <span className="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] font-bold bg-black/70 text-white rounded">
+                                    {idx + 1}
+                                  </span>
                                 </button>
                               ))}
                             </div>
 
                             <div className="flex-1 min-h-0 flex flex-col gap-3">
-                              <div className="relative flex-1 min-h-[340px] rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
+                              <div className="relative flex-1 min-h-[340px] rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm group">
                                 <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-full bg-black/50 px-2 py-1 text-white shadow-lg backdrop-blur">
                                   <button
                                     onClick={() => stepActiveImage(activeRun.id, -1)}
@@ -1628,6 +1642,15 @@ export default function ImageStudioPage() {
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" alt="" />
                                 <div className="absolute top-3 right-3 flex flex-wrap gap-2">
+                                  <button
+                                    onClick={() => setExpandedImage(true)}
+                                    className="p-1.5 rounded-full bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition"
+                                    title="Expand image"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                    </svg>
+                                  </button>
                                   <button onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)} className="bg-white/90 dark:bg-black/80 hover:bg-white dark:hover:bg-black text-slate-900 dark:text-slate-100 text-xs font-semibold px-3 py-1.5 rounded-full shadow">Save</button>
                                   <button
                                     onClick={async () => {
@@ -1801,6 +1824,99 @@ export default function ImageStudioPage() {
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={refPreviewUrl} alt="Preview" className="max-h-[90vh] w-auto rounded-lg shadow-2xl" />
+          </div>
+        </div>
+      )}
+
+      {/* Expanded Image Modal */}
+      {expandedImage && activeRun && activeRun.images.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setExpandedImage(false)}
+        >
+          <div
+            className="relative flex flex-col items-center max-w-6xl w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              className="absolute -top-2 -right-2 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition"
+              onClick={() => setExpandedImage(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Image display */}
+            <div className="relative w-full flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={activeRun.images[activeRun.activeIdx].imageDataUrl}
+                alt=""
+                className="max-h-[80vh] max-w-full object-contain rounded-xl shadow-2xl"
+              />
+            </div>
+
+            {/* Navigation and info */}
+            <div className="flex items-center justify-between w-full mt-4 px-2">
+              <button
+                onClick={() => stepActiveImage(activeRun.id, -1)}
+                disabled={activeRun.activeIdx === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Previous
+              </button>
+
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-white font-medium">
+                  {activeRun.activeIdx + 1} of {activeRun.images.length}
+                </span>
+                <span className="text-white/60 text-xs max-w-md text-center line-clamp-1">
+                  {activeRun.images[activeRun.activeIdx].prompt}
+                </span>
+              </div>
+
+              <button
+                onClick={() => stepActiveImage(activeRun.id, 1)}
+                disabled={activeRun.activeIdx === activeRun.images.length - 1}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                Next
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex gap-3 mt-4">
+              <button
+                onClick={() => saveImageToLibrary(activeRun.images[activeRun.activeIdx].imageDataUrl, activeRun.images[activeRun.activeIdx].prompt)}
+                className="px-6 py-2 rounded-lg bg-white/10 text-white font-medium hover:bg-white/20 transition"
+              >
+                Save to Library
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await downloadImage(
+                      activeRun.images[activeRun.activeIdx].imageDataUrl,
+                      `${safeName(productName)}_${safeName(modelNameDisplay)}_${Date.now()}.png`
+                    );
+                  } catch (error: unknown) {
+                    const errMsg = error instanceof Error ? error.message : "Download failed";
+                    setSaveToast({ message: errMsg, type: "error" });
+                  }
+                }}
+                className="px-6 py-2 rounded-lg bg-white text-slate-900 font-medium hover:bg-slate-100 transition"
+              >
+                Download
+              </button>
+            </div>
           </div>
         </div>
       )}
