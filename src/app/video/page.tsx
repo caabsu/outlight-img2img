@@ -491,7 +491,8 @@ export default function VideoStudioPage() {
   const [batchVideoPrompt, setBatchVideoPrompt] = useState("");
   const [batchVideoPreviews, setBatchVideoPreviews] = useState<string[]>([]);
   const [batchVideoUploading, setBatchVideoUploading] = useState(false);
-  
+  const [expandedVideo, setExpandedVideo] = useState(false);
+
   // Computed ref sources (all unique images from uploads and URLs)
   const refSources = useMemo(() => {
     const list = [
@@ -683,13 +684,23 @@ export default function VideoStudioPage() {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+          if (expandedVideo) setExpandedVideo(false);
           if (referenceUploadPreview) setReferenceUploadPreview(null);
           if (showRefProductModal) setShowRefProductModal(false);
+      }
+      // Arrow key navigation in expanded video modal
+      if (expandedVideo && activeVideoRun) {
+        if (event.key === "ArrowLeft" && activeVideoRun.activeIdx > 0) {
+          stepActiveVideo(activeVideoRun.id, -1);
+        }
+        if (event.key === "ArrowRight" && activeVideoRun.activeIdx < activeVideoRun.videos.length - 1) {
+          stepActiveVideo(activeVideoRun.id, 1);
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [referenceUploadPreview, showRefProductModal]);
+  }, [referenceUploadPreview, showRefProductModal, expandedVideo, activeVideoRun]);
 
   async function filesToDataUrls(files: FileList | null) {
     if (!files || files.length === 0) return [];
@@ -1695,14 +1706,23 @@ export default function VideoStudioPage() {
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-950/30">
                           {activeVideoRun.videos.length > 0 ? (
                               <div className="space-y-3">
-                                  <div className="rounded-lg overflow-hidden bg-black shadow-lg">
+                                  <div className="relative rounded-lg overflow-hidden bg-black shadow-lg group">
                                       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                                      <video 
-                                        src={activeVideoRun.videos[activeVideoRun.activeIdx].url} 
-                                        controls 
-                                        playsInline 
-                                        className="w-full aspect-video object-contain" 
+                                      <video
+                                        src={activeVideoRun.videos[activeVideoRun.activeIdx].url}
+                                        controls
+                                        playsInline
+                                        className="w-full aspect-video object-contain"
                                       />
+                                      <button
+                                        onClick={() => setExpandedVideo(true)}
+                                        className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 text-white opacity-0 group-hover:opacity-100 hover:bg-black/70 transition"
+                                        title="Expand video"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                                        </svg>
+                                      </button>
                                   </div>
                                   <div className="flex items-center justify-between px-1">
                                      <button onClick={() => stepActiveVideo(activeVideoRun.id, -1)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-500">←</button>
@@ -1731,17 +1751,20 @@ export default function VideoStudioPage() {
                                     </button>
                                  </div>
                                  
-                                 <div className="grid grid-cols-4 gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                                 <div className="grid grid-cols-3 gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
                                      {activeVideoRun.videos.map((vid, idx) => (
                                          <button
                                             key={vid.id}
                                             onClick={() => {
                                                  setVideoRuns(prev => prev.map(r => r.id === activeVideoRun.id ? { ...r, activeIdx: idx } : r));
                                             }}
-                                            className={`aspect-video rounded overflow-hidden border bg-black ${activeVideoRun.activeIdx === idx ? 'border-slate-900 dark:border-slate-50 ring-1 ring-slate-900 dark:ring-slate-50' : 'border-slate-200 dark:border-slate-700 opacity-70 hover:opacity-100'}`}
+                                            className={`relative aspect-video rounded-lg overflow-hidden border-2 bg-black transition ${activeVideoRun.activeIdx === idx ? 'border-indigo-500 ring-2 ring-indigo-500/50' : 'border-slate-200 dark:border-slate-700 opacity-80 hover:opacity-100 hover:border-slate-400 dark:hover:border-slate-500'}`}
                                          >
                                              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
                                              <video src={vid.url} className="h-full w-full object-cover pointer-events-none" />
+                                             <span className="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] font-bold bg-black/70 text-white rounded">
+                                               {idx + 1}
+                                             </span>
                                          </button>
                                      ))}
                                  </div>
@@ -1839,6 +1862,92 @@ export default function VideoStudioPage() {
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={referenceUploadPreview} alt="Preview" className="max-h-[90vh] w-auto rounded-lg shadow-2xl" />
+          </div>
+        </div>
+      )}
+
+      {/* Expanded Video Modal */}
+      {expandedVideo && activeVideoRun && activeVideoRun.videos.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setExpandedVideo(false)}
+        >
+          <div
+            className="relative flex flex-col items-center max-w-6xl w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close button */}
+            <button
+              className="absolute -top-2 -right-2 z-10 rounded-full bg-white/10 p-2 text-white hover:bg-white/20 transition"
+              onClick={() => setExpandedVideo(false)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Video player */}
+            <div className="relative w-full rounded-xl overflow-hidden bg-black shadow-2xl">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+              <video
+                src={activeVideoRun.videos[activeVideoRun.activeIdx].url}
+                controls
+                autoPlay
+                playsInline
+                className="w-full max-h-[80vh] object-contain"
+              />
+            </div>
+
+            {/* Navigation and info */}
+            <div className="flex items-center justify-between w-full mt-4 px-2">
+              <button
+                onClick={() => stepActiveVideo(activeVideoRun.id, -1)}
+                disabled={activeVideoRun.activeIdx === 0}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Previous
+              </button>
+
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-white font-medium">
+                  {activeVideoRun.activeIdx + 1} of {activeVideoRun.videos.length}
+                </span>
+                <span className="text-white/60 text-xs max-w-md text-center line-clamp-1">
+                  {activeVideoRun.videos[activeVideoRun.activeIdx].prompt}
+                </span>
+              </div>
+
+              <button
+                onClick={() => stepActiveVideo(activeVideoRun.id, 1)}
+                disabled={activeVideoRun.activeIdx === activeVideoRun.videos.length - 1}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 disabled:opacity-30 disabled:cursor-not-allowed transition"
+              >
+                Next
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Download button */}
+            <button
+              onClick={() => {
+                const current = activeVideoRun.videos[activeVideoRun.activeIdx];
+                const base = safeName(activeVideoRun.productName || "video");
+                const a = document.createElement("a");
+                a.href = current.url;
+                a.download = `${base}_${safeName(activeVideoRun.modelLabel)}_${activeVideoRun.activeIdx + 1}.mp4`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              }}
+              className="mt-4 px-6 py-2 rounded-lg bg-white text-slate-900 font-medium hover:bg-slate-100 transition"
+            >
+              Download MP4
+            </button>
           </div>
         </div>
       )}
