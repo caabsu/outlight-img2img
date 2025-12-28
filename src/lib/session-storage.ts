@@ -97,6 +97,10 @@ export type ImageStudioSession = {
   sdRes: string;
   sdMax: number;
   sdSeed: number | "";
+  // GPT 1.5 options
+  gpt15Size: string;
+  gpt15Quality: string;
+  gpt15Background: string;
   speed: number;
   // References (URLs only, not large data URIs to avoid quota issues)
   customUrls: string[];

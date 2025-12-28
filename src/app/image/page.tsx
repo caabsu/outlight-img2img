@@ -13,6 +13,9 @@ import {
   NANOBANANA_ASPECT_RATIOS,
   NANOBANANA_RESOLUTIONS,
   SEEDREAM_QUALITY_OPTIONS,
+  GPT15_SIZE_OPTIONS,
+  GPT15_QUALITY_OPTIONS,
+  GPT15_BACKGROUND_OPTIONS,
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
@@ -507,6 +510,11 @@ export default function ImageStudioPage() {
   const [sd45AspectRatio, setSd45AspectRatio] = useState<string>("1:1");
   const [sd45Quality, setSd45Quality] = useState<string>("basic");
   const isSeedream45 = modelDef.id === "seedream-4.5";
+  // GPT 1.5 options
+  const [gpt15Size, setGpt15Size] = useState<string>("auto");
+  const [gpt15Quality, setGpt15Quality] = useState<string>("auto");
+  const [gpt15Background, setGpt15Background] = useState<string>("auto");
+  const isGpt15 = modelDef.id === "gpt-1.5";
   const [speed, setSpeed] = useState<RunSpeed>(1);
   const [promptsText, setPromptsText] = useState("");
   const promptLines = useMemo(
@@ -635,6 +643,9 @@ export default function ImageStudioPage() {
     if (session.sdRes) setSdRes(session.sdRes as any);
     if (typeof session.sdMax === "number") setSdMax(session.sdMax);
     if (session.sdSeed !== undefined) setSdSeed(session.sdSeed);
+    if (session.gpt15Size) setGpt15Size(session.gpt15Size);
+    if (session.gpt15Quality) setGpt15Quality(session.gpt15Quality);
+    if (session.gpt15Background) setGpt15Background(session.gpt15Background);
     if (typeof session.speed === "number") setSpeed(session.speed as any);
     if (session.customUrls?.length) setCustomUrls(session.customUrls);
 
@@ -667,6 +678,9 @@ export default function ImageStudioPage() {
       sdRes,
       sdMax,
       sdSeed,
+      gpt15Size,
+      gpt15Quality,
+      gpt15Background,
       speed,
       customUrls: customUrls.filter((u) => u && !u.startsWith("data:")), // Don't save large data URIs
       runs: runs.map(serializeImageRun),
@@ -685,6 +699,9 @@ export default function ImageStudioPage() {
     sdRes,
     sdMax,
     sdSeed,
+    gpt15Size,
+    gpt15Quality,
+    gpt15Background,
     speed,
     customUrls,
     runs,
@@ -1220,6 +1237,14 @@ export default function ImageStudioPage() {
                 options: (() => {
                   const runModel = getModelById(run.modelId);
                   if (!runModel) return undefined;
+                  // GPT 1.5
+                  if (runModel.id === "gpt-1.5") {
+                    return {
+                      gpt_size: gpt15Size,
+                      quality: gpt15Quality,
+                      gpt_background: gpt15Background,
+                    };
+                  }
                   // Seedream 4.5 text-to-image
                   if (runModel.id === "seedream-4.5") {
                     return {
@@ -1396,6 +1421,52 @@ export default function ImageStudioPage() {
                   </div>
                   <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
                     <span className="font-medium">Auto-mode:</span> Text-to-image when no reference selected, Edit mode when reference image(s) added. Basic = 2K, High = 4K.
+                  </p>
+                </div>
+              )}
+
+                  {isGpt15 && (
+                <div className="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
+                  <div className="grid grid-cols-3 gap-3">
+                    <div>
+                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Size</label>
+                        <select
+                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            value={gpt15Size}
+                            onChange={(e) => setGpt15Size(e.target.value)}
+                        >
+                            {GPT15_SIZE_OPTIONS.map((s) => (
+                              <option key={s} value={s}>{s === "auto" ? "Auto" : s}</option>
+                            ))}
+                        </select>
+                    </div>
+                     <div>
+                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                         <select
+                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            value={gpt15Quality}
+                            onChange={(e) => setGpt15Quality(e.target.value)}
+                        >
+                            {GPT15_QUALITY_OPTIONS.map((q) => (
+                              <option key={q} value={q}>{q.charAt(0).toUpperCase() + q.slice(1)}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Background</label>
+                         <select
+                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            value={gpt15Background}
+                            onChange={(e) => setGpt15Background(e.target.value)}
+                        >
+                            {GPT15_BACKGROUND_OPTIONS.map((bg) => (
+                              <option key={bg} value={bg}>{bg.charAt(0).toUpperCase() + bg.slice(1)}</option>
+                            ))}
+                        </select>
+                    </div>
+                  </div>
+                  <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
+                    <span className="font-medium">Auto-mode:</span> Text-to-image when no reference, Edit mode with reference images. Transparent background requires PNG output.
                   </p>
                 </div>
               )}

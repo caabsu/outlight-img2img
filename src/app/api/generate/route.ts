@@ -9,6 +9,9 @@ import {
   NANOBANANA_ASPECT_RATIOS,
   NANOBANANA_RESOLUTIONS,
   SEEDREAM_QUALITY_OPTIONS,
+  GPT15_SIZE_OPTIONS,
+  GPT15_QUALITY_OPTIONS,
+  GPT15_BACKGROUND_OPTIONS,
 } from "@/lib/models";
 
 /* ========================= ENV ========================= */
@@ -33,6 +36,9 @@ const NB_AUTH_HEADER = process.env.NANO_BANANA_AUTH_HEADER || "x-goog-api-key";
 const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY;
 
+// OpenAI
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+
 /* ========================= TYPES ========================= */
 type PostBody = {
   modelId: string; // "nanobanana-1", "nanobanana-2", "nanobanana-3-pro" or startsWith("seedream")
@@ -53,7 +59,10 @@ type PostBody = {
     // nano banana (KIE) image config
     aspect_ratio?: string;     // shared: nano banana & seedream 4.5
     // seedream 4.5 text-to-image
-    quality?: string;          // "basic" or "high"
+    quality?: string;          // "basic" or "high" for Seedream, or "auto"|"low"|"medium"|"high" for GPT 1.5
+    // GPT 1.5 options
+    gpt_size?: string;         // "auto"|"1024x1024"|"1536x1024"|"1024x1536"
+    gpt_background?: string;   // "auto"|"opaque"|"transparent"
   };
 };
 
@@ -67,6 +76,12 @@ type SeedreamOptions = {
 type NanoBananaOptions = {
   aspect_ratio?: (typeof NANOBANANA_ASPECT_RATIOS)[number];
   resolution?: (typeof NANOBANANA_RESOLUTIONS)[number];
+};
+
+type Gpt15Options = {
+  size: (typeof GPT15_SIZE_OPTIONS)[number];
+  quality: (typeof GPT15_QUALITY_OPTIONS)[number];
+  background: (typeof GPT15_BACKGROUND_OPTIONS)[number];
 };
 
   const SAFETY_OFF = [
@@ -361,6 +376,125 @@ export async function POST(req: Request) {
           : undefined;
       return { aspect_ratio, resolution };
     };
+
+    const normalizeGpt15 = (): Gpt15Options => {
+      const sizeSet = new Set<string>(GPT15_SIZE_OPTIONS);
+      const qualitySet = new Set<string>(GPT15_QUALITY_OPTIONS);
+      const bgSet = new Set<string>(GPT15_BACKGROUND_OPTIONS);
+      const size = sizeSet.has(options?.gpt_size || "")
+        ? (options!.gpt_size as Gpt15Options["size"])
+        : "auto";
+      const quality = qualitySet.has(options?.quality || "")
+        ? (options!.quality as Gpt15Options["quality"])
+        : "auto";
+      const background = bgSet.has(options?.gpt_background || "")
+        ? (options!.gpt_background as Gpt15Options["background"])
+        : "auto";
+      return { size, quality, background };
+    };
+
+    /* -------- GPT 1.5 (OpenAI Image API) -------- */
+    if (modelId === "gpt-1.5") {
+      if (!OPENAI_API_KEY) return NextResponse.json({ error: "OpenAI API key missing" }, { status: 500 });
+
+      const gpt15Opts = normalizeGpt15();
+      const hasReferences = referenceUrls.length > 0;
+
+      console.log("[GPT 1.5] modelId:", modelId, "hasReferences:", hasReferences);
+      console.log("[GPT 1.5] options:", gpt15Opts);
+
+      // Use OpenAI SDK for cleaner implementation
+      const OpenAI = (await import("openai")).default;
+      const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+
+      if (hasReferences) {
+        // Image Edit mode - use images.edit endpoint
+        try {
+          // Fetch all reference images and convert to File objects
+          const imageFiles: File[] = [];
+          for (let i = 0; i < referenceUrls.length; i++) {
+            const imgData = await fetchImageAsBase64(referenceUrls[i]);
+            const imgBuffer = Buffer.from(imgData.base64, "base64");
+            const blob = new Blob([imgBuffer], { type: imgData.mime });
+            const ext = imgData.mime.includes("png") ? "png" : imgData.mime.includes("webp") ? "webp" : "png";
+            imageFiles.push(new File([blob], `image_${i}.${ext}`, { type: imgData.mime }));
+          }
+
+          const editParams: any = {
+            model: "gpt-image-1.5",
+            prompt,
+            image: imageFiles.length === 1 ? imageFiles[0] : imageFiles,
+          };
+
+          // Add quality if not auto
+          if (gpt15Opts.quality !== "auto") {
+            editParams.quality = gpt15Opts.quality;
+          }
+
+          // Add size if not auto
+          if (gpt15Opts.size !== "auto") {
+            editParams.size = gpt15Opts.size;
+          }
+
+          console.log("[GPT 1.5 Edit] Calling API with", imageFiles.length, "images");
+
+          const result = await openai.images.edit(editParams);
+          const b64 = result.data?.[0]?.b64_json;
+
+          if (!b64) {
+            console.error("[GPT 1.5 Edit] No b64_json in response:", JSON.stringify(result, null, 2));
+            return NextResponse.json({ error: "GPT 1.5 returned no image", debug: result }, { status: 502 });
+          }
+
+          await logUsage(profileId, modelId);
+          return NextResponse.json({ imageDataUrl: `data:image/png;base64,${b64}` });
+        } catch (err: any) {
+          console.error("[GPT 1.5 Edit] Exception:", err);
+          const msg = err?.message || err?.error?.message || "GPT 1.5 edit failed";
+          return NextResponse.json({ error: msg, debug: err?.error || null }, { status: 502 });
+        }
+      } else {
+        // Text-to-image mode - use images.generate endpoint
+        try {
+          const genParams: any = {
+            model: "gpt-image-1.5",
+            prompt,
+          };
+
+          // Add quality if not auto
+          if (gpt15Opts.quality !== "auto") {
+            genParams.quality = gpt15Opts.quality;
+          }
+
+          // Add size if not auto
+          if (gpt15Opts.size !== "auto") {
+            genParams.size = gpt15Opts.size;
+          }
+
+          // Add background if not auto (only supported with png/webp)
+          if (gpt15Opts.background !== "auto") {
+            genParams.background = gpt15Opts.background;
+          }
+
+          console.log("[GPT 1.5 Generate] Params:", JSON.stringify(genParams, null, 2));
+
+          const result = await openai.images.generate(genParams);
+          const b64 = result.data?.[0]?.b64_json;
+
+          if (!b64) {
+            console.error("[GPT 1.5 Generate] No b64_json in response:", JSON.stringify(result, null, 2));
+            return NextResponse.json({ error: "GPT 1.5 returned no image", debug: result }, { status: 502 });
+          }
+
+          await logUsage(profileId, modelId);
+          return NextResponse.json({ imageDataUrl: `data:image/png;base64,${b64}` });
+        } catch (err: any) {
+          console.error("[GPT 1.5 Generate] Exception:", err);
+          const msg = err?.message || err?.error?.message || "GPT 1.5 generation failed";
+          return NextResponse.json({ error: msg, debug: err?.error || null }, { status: 502 });
+        }
+      }
+    }
 
     /* -------- Seedream 4.5 (auto-switch: text-to-image or edit) -------- */
     if (isSeedream45) {
