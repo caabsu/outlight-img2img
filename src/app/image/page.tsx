@@ -515,6 +515,9 @@ export default function ImageStudioPage() {
   const [gpt15Quality, setGpt15Quality] = useState<string>("auto");
   const [gpt15Background, setGpt15Background] = useState<string>("auto");
   const isGpt15 = modelDef.id === "gpt-1.5";
+  // Prompt column width (resizable)
+  const [promptColumnWidth, setPromptColumnWidth] = useState<number>(700);
+  const isResizingRef = useRef(false);
   const [speed, setSpeed] = useState<RunSpeed>(1);
   const [promptsText, setPromptsText] = useState("");
   const promptLines = useMemo(
@@ -646,6 +649,9 @@ export default function ImageStudioPage() {
     if (session.gpt15Size) setGpt15Size(session.gpt15Size);
     if (session.gpt15Quality) setGpt15Quality(session.gpt15Quality);
     if (session.gpt15Background) setGpt15Background(session.gpt15Background);
+    if (typeof session.promptColumnWidth === "number" && session.promptColumnWidth >= 400 && session.promptColumnWidth <= 1200) {
+      setPromptColumnWidth(session.promptColumnWidth);
+    }
     if (typeof session.speed === "number") setSpeed(session.speed as any);
     if (session.customUrls?.length) setCustomUrls(session.customUrls);
 
@@ -681,6 +687,7 @@ export default function ImageStudioPage() {
       gpt15Size,
       gpt15Quality,
       gpt15Background,
+      promptColumnWidth,
       speed,
       customUrls: customUrls.filter((u) => u && !u.startsWith("data:")), // Don't save large data URIs
       runs: runs.map(serializeImageRun),
@@ -702,6 +709,7 @@ export default function ImageStudioPage() {
     gpt15Size,
     gpt15Quality,
     gpt15Background,
+    promptColumnWidth,
     speed,
     customUrls,
     runs,
@@ -1323,7 +1331,12 @@ export default function ImageStudioPage() {
         </div>
 
         {/* Grid Layout Update: Wider Center Column & Prompt Zone */}
-        <div className="grid gap-6 lg:grid-cols-[340px_700px_minmax(0,1fr)] items-start">
+        <div
+          className="grid gap-6 items-start grid-cols-1"
+          style={{
+            gridTemplateColumns: `340px ${promptColumnWidth}px minmax(0,1fr)`
+          }}
+        >
           
           {/* Column 1: Configuration */}
           <div className="space-y-6">
@@ -1573,7 +1586,40 @@ export default function ImageStudioPage() {
           </div>
 
           {/* Column 2: Creation */}
-          <div className="flex flex-col gap-6 h-[calc(100vh-120px)]">
+          <div className="relative flex flex-col gap-6 h-[calc(100vh-120px)]">
+            {/* Resize Handle */}
+            <div
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 group"
+              style={{ transform: "translateX(50%)" }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                isResizingRef.current = true;
+                const startX = e.clientX;
+                const startWidth = promptColumnWidth;
+
+                const onMouseMove = (moveEvent: MouseEvent) => {
+                  if (!isResizingRef.current) return;
+                  const delta = moveEvent.clientX - startX;
+                  const newWidth = Math.max(400, Math.min(1200, startWidth + delta));
+                  setPromptColumnWidth(newWidth);
+                };
+
+                const onMouseUp = () => {
+                  isResizingRef.current = false;
+                  document.removeEventListener("mousemove", onMouseMove);
+                  document.removeEventListener("mouseup", onMouseUp);
+                  document.body.style.cursor = "";
+                  document.body.style.userSelect = "";
+                };
+
+                document.addEventListener("mousemove", onMouseMove);
+                document.addEventListener("mouseup", onMouseUp);
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
+            >
+              <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-transparent group-hover:bg-indigo-400 dark:group-hover:bg-indigo-500 transition-colors rounded-full" />
+            </div>
              <div className="flex-1 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/50 rounded-xl">
                      <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Prompt Engineering</h2>
