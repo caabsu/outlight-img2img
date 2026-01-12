@@ -1339,44 +1339,44 @@ export default function ImageStudioPage() {
         >
           
           {/* Column 1: Configuration */}
-          <div className="space-y-6">
-            <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                <div className="mb-4 flex items-center justify-between gap-2">
-                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
+          <div className="space-y-3">
+            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
                   {isNanoBananaPro && (
                      <button
                        onClick={() => setShowNanoGuide(true)}
-                       className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+                       className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
                        title="What's new in Nano Banana?"
                      >
-                       <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
-                       <span>Nano guide</span>
+                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
+                       <span>Guide</span>
                      </button>
                    )}
                  </div>
-                 <div className="space-y-3">
+                 <div className="space-y-1.5">
                     {MODEL_LIST.map(model => (
                         <button
                           key={model.id}
                           onClick={() => setModelId(model.id)}
-                          className={`w-full flex items-center justify-between p-3 rounded-lg border text-left text-sm transition-all ${modelId === model.id
+                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md border text-left text-xs transition-all ${modelId === model.id
                               ? "border-indigo-600 dark:border-indigo-500 ring-1 ring-indigo-600 dark:ring-indigo-500 bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-300"
                               : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300"
                           }`}
                         >
                             <span className="font-medium">{model.label}</span>
-                            <span className="text-[10px] uppercase text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">{model.version}</span>
+                            <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">{model.version}</span>
                         </button>
                     ))}
                  </div>
 
                   {isNanoBananaPro && (
-                <div className="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect Ratio</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
                         <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
                             value={nbAspectRatio}
                             onChange={(e) => setNbAspectRatio(e.target.value)}
                         >
@@ -1386,9 +1386,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
                          <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
                             value={nbResolution}
                             onChange={(e) => setNbResolution(e.target.value)}
                         >
@@ -1398,19 +1398,16 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                   </div>
-                  <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    Flash keeps output at 1K; Pro unlocks 2K & 4K. Aspect ratios match Gemini guidance (square, portrait, landscape, ultrawide).
-                  </p>
                 </div>
               )}
 
                   {isSeedream45 && (
-                <div className="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
-                  <div className="grid grid-cols-2 gap-3">
+                <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect Ratio</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
                         <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
                             value={sd45AspectRatio}
                             onChange={(e) => setSd45AspectRatio(e.target.value)}
                         >
@@ -1420,9 +1417,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
                          <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
                             value={sd45Quality}
                             onChange={(e) => setSd45Quality(e.target.value)}
                         >
@@ -1432,19 +1429,16 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                   </div>
-                  <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    <span className="font-medium">Auto-mode:</span> Text-to-image when no reference selected, Edit mode when reference image(s) added. Basic = 2K, High = 4K.
-                  </p>
                 </div>
               )}
 
                   {isGpt15 && (
-                <div className="mt-4 space-y-3 border-t border-slate-100 dark:border-slate-800 pt-4">
-                  <div className="grid grid-cols-3 gap-3">
+                <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <div className="grid grid-cols-3 gap-1.5">
                     <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Size</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Size</label>
                         <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
                             value={gpt15Size}
                             onChange={(e) => setGpt15Size(e.target.value)}
                         >
@@ -1454,9 +1448,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
                          <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
                             value={gpt15Quality}
                             onChange={(e) => setGpt15Quality(e.target.value)}
                         >
@@ -1466,9 +1460,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                     <div>
-                        <label className="text-[10px] font-semibold uppercase text-slate-400 dark:text-slate-500">Background</label>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">BG</label>
                          <select
-                            className="mt-1 w-full rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs font-medium text-slate-900 dark:text-slate-100"
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
                             value={gpt15Background}
                             onChange={(e) => setGpt15Background(e.target.value)}
                         >
@@ -1478,30 +1472,27 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                   </div>
-                  <p className="text-[10px] leading-relaxed text-slate-500 dark:text-slate-400">
-                    <span className="font-medium">Auto-mode:</span> Text-to-image when no reference, Edit mode with reference images. Transparent background requires PNG output.
-                  </p>
                 </div>
               )}
              </div>
 
-             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                 <div className="mb-4 flex items-center justify-between">
-                    <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Context</h2>
+             <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
+                 <div className="mb-2 flex items-center justify-between">
+                    <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Context</h2>
                     {modelRequiresReference && (
-                        <span className={`h-2 w-2 rounded-full ${hasRefs ? "bg-emerald-500" : "bg-rose-500"}`} />
+                        <span className={`h-1.5 w-1.5 rounded-full ${hasRefs ? "bg-emerald-500" : "bg-rose-500"}`} />
                     )}
                  </div>
-                 
-                 <div className="space-y-4">
-                     {/* Removed Subject / Product section */} 
+
+                 <div className="space-y-2">
+                     {/* Removed Subject / Product section */}
 
                      {/* References Section */}
-                     <div className="space-y-3">
-                        <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
-                        
-                             <input 
-                                className="w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-3 py-2 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                     <div className="space-y-2">
+                        <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
+
+                             <input
+                                className="w-full rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1.5 text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
                                 placeholder="Paste image URL..."
                                 value={customUrl}
                                 onChange={(e) => setCustomUrl(e.target.value)}
@@ -1822,38 +1813,38 @@ export default function ImageStudioPage() {
             )}
             
             {/* Run Queue / History List (Mini) */}
-            <div className="h-52 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 overflow-y-auto shadow-sm">
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">History</h3>
+            <div className="h-36 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 overflow-y-auto shadow-sm">
+                <div className="mb-1 flex items-center justify-between">
+                  <h3 className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">History</h3>
                   <button
                     onClick={clearRuns}
                     disabled={runs.length === 0}
-                    className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 hover:text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="text-[9px] font-semibold uppercase tracking-wide text-slate-400 hover:text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
                     title="Clear all history"
                   >
-                    Clear all
+                    Clear
                   </button>
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                     {runs.map(run => (
-                        <div key={run.id} 
+                        <div key={run.id}
                              onClick={() => setActiveRunId(run.id)}
-                             className={`group flex items-center justify-between p-2 rounded-md border cursor-pointer transition ${activeRunId === run.id ? 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-600' : 'bg-white dark:bg-slate-900 border-transparent hover:bg-slate-50 dark:hover:bg-slate-800'}`}
+                             className={`group flex items-center justify-between px-1.5 py-1 rounded border cursor-pointer transition ${activeRunId === run.id ? 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-600' : 'bg-white dark:bg-slate-900 border-transparent hover:bg-slate-50 dark:hover:bg-slate-800'}`}
                         >
-                            <div className="flex items-center gap-2 overflow-hidden">
-                                <div className={`h-2 w-2 rounded-full ${run.status === 'running' ? 'bg-emerald-500 animate-pulse' : run.status === 'error' ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
-                                <span className="truncate text-xs font-medium text-slate-700 dark:text-slate-300">{run.name}</span>
-                                <span className="text-[10px] text-slate-400">({run.images.length})</span>
+                            <div className="flex items-center gap-1.5 overflow-hidden">
+                                <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${run.status === 'running' ? 'bg-emerald-500 animate-pulse' : run.status === 'error' ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600'}`} />
+                                <span className="truncate text-[11px] font-medium text-slate-700 dark:text-slate-300">{run.name}</span>
+                                <span className="text-[9px] text-slate-400">({run.images.length})</span>
                             </div>
-                            <button 
+                            <button
                                 onClick={(e) => { e.stopPropagation(); deleteRun(run.id); }}
-                                className="opacity-0 group-hover:opacity-100 text-[10px] text-slate-400 hover:text-rose-500 px-1"
+                                className="opacity-0 group-hover:opacity-100 text-[9px] text-slate-400 hover:text-rose-500 px-0.5"
                             >
                                 x
                             </button>
                         </div>
                     ))}
-                    {runs.length === 0 && <p className="text-[10px] text-slate-400 italic">No recent runs.</p>}
+                    {runs.length === 0 && <p className="text-[9px] text-slate-400 italic">No recent runs.</p>}
                 </div>
             </div>
 
