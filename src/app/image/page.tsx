@@ -1227,6 +1227,10 @@ export default function ImageStudioPage() {
       };
 
       const worker = async () => {
+        // Get model-specific settings for rate limiting
+        const workerModel = getModelById(run.modelId);
+        const needsDelay = workerModel?.maxConcurrency && workerModel.maxConcurrency <= 2;
+
         while (true) {
           const index = cursor;
           if (index >= total) return;
@@ -1285,11 +1289,20 @@ export default function ImageStudioPage() {
             if (!res.ok) {
               setError(json.error || "Generation failed", json.debug);
               advance();
+              // On error, wait before retrying to avoid overwhelming the API
+              if (needsDelay) {
+                console.log(`[Worker] Error response, waiting 5s before next request...`);
+                await new Promise((r) => setTimeout(r, 5000));
+              }
               continue;
             }
 
             pushImage({ id: crypto.randomUUID(), prompt, imageDataUrl: json.imageDataUrl });
             advance();
+            // Add small delay between successful requests for rate-limited models
+            if (needsDelay && index < total - 1) {
+              await new Promise((r) => setTimeout(r, 1000));
+            }
           } catch (error: any) {
              const abort = error?.name === "AbortError";
              setError(abort ? "Run cancelled" : error?.message || "Request failed");
@@ -1298,7 +1311,10 @@ export default function ImageStudioPage() {
         }
       };
 
-      const parallel = Math.max(1, Math.min(run.speed, RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1]));
+      const runModelDef = getModelById(run.modelId);
+      const maxModelConcurrency = runModelDef?.maxConcurrency ?? Infinity;
+      const parallel = Math.max(1, Math.min(run.speed, RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1], maxModelConcurrency));
+      console.log(`[Run ${run.id}] Model: ${run.modelId}, speed=${run.speed}, maxConcurrency=${maxModelConcurrency}, effective parallel=${parallel}`);
       const workers: Promise<void>[] = [];
       for (let i = 0; i < parallel; i++) workers.push(worker());
       await Promise.all(workers).catch(() => undefined);

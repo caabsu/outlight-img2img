@@ -105,6 +105,31 @@ function parseDataUrl(url: string): { mime: string; base64: string } | null {
   }
 }
 
+function normalizeKieState(state: unknown): string {
+  if (typeof state !== "string") return "";
+  return state.trim().toLowerCase();
+}
+
+function extractKieResultUrls(resultJson: unknown): { urls: string[]; parseError: boolean } {
+  if (typeof resultJson !== "string" || !resultJson) return { urls: [], parseError: false };
+  try {
+    const parsed = JSON.parse(resultJson);
+    const urls = parsed?.resultUrls;
+    if (!Array.isArray(urls)) return { urls: [], parseError: false };
+    return { urls: urls.filter((u): u is string => typeof u === "string" && u.length > 0), parseError: false };
+  } catch {
+    return { urls: [], parseError: true };
+  }
+}
+
+function isKieSuccessState(state: string): boolean {
+  return ["success", "succeed", "succeeded", "done", "complete", "completed"].includes(state);
+}
+
+function isKieFailState(state: string): boolean {
+  return ["fail", "failed", "error", "errored"].includes(state);
+}
+
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
   const parsed = parseDataUrl(url);
   if (parsed) return parsed;
@@ -575,23 +600,32 @@ export async function POST(req: Request) {
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
+          const isTransient =
+            [429, 500, 502, 503, 504].includes(qRes.status) ||
+            [429, 500, 502, 503, 504].includes(Number(qJson?.code));
+          if (isTransient) continue;
           const msg = qJson?.message || qJson?.msg || `${modeLabel} query failed`;
-          return NextResponse.json({ error: msg }, { status: 502 });
+          return NextResponse.json({ error: msg, debug: qJson || null }, { status: 502 });
         }
 
-        lastState = qJson?.data?.state as string;
-        if (lastState === "success") {
-          try {
-            const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
-            const urls: string[] = parsed?.resultUrls || [];
-            if (!urls.length) return NextResponse.json({ error: `${modeLabel} returned no result URLs` }, { status: 502 });
-            resultUrl = urls[0];
-            break;
-          } catch {
-            return NextResponse.json({ error: `Malformed ${modeLabel} resultJson` }, { status: 502 });
-          }
+        const { urls, parseError } = extractKieResultUrls(qJson?.data?.resultJson);
+        lastState = normalizeKieState(qJson?.data?.state) || "unknown";
+
+        if (urls.length) {
+          resultUrl = urls[0];
+          break;
         }
-        if (lastState === "fail") {
+
+        if (parseError && isKieSuccessState(lastState)) {
+          return NextResponse.json({ error: `Malformed ${modeLabel} resultJson`, debug: { taskId, state: lastState } }, { status: 502 });
+        }
+
+        if (isKieSuccessState(lastState)) {
+          // Wait for resultJson to become available instead of failing immediately.
+          continue;
+        }
+
+        if (isKieFailState(lastState)) {
           const failMsg = qJson?.data?.failMsg || `${modeLabel} reported failure`;
           return NextResponse.json({ error: failMsg }, { status: 502 });
         }
@@ -661,23 +695,32 @@ export async function POST(req: Request) {
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
+          const isTransient =
+            [429, 500, 502, 503, 504].includes(qRes.status) ||
+            [429, 500, 502, 503, 504].includes(Number(qJson?.code));
+          if (isTransient) continue;
           const msg = qJson?.message || qJson?.msg || "Seedream query failed";
-          return NextResponse.json({ error: msg }, { status: 502 });
+          return NextResponse.json({ error: msg, debug: qJson || null }, { status: 502 });
         }
 
-        lastState = qJson?.data?.state as string;
-        if (lastState === "success") {
-          try {
-            const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
-            const urls: string[] = parsed?.resultUrls || [];
-            if (!urls.length) return NextResponse.json({ error: "Seedream returned no result URLs" }, { status: 502 });
-            resultUrl = urls[0];
-            break;
-          } catch {
-            return NextResponse.json({ error: "Malformed Seedream resultJson" }, { status: 502 });
-          }
+        const { urls, parseError } = extractKieResultUrls(qJson?.data?.resultJson);
+        lastState = normalizeKieState(qJson?.data?.state) || "unknown";
+
+        if (urls.length) {
+          resultUrl = urls[0];
+          break;
         }
-        if (lastState === "fail") {
+
+        if (parseError && isKieSuccessState(lastState)) {
+          return NextResponse.json({ error: "Malformed Seedream resultJson", debug: { taskId, state: lastState } }, { status: 502 });
+        }
+
+        if (isKieSuccessState(lastState)) {
+          // Wait for resultJson to become available instead of failing immediately.
+          continue;
+        }
+
+        if (isKieFailState(lastState)) {
           const failMsg = qJson?.data?.failMsg || "Seedream reported failure";
           return NextResponse.json({ error: failMsg }, { status: 502 });
         }
@@ -787,13 +830,10 @@ export async function POST(req: Request) {
       if (!taskId) return NextResponse.json({ error: "Nano Banana taskId missing" }, { status: 502 });
 
       const started = Date.now();
-      const MAX_MS = 300_000;  // 5 minutes total timeout for concurrent requests
-      const MAX_WAITING_MS = 120_000; // 2 minutes waiting state tolerance for queued requests
+      const MAX_MS = 600_000;  // 10 minutes total timeout for queued requests
       let resultUrl: string | null = null;
       let lastState = "waiting";
       let pollCount = 0;
-      let waitingStarted = Date.now();
-      let everStartedRunning = false;
 
       console.log(`[Nano Banana] Task ${taskId} created, starting poll loop`);
 
@@ -805,12 +845,23 @@ export async function POST(req: Request) {
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
+          const isTransient =
+            [429, 500, 502, 503, 504].includes(qRes.status) ||
+            [429, 500, 502, 503, 504].includes(Number(qJson?.code));
+          if (isTransient) {
+            console.warn(
+              `[Nano Banana] Task ${taskId} poll #${pollCount}: transient error (http=${qRes.status}, code=${qJson?.code}), retrying...`
+            );
+            continue;
+          }
           const msg = qJson?.message || qJson?.msg || "Nano Banana query failed";
           console.error("Nano Banana recordInfo error", { status: qRes.status, body: qJson });
           return NextResponse.json({ error: msg, debug: qJson || null }, { status: 502 });
         }
 
-        lastState = qJson?.data?.state as string;
+        const { urls, parseError } = extractKieResultUrls(qJson?.data?.resultJson);
+        lastState = normalizeKieState(qJson?.data?.state) || "unknown";
+
         // Log full response on first poll or when state changes
         if (pollCount === 1 || pollCount % 10 === 0) {
           console.log(`[Nano Banana] Task ${taskId} poll #${pollCount} FULL response:`, JSON.stringify(qJson, null, 2));
@@ -818,33 +869,22 @@ export async function POST(req: Request) {
           console.log(`[Nano Banana] Task ${taskId} poll #${pollCount}: state=${lastState}`);
         }
 
-        // Track if task ever started running
-        if (lastState === "running" || lastState === "processing") {
-          everStartedRunning = true;
-          waitingStarted = Date.now(); // Reset waiting timer when task starts
+        // Some KIE responses include resultJson before state flips to "success".
+        if (urls.length) {
+          resultUrl = urls[0];
+          break;
         }
 
-        // Check for stuck in "waiting" state - fail early if never started running
-        if (lastState === "waiting" && !everStartedRunning && Date.now() - waitingStarted > MAX_WAITING_MS) {
-          console.error(`[Nano Banana] Task ${taskId} stuck in waiting state for ${MAX_WAITING_MS}ms - likely API queue issue`);
-          return NextResponse.json({
-            error: "Nano Banana API queue congested - task stuck in waiting state. Please try again in a moment.",
-            debug: { taskId, pollCount, waitedMs: Date.now() - waitingStarted }
-          }, { status: 503 });
+        if (parseError && isKieSuccessState(lastState)) {
+          return NextResponse.json({ error: "Malformed Nano Banana resultJson", debug: { taskId, state: lastState } }, { status: 502 });
         }
 
-        if (lastState === "success") {
-          try {
-            const parsed = JSON.parse(qJson?.data?.resultJson || "{}");
-            const urls: string[] = parsed?.resultUrls || [];
-            if (!urls.length) return NextResponse.json({ error: "Nano Banana returned no result URLs" }, { status: 502 });
-            resultUrl = urls[0];
-            break;
-          } catch {
-            return NextResponse.json({ error: "Malformed Nano Banana resultJson" }, { status: 502 });
-          }
+        if (isKieSuccessState(lastState)) {
+          // Wait for resultJson to become available instead of failing immediately.
+          continue;
         }
-        if (lastState === "fail") {
+
+        if (isKieFailState(lastState)) {
           const failMsg = qJson?.data?.failMsg || "Nano Banana reported failure";
           return NextResponse.json({ error: failMsg }, { status: 502 });
         }
@@ -863,5 +903,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
 }
-
-
