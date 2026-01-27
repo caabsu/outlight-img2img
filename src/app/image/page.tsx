@@ -577,6 +577,12 @@ export default function ImageStudioPage() {
       ? Math.round((activeRun.progress.done / activeRun.progress.total) * 100)
       : 0;
   const activeRunDebugText = activeRun?.debug ? stringifyDebug(activeRun.debug) : "";
+  const maxUiParallel = RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1];
+  const activeRunModelDef = activeRun ? getModelById(activeRun.modelId) : undefined;
+  const activeRunMaxConcurrency = activeRunModelDef?.maxConcurrency ?? maxUiParallel;
+  const activeRunParallel = activeRun
+    ? Math.max(1, Math.min(activeRun.speed, maxUiParallel, activeRunMaxConcurrency))
+    : 0;
 
   async function filesToDataUrls(files: FileList | null): Promise<string[]> {
     if (!files || files.length === 0) return [];
@@ -1162,6 +1168,11 @@ export default function ImageStudioPage() {
     async function runGenerator(run: Run, currentRefSources: string[]) {
       if (!run.profileId) {
         setSaveToast({ message: "Profile missing for this run", type: "error" });
+        setRuns((prev) =>
+          prev.map((item) =>
+            item.id === run.id ? { ...item, status: "error" as RunStatus, error: "Profile missing for this run" } : item
+          )
+        );
         return;
       }
 
@@ -1185,8 +1196,12 @@ export default function ImageStudioPage() {
             });
             resolvedRefs = await Promise.all(uploadPromises);
             console.log("[Frontend] resolvedRefs after upload:", resolvedRefs.map(u => u.slice(0, 50)));
-          } catch (err: any) {
-            setSaveToast({ message: err?.message || "Failed to upload images", type: "error" });
+           } catch (err: any) {
+            const msg = err?.message || "Failed to upload images";
+            setSaveToast({ message: msg, type: "error" });
+            setRuns((prev) =>
+              prev.map((item) => (item.id === run.id ? { ...item, status: "error" as RunStatus, error: msg } : item))
+            );
             return;
           }
         }
@@ -1217,19 +1232,35 @@ export default function ImageStudioPage() {
         );
       };
 
-      const setError = (message: string, debug?: unknown) => {
+      const failures: Array<{ index: number; prompt: string; error: string; debug?: unknown; status?: number }> = [];
+      const MAX_ATTEMPTS = 3;
+      const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const backoffMs = (attempt: number, retryAfter: string | null) => {
+        const retryAfterSeconds = retryAfter ? Number.parseInt(retryAfter, 10) : NaN;
+        if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) return retryAfterSeconds * 1000;
+        const base = Math.min(10_000, 500 * 2 ** (attempt - 1));
+        return base + Math.floor(Math.random() * 250);
+      };
+
+      const failRun = (message: string, debug?: unknown) => {
         setRuns((prev) =>
           prev.map((item) => {
             if (item.id !== run.id) return item;
+            if (item.status === "cancelled") return item;
             return { ...item, status: "error" as RunStatus, error: message, debug: debug ?? null };
           })
         );
+        run.controller?.abort();
       };
 
-      const worker = async () => {
+      const worker = async (workerId: number) => {
         // Get model-specific settings for rate limiting
         const workerModel = getModelById(run.modelId);
         const needsDelay = workerModel?.maxConcurrency && workerModel.maxConcurrency <= 2;
+
+        // Small stagger to avoid bursting the API when parallel > 1
+        if (workerId > 0) await sleep(150 * workerId);
 
         while (true) {
           const index = cursor;
@@ -1238,75 +1269,101 @@ export default function ImageStudioPage() {
           const prompt = run.prompts[index];
 
           try {
-            const res = await fetch("/api/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                modelId: run.modelId,
-                profileId: run.profileId,
-                customUrls: resolvedRefs,
-                prompt,
-                options: (() => {
-                  const runModel = getModelById(run.modelId);
-                  if (!runModel) return undefined;
-                  // GPT 1.5
-                  if (runModel.id === "gpt-1.5") {
-                    return {
-                      gpt_size: gpt15Size,
-                      quality: gpt15Quality,
-                      gpt_background: gpt15Background,
-                    };
-                  }
-                  // Seedream 4.5 text-to-image
-                  if (runModel.id === "seedream-4.5") {
-                    return {
-                      aspect_ratio: sd45AspectRatio,
-                      quality: sd45Quality,
-                    };
-                  }
-                  // Legacy seedream edit (if any)
-                  if (runModel.provider === "seedream") {
-                    return {
-                      image_size: sdSize,
-                      image_resolution: sdRes,
-                      max_images: sdMax,
-                      seed: sdSeed === "" ? null : sdSeed,
-                    };
-                  }
-                  if (runModel.id === "nanobanana-3-pro") {
-                    return {
-                      aspect_ratio: nbAspectRatio,
-                      image_size: nbResolution,
-                    };
-                  }
-                  return undefined;
-                })(),
-              }),
-              signal: run.controller?.signal,
-            });
+            let lastError: { message: string; debug?: unknown; status?: number } | null = null;
 
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok) {
-              setError(json.error || "Generation failed", json.debug);
-              advance();
-              // On error, wait before retrying to avoid overwhelming the API
-              if (needsDelay) {
-                console.log(`[Worker] Error response, waiting 5s before next request...`);
-                await new Promise((r) => setTimeout(r, 5000));
+            for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+              const res = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  modelId: run.modelId,
+                  profileId: run.profileId,
+                  customUrls: resolvedRefs,
+                  prompt,
+                  options: (() => {
+                    const runModel = getModelById(run.modelId);
+                    if (!runModel) return undefined;
+                    // GPT 1.5
+                    if (runModel.id === "gpt-1.5") {
+                      return {
+                        gpt_size: gpt15Size,
+                        quality: gpt15Quality,
+                        gpt_background: gpt15Background,
+                      };
+                    }
+                    // Seedream 4.5 text-to-image
+                    if (runModel.id === "seedream-4.5") {
+                      return {
+                        aspect_ratio: sd45AspectRatio,
+                        quality: sd45Quality,
+                      };
+                    }
+                    // Legacy seedream edit (if any)
+                    if (runModel.provider === "seedream") {
+                      return {
+                        image_size: sdSize,
+                        image_resolution: sdRes,
+                        max_images: sdMax,
+                        seed: sdSeed === "" ? null : sdSeed,
+                      };
+                    }
+                    if (runModel.id === "nanobanana-3-pro") {
+                      return {
+                        aspect_ratio: nbAspectRatio,
+                        image_size: nbResolution,
+                      };
+                    }
+                    return undefined;
+                  })(),
+                }),
+                signal: run.controller?.signal,
+              });
+
+              const json = await res.json().catch(() => ({}));
+              if (res.ok) {
+                pushImage({ id: crypto.randomUUID(), prompt, imageDataUrl: json.imageDataUrl });
+                lastError = null;
+                break;
               }
-              continue;
+
+              const msg = json.error || `Generation failed (HTTP ${res.status})`;
+              lastError = { message: msg, debug: json.debug, status: res.status };
+
+              const fatalConfig = res.status === 500 && /key missing|api key/i.test(msg);
+              if (fatalConfig) {
+                failRun(msg, json.debug);
+                return;
+              }
+
+              const retryable =
+                RETRYABLE_STATUSES.has(res.status) ||
+                /rate|limit|timeout|temporarily|congest|queue/i.test(msg);
+
+              if (retryable && attempt < MAX_ATTEMPTS) {
+                const delay = backoffMs(attempt, res.headers.get("retry-after"));
+                console.log(`[Worker ${workerId}] Prompt #${index + 1} retry ${attempt}/${MAX_ATTEMPTS} in ${delay}ms: ${msg}`);
+                await sleep(delay);
+                continue;
+              }
+
+              break;
             }
 
-            pushImage({ id: crypto.randomUUID(), prompt, imageDataUrl: json.imageDataUrl });
+            if (lastError) {
+              failures.push({ index, prompt, error: lastError.message, debug: lastError.debug, status: lastError.status });
+            }
             advance();
             // Add small delay between successful requests for rate-limited models
             if (needsDelay && index < total - 1) {
               await new Promise((r) => setTimeout(r, 1000));
             }
           } catch (error: any) {
-             const abort = error?.name === "AbortError";
-             setError(abort ? "Run cancelled" : error?.message || "Request failed");
-             return;
+              const abort = error?.name === "AbortError";
+              if (abort) return;
+              failures.push({ index, prompt, error: error?.message || "Request failed" });
+              advance();
+              if (needsDelay) await new Promise((r) => setTimeout(r, 1000));
+              continue;
           }
         }
       };
@@ -1316,14 +1373,22 @@ export default function ImageStudioPage() {
       const parallel = Math.max(1, Math.min(run.speed, RUN_SPEED_OPTIONS[RUN_SPEED_OPTIONS.length - 1], maxModelConcurrency));
       console.log(`[Run ${run.id}] Model: ${run.modelId}, speed=${run.speed}, maxConcurrency=${maxModelConcurrency}, effective parallel=${parallel}`);
       const workers: Promise<void>[] = [];
-      for (let i = 0; i < parallel; i++) workers.push(worker());
+      for (let i = 0; i < parallel; i++) workers.push(worker(i));
       await Promise.all(workers).catch(() => undefined);
 
       setRuns((prev) =>
         prev.map((item) => {
           if (item.id !== run.id) return item;
-          if (item.status === "running") return { ...item, status: "done" as RunStatus };
-          return item;
+          if (item.status !== "running") return item;
+          if (failures.length > 0) {
+            return {
+              ...item,
+              status: "error" as RunStatus,
+              error: `${failures.length} / ${item.progress.total} prompts failed`,
+              debug: { failures },
+            };
+          }
+          return { ...item, status: "done" as RunStatus, error: null, debug: null };
         })
       );
   }
@@ -1691,10 +1756,10 @@ export default function ImageStudioPage() {
                                  {activeRun.status}
                              </span>
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-3">
-                          <span>Profile: <span className="font-semibold text-slate-700 dark:text-slate-200">{activeRun.profileName}</span></span>
-                          <span className="text-slate-400">{activeRun.modelNameDisplay}</span>
-                        </div>
+                         <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-3">
+                           <span>Profile: <span className="font-semibold text-slate-700 dark:text-slate-200">{activeRun.profileName}</span></span>
+                           <span className="text-slate-400">{activeRun.modelNameDisplay} · speed {activeRun.speed}x · parallel {activeRunParallel}</span>
+                         </div>
                         {activeRun.status === "error" && (
                           <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
                             <div className="font-semibold">Generation failed</div>
@@ -1800,10 +1865,19 @@ export default function ImageStudioPage() {
                               </div>
                             </div>
                           </>
-                        ) : (
+                        ) : activeRun.status === "running" ? (
                           <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
                             <div className="h-8 w-8 border-2 border-slate-200 dark:border-slate-700 border-t-slate-400 dark:border-t-slate-500 rounded-full animate-spin" />
                             <span className="text-xs">Processing...</span>
+                          </div>
+                        ) : (
+                          <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
+                            <span className="text-xs font-medium">No images generated</span>
+                            {activeRun.status === "error" && (
+                              <span className="text-[11px] text-slate-500 dark:text-slate-400 text-center max-w-[420px]">
+                                {activeRun.error || "Unknown error"}
+                              </span>
+                            )}
                           </div>
                         )}
                     </div>

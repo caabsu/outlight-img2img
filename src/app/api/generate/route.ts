@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 900;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -128,6 +129,85 @@ function isKieSuccessState(state: string): boolean {
 
 function isKieFailState(state: string): boolean {
   return ["fail", "failed", "error", "errored"].includes(state);
+}
+
+function isTransientStatus(status: number): boolean {
+  return [408, 429, 500, 502, 503, 504].includes(status);
+}
+
+function retryDelayMs(attempt: number, retryAfterHeader: string | null): number {
+  const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : NaN;
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) return retryAfterSeconds * 1000;
+  const base = Math.min(10_000, 500 * 2 ** (attempt - 1));
+  return base + Math.floor(Math.random() * 250);
+}
+
+async function sleep(ms: number, signal?: AbortSignal) {
+  if (!signal) return new Promise<void>((r) => setTimeout(r, ms));
+  return new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve();
+    const t = setTimeout(() => resolve(), ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(t);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+}
+
+type KieCreateTaskResult = {
+  taskId?: string;
+  createJson: any;
+  status: number;
+  attempts: number;
+  transient: boolean;
+};
+
+async function kieCreateTaskWithRetry(
+  payload: any,
+  signal: AbortSignal | undefined,
+  label: string,
+  maxAttempts = 3
+): Promise<KieCreateTaskResult> {
+  let lastStatus = 0;
+  let lastJson: any = {};
+  let lastTransient = false;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) return { createJson: lastJson, status: 499, attempts: attempt, transient: true };
+
+    const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
+      body: JSON.stringify(payload),
+      signal,
+    });
+    const json = await res.json().catch(() => ({}));
+    lastStatus = res.status;
+    lastJson = json;
+
+    const taskId = json?.data?.taskId as string | undefined;
+    if (res.ok && json?.code === 200 && taskId) {
+      return { taskId, createJson: json, status: res.status, attempts: attempt, transient: false };
+    }
+
+    lastTransient = isTransientStatus(res.status) || isTransientStatus(Number(json?.code));
+    if (lastTransient && attempt < maxAttempts) {
+      const delay = retryDelayMs(attempt, res.headers.get("retry-after"));
+      console.warn(
+        `[${label}] createTask transient failure (attempt ${attempt}/${maxAttempts}) http=${res.status} code=${json?.code}; retrying in ${delay}ms`
+      );
+      await sleep(delay, signal);
+      continue;
+    }
+
+    return { createJson: json, status: res.status, attempts: attempt, transient: lastTransient };
+  }
+
+  return { createJson: lastJson, status: lastStatus, attempts: maxAttempts, transient: lastTransient };
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
@@ -574,18 +654,11 @@ export async function POST(req: Request) {
       const modeLabel = useEditMode ? "Seedream 4.5 Edit" : "Seedream 4.5";
 
       // 1) create task
-      const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
-        body: JSON.stringify(payload),
-      });
-      const createJson = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || createJson?.code !== 200) {
+      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
+      if (!taskId) {
         const msg = createJson?.message || createJson?.msg || `${modeLabel} createTask failed`;
-        return NextResponse.json({ error: msg }, { status: 502 });
+        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
       }
-      const taskId: string | undefined = createJson?.data?.taskId;
-      if (!taskId) return NextResponse.json({ error: `${modeLabel} taskId missing` }, { status: 502 });
 
       // 2) poll recordInfo
       const started = Date.now();
@@ -594,9 +667,11 @@ export async function POST(req: Request) {
       let lastState = "waiting";
 
       while (Date.now() - started < MAX_MS) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await sleep(2000, req.signal);
+        if (req.signal.aborted) return NextResponse.json({ error: "Request cancelled" }, { status: 499 });
         const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
           headers: { Authorization: `Bearer ${KIE_KEY}` },
+          signal: req.signal,
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
@@ -669,18 +744,11 @@ export async function POST(req: Request) {
       };
 
       // 1) create task
-      const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
-        body: JSON.stringify(payload),
-      });
-      const createJson = await createRes.json().catch(() => ({}));
-      if (!createRes.ok || createJson?.code !== 200) {
+      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, "Seedream");
+      if (!taskId) {
         const msg = createJson?.message || createJson?.msg || "Seedream createTask failed";
-        return NextResponse.json({ error: msg }, { status: 502 });
+        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
       }
-      const taskId: string | undefined = createJson?.data?.taskId;
-      if (!taskId) return NextResponse.json({ error: "Seedream taskId missing" }, { status: 502 });
 
       // 2) poll recordInfo
       const started = Date.now();
@@ -689,9 +757,11 @@ export async function POST(req: Request) {
       let lastState = "waiting";
 
       while (Date.now() - started < MAX_MS) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await sleep(2000, req.signal);
+        if (req.signal.aborted) return NextResponse.json({ error: "Request cancelled" }, { status: 499 });
         const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
           headers: { Authorization: `Bearer ${KIE_KEY}` },
+          signal: req.signal,
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
@@ -814,20 +884,15 @@ export async function POST(req: Request) {
 
       console.log("[Nano Banana KIE] Final payload:", JSON.stringify(payload, null, 2));
 
-      const createRes = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${KIE_KEY}` },
-        body: JSON.stringify(payload),
-      });
-      const createJson = await createRes.json().catch(() => ({}));
+      const createResult = await kieCreateTaskWithRetry(payload, req.signal, "Nano Banana");
+      const createJson = createResult.createJson;
       console.log("[Nano Banana] createTask response:", JSON.stringify(createJson, null, 2));
-      if (!createRes.ok || createJson?.code !== 200) {
+      if (!createResult.taskId) {
         const msg = createJson?.message || createJson?.msg || "Nano Banana createTask failed";
-        console.error("Nano Banana createTask error", { status: createRes.status, body: createJson });
-        return NextResponse.json({ error: msg, debug: createJson || null }, { status: 502 });
+        console.error("Nano Banana createTask error", { status: createResult.status, body: createJson });
+        return NextResponse.json({ error: msg, debug: createJson || null }, { status: createResult.transient ? 503 : 502 });
       }
-      const taskId: string | undefined = createJson?.data?.taskId;
-      if (!taskId) return NextResponse.json({ error: "Nano Banana taskId missing" }, { status: 502 });
+      const taskId = createResult.taskId;
 
       const started = Date.now();
       const MAX_MS = 600_000;  // 10 minutes total timeout for queued requests
@@ -838,10 +903,12 @@ export async function POST(req: Request) {
       console.log(`[Nano Banana] Task ${taskId} created, starting poll loop`);
 
       while (Date.now() - started < MAX_MS) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await sleep(2000, req.signal);
+        if (req.signal.aborted) return NextResponse.json({ error: "Request cancelled" }, { status: 499 });
         pollCount++;
         const qRes = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
           headers: { Authorization: `Bearer ${KIE_KEY}` },
+          signal: req.signal,
         });
         const qJson = await qRes.json().catch(() => ({}));
         if (!qRes.ok || qJson?.code !== 200) {
