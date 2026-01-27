@@ -146,15 +146,16 @@ async function sleep(ms: number, signal?: AbortSignal) {
   if (!signal) return new Promise<void>((r) => setTimeout(r, ms));
   return new Promise<void>((resolve) => {
     if (signal.aborted) return resolve();
-    const t = setTimeout(() => resolve(), ms);
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(t);
-        resolve();
-      },
-      { once: true }
-    );
+    const onAbort = () => {
+      clearTimeout(t);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    };
+    const t = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", onAbort);
   });
 }
 
