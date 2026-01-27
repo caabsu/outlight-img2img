@@ -1,6 +1,8 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 900;
+// Vercel Serverless Functions on Pro plan require 1..800 seconds.
+// Keep this above our KIE polling windows (<= 600s) while staying within limits.
+export const maxDuration = 800;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
