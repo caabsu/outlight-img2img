@@ -1236,6 +1236,7 @@ export default function ImageStudioPage() {
         const u = new URL(url);
         if (u.protocol !== "https:" && u.protocol !== "http:") return false;
         if (u.search || u.hash) return false;
+        if (!/\.(png|jpe?g|webp)$/i.test(u.pathname)) return false;
         const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
         if (!base) return false;
         const baseHost = new URL(base).hostname;
