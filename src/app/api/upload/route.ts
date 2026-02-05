@@ -9,6 +9,8 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BUCKET_NAME = "reference-images";
 const ALLOWED_MIME_TYPES = new Set(["image/png", "image/jpeg", "image/jpg", "image/webp"]);
+const TRANSCODE_TARGET_MIME_TYPE = "image/webp";
+const TRANSCODE_WEBP_QUALITY = 90;
 
 // Determine file extension from mime type
 const extMap: Record<string, string> = {
@@ -23,6 +25,39 @@ function normalizeMimeType(value: string | null): string {
   const raw = (value || "").split(";")[0].trim().toLowerCase();
   if (raw === "image/jpg") return "image/jpeg";
   return raw;
+}
+
+async function transcodeToWebp(buffer: Buffer): Promise<Buffer> {
+  const sharp = (await import("sharp")).default;
+  return await sharp(buffer).rotate().webp({ quality: TRANSCODE_WEBP_QUALITY }).toBuffer();
+}
+
+async function coerceToAllowedImage(
+  buffer: Buffer,
+  mimeType: string
+): Promise<{ buffer: Buffer; mimeType: string; transcoded: boolean }> {
+  const normalized = normalizeMimeType(mimeType);
+
+  if (ALLOWED_MIME_TYPES.has(normalized)) {
+    return { buffer, mimeType: normalized, transcoded: false };
+  }
+
+  // Some CDNs will serve AVIF (or other formats) even when a URL ends in .jpg.
+  // KIE does not accept AVIF, so we transcode any unsupported image format to WEBP here.
+  const looksLikeImage = normalized.startsWith("image/") || normalized === "application/octet-stream" || !normalized;
+  if (!looksLikeImage) {
+    throw new Error(`sourceUrl did not return an image (content-type: ${normalized || "unknown"})`);
+  }
+
+  try {
+    const out = await transcodeToWebp(buffer);
+    return { buffer: out, mimeType: TRANSCODE_TARGET_MIME_TYPE, transcoded: true };
+  } catch (err) {
+    console.error("Transcode failed:", normalized, err);
+    throw new Error(
+      `Unsupported sourceUrl content-type: ${normalized || "unknown"}. Please use PNG/JPG/WEBP.`
+    );
+  }
 }
 
 function isPrivateHostname(hostname: string): boolean {
@@ -99,8 +134,9 @@ export async function POST(req: Request) {
       for (const file of files) {
         const arrayBuffer = await file.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
-        const mimeType = file.type || "image/png";
-        const url = await uploadBuffer(supabase, buffer, mimeType);
+        const mimeType = normalizeMimeType(file.type) || "application/octet-stream";
+        const coerced = await coerceToAllowedImage(buffer, mimeType);
+        const url = await uploadBuffer(supabase, coerced.buffer, coerced.mimeType);
         urls.push(url);
       }
 
@@ -149,15 +185,9 @@ export async function POST(req: Request) {
       }
 
       const mimeType = normalizeMimeType(res.headers.get("content-type")) || "application/octet-stream";
-      if (!ALLOWED_MIME_TYPES.has(mimeType)) {
-        return NextResponse.json(
-          { error: `Unsupported sourceUrl content-type: ${mimeType}. Please use PNG/JPG/WEBP.` },
-          { status: 400 }
-        );
-      }
-
       const buffer = Buffer.from(await res.arrayBuffer());
-      const url = await uploadBuffer(supabase, buffer, mimeType);
+      const coerced = await coerceToAllowedImage(buffer, mimeType);
+      const url = await uploadBuffer(supabase, coerced.buffer, coerced.mimeType);
       return NextResponse.json({ url });
     }
 
@@ -175,8 +205,8 @@ export async function POST(req: Request) {
     const mimeType = normalizeMimeType(match[1] || "image/png");
     const base64Data = match[2];
     const buffer = Buffer.from(base64Data, "base64");
-
-    const url = await uploadBuffer(supabase, buffer, mimeType);
+    const coerced = await coerceToAllowedImage(buffer, mimeType);
+    const url = await uploadBuffer(supabase, coerced.buffer, coerced.mimeType);
     return NextResponse.json({ url });
   } catch (err: any) {
     console.error("Upload error:", err);

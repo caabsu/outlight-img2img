@@ -1231,24 +1231,30 @@ export default function ImageStudioPage() {
       return String(json.url);
     }
 
-    function looksKieCompatibleUrl(url: string): boolean {
+    function isSupabaseReferenceImageUrl(url: string): boolean {
       try {
         const u = new URL(url);
         if (u.protocol !== "https:" && u.protocol !== "http:") return false;
         if (u.search || u.hash) return false;
-        return /\.(png|jpe?g|webp)$/i.test(u.pathname);
+        const base = process.env.NEXT_PUBLIC_SUPABASE_URL;
+        if (!base) return false;
+        const baseHost = new URL(base).hostname;
+        if (u.hostname !== baseHost) return false;
+        return u.pathname.includes("/storage/v1/object/public/reference-images/");
       } catch {
         return false;
       }
     }
 
     // Upload a data URI directly to Supabase storage (bypasses Vercel's 4.5MB API limit).
+    // Re-hosts ALL external image URLs to avoid CDN format negotiation (e.g. serving AVIF).
     // Converts unsupported types (e.g. AVIF/GIF) to PNG so KIE accepts them.
     async function uploadToStorage(dataUrl: string): Promise<string> {
       if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
-        // If URL is "weird" (query params, no extension, etc) re-host it so KIE can reliably infer type.
-        if (!looksKieCompatibleUrl(dataUrl)) return await ingestRemoteUrlToStorage(dataUrl);
-        return dataUrl;
+        // Always re-host external images so KIE sees a stable content-type (PNG/JPG/WEBP).
+        // Skip if it's already a public URL from our reference-images bucket.
+        if (isSupabaseReferenceImageUrl(dataUrl)) return dataUrl;
+        return await ingestRemoteUrlToStorage(dataUrl);
       }
 
       const match = /^data:([^;]+);base64,/i.exec(dataUrl);
@@ -1285,7 +1291,7 @@ export default function ImageStudioPage() {
         const needsProcessing = currentRefSources.some(
           (u) =>
             u.startsWith("data:") ||
-            ((u.startsWith("http://") || u.startsWith("https://")) && !looksKieCompatibleUrl(u))
+            ((u.startsWith("http://") || u.startsWith("https://")) && !isSupabaseReferenceImageUrl(u))
         );
         console.log("[Frontend] currentRefSources:", currentRefSources.length, currentRefSources.map((u) => u.slice(0, 50)));
         console.log("[Frontend] needsProcessing:", needsProcessing);
