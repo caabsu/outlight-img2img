@@ -1150,48 +1150,55 @@ export default function ImageStudioPage() {
       startRunWithPrompts(promptLines, selectedRefs);
     }
 
-    // Upload a data URI directly to Supabase storage (bypasses Vercel's 4.5MB API limit)
-    async function uploadToStorage(dataUrl: string): Promise<string> {
-      // If already an HTTP URL, return as-is
-      if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
-        return dataUrl;
-      }
+    function normalizeMimeType(value: string): string {
+      const raw = value.split(";")[0].trim().toLowerCase();
+      return raw === "image/jpg" ? "image/jpeg" : raw;
+    }
 
-      // Parse data URI
-      const match = /^data:([^;]+);base64,(.*)$/i.exec(dataUrl);
-      if (!match) {
-        throw new Error("Invalid data URL format");
-      }
+    async function dataUrlToPngBlob(dataUrl: string): Promise<Blob> {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = dataUrl;
 
-      const mimeType = match[1] || "image/png";
-      const base64Data = match[2];
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error("Failed to load image for conversion"));
+      });
 
-      // Convert base64 to Blob
-      const byteCharacters = atob(base64Data);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: mimeType });
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (!w || !h) throw new Error("Invalid image dimensions");
 
-      // Determine file extension
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas context unavailable");
+      ctx.drawImage(img, 0, 0);
+
+      return await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error("Failed to convert image"))),
+          "image/png"
+        );
+      });
+    }
+
+    async function uploadBlobToStorage(blob: Blob, mimeType: string): Promise<string> {
       const extMap: Record<string, string> = {
         "image/png": "png",
         "image/jpeg": "jpg",
-        "image/jpg": "jpg",
         "image/webp": "webp",
-        "image/gif": "gif",
       };
-      const ext = extMap[mimeType] || "png";
+      const normalizedMime = normalizeMimeType(mimeType);
+      const ext = extMap[normalizedMime] || "png";
       const filename = `${crypto.randomUUID()}.${ext}`;
       const filePath = `uploads/${filename}`;
 
-      // Upload directly to Supabase
       const { error: uploadError } = await getSupabaseClient().storage
         .from("reference-images")
         .upload(filePath, blob, {
-          contentType: mimeType,
+          contentType: normalizedMime,
           upsert: false,
         });
 
@@ -1199,7 +1206,6 @@ export default function ImageStudioPage() {
         throw new Error(uploadError.message || "Upload failed");
       }
 
-      // Get public URL
       const { data: urlData } = getSupabaseClient().storage
         .from("reference-images")
         .getPublicUrl(filePath);
@@ -1209,6 +1215,53 @@ export default function ImageStudioPage() {
       }
 
       return urlData.publicUrl;
+    }
+
+    async function ingestRemoteUrlToStorage(sourceUrl: string): Promise<string> {
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceUrl }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json.error || "Failed to ingest remote image URL");
+      }
+      if (!json?.url) throw new Error("Upload returned no url");
+      return String(json.url);
+    }
+
+    function looksKieCompatibleUrl(url: string): boolean {
+      try {
+        const u = new URL(url);
+        if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+        if (u.search || u.hash) return false;
+        return /\.(png|jpe?g|webp)$/i.test(u.pathname);
+      } catch {
+        return false;
+      }
+    }
+
+    // Upload a data URI directly to Supabase storage (bypasses Vercel's 4.5MB API limit)
+    // Converts non-PNG/JPG uploads to PNG for KIE compatibility.
+    async function uploadToStorage(dataUrl: string): Promise<string> {
+      if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
+        // If URL is "weird" (query params, no extension, etc) re-host it so KIE can reliably infer type.
+        if (!looksKieCompatibleUrl(dataUrl)) return await ingestRemoteUrlToStorage(dataUrl);
+        return dataUrl;
+      }
+
+      const match = /^data:([^;]+);base64,/i.exec(dataUrl);
+      const mimeType = normalizeMimeType(match?.[1] || "image/png");
+
+      if (mimeType === "image/png" || mimeType === "image/jpeg") {
+        const blob = await (await fetch(dataUrl)).blob();
+        return await uploadBlobToStorage(blob, mimeType);
+      }
+
+      // Convert webp/gif/avif/svg/etc to PNG so KIE accepts it.
+      const pngBlob = await dataUrlToPngBlob(dataUrl);
+      return await uploadBlobToStorage(pngBlob, "image/png");
     }
 
     async function runGenerator(run: Run, currentRefSources: string[]) {
@@ -1229,22 +1282,22 @@ export default function ImageStudioPage() {
       let resolvedRefs = currentRefSources;
 
       if (needsUpload && currentRefSources.length > 0) {
-        const dataUriRefs = currentRefSources.filter((url) => url.startsWith("data:"));
-        console.log("[Frontend] currentRefSources:", currentRefSources.length, currentRefSources.map(u => u.slice(0, 50)));
-        console.log("[Frontend] dataUriRefs count:", dataUriRefs.length);
-        if (dataUriRefs.length > 0) {
+        const needsProcessing = currentRefSources.some(
+          (u) =>
+            u.startsWith("data:") ||
+            ((u.startsWith("http://") || u.startsWith("https://")) && !looksKieCompatibleUrl(u))
+        );
+        console.log("[Frontend] currentRefSources:", currentRefSources.length, currentRefSources.map((u) => u.slice(0, 50)));
+        console.log("[Frontend] needsProcessing:", needsProcessing);
+
+        if (needsProcessing) {
           try {
-            setSaveToast({ message: "Uploading images...", type: "success" });
-            const uploadPromises = currentRefSources.map(async (url) => {
-              if (url.startsWith("data:")) {
-                return await uploadToStorage(url);
-              }
-              return url; // Already an HTTP URL
-            });
+            setSaveToast({ message: "Preparing reference images...", type: "success" });
+            const uploadPromises = currentRefSources.map(async (url) => await uploadToStorage(url));
             resolvedRefs = await Promise.all(uploadPromises);
-            console.log("[Frontend] resolvedRefs after upload:", resolvedRefs.map(u => u.slice(0, 50)));
-           } catch (err: any) {
-            const msg = err?.message || "Failed to upload images";
+            console.log("[Frontend] resolvedRefs after processing:", resolvedRefs.map((u) => u.slice(0, 50)));
+          } catch (err: any) {
+            const msg = err?.message || "Failed to prepare reference images";
             setSaveToast({ message: msg, type: "error" });
             setRuns((prev) =>
               prev.map((item) => (item.id === run.id ? { ...item, status: "error" as RunStatus, error: msg } : item))

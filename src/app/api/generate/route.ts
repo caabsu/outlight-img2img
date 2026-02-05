@@ -291,7 +291,17 @@ async function kieCreateTaskWithRetry(
       return { taskId, createJson: json, status: res.status, attempts: attempt, transient: false };
     }
 
-    lastTransient = isTransientStatus(res.status) || isTransientStatus(Number(json?.code));
+    const msgText = String(json?.message || json?.msg || "").toLowerCase();
+    const hardFailure =
+      msgText.includes("file type not supported") ||
+      msgText.includes("image_input file type not supported") ||
+      msgText.includes("input_urls file type not supported");
+
+    lastTransient = (isTransientStatus(res.status) || isTransientStatus(Number(json?.code))) && !hardFailure;
+
+    if (hardFailure) {
+      return { createJson: json, status: res.status, attempts: attempt, transient: false };
+    }
     if (lastTransient && attempt < maxAttempts) {
       const statusForDelay = res.status === 200 ? Number(json?.code) : res.status;
       const delay = retryDelayMs(attempt, res.headers.get("retry-after"), statusForDelay);
