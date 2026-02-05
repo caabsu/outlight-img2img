@@ -133,7 +133,9 @@ export async function POST(req: Request) {
         redirect: "follow",
         headers: {
           "User-Agent": "Outlight/1.0 (+upload)",
-          Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+          // Prefer formats KIE accepts (PNG/JPG/WEBP). Including AVIF here causes some CDNs to negotiate AVIF
+          // even when the URL ends in .jpg, which then fails downstream.
+          Accept: "image/webp,image/png,image/jpeg,image/*,*/*;q=0.8",
         },
         signal: ac.signal,
       }).finally(() => clearTimeout(t));

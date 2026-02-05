@@ -1242,8 +1242,8 @@ export default function ImageStudioPage() {
       }
     }
 
-    // Upload a data URI directly to Supabase storage (bypasses Vercel's 4.5MB API limit)
-    // Converts non-PNG/JPG uploads to PNG for KIE compatibility.
+    // Upload a data URI directly to Supabase storage (bypasses Vercel's 4.5MB API limit).
+    // Converts unsupported types (e.g. AVIF/GIF) to PNG so KIE accepts them.
     async function uploadToStorage(dataUrl: string): Promise<string> {
       if (dataUrl.startsWith("http://") || dataUrl.startsWith("https://")) {
         // If URL is "weird" (query params, no extension, etc) re-host it so KIE can reliably infer type.
@@ -1254,12 +1254,12 @@ export default function ImageStudioPage() {
       const match = /^data:([^;]+);base64,/i.exec(dataUrl);
       const mimeType = normalizeMimeType(match?.[1] || "image/png");
 
-      if (mimeType === "image/png" || mimeType === "image/jpeg") {
+      if (mimeType === "image/png" || mimeType === "image/jpeg" || mimeType === "image/webp") {
         const blob = await (await fetch(dataUrl)).blob();
         return await uploadBlobToStorage(blob, mimeType);
       }
 
-      // Convert webp/gif/avif/svg/etc to PNG so KIE accepts it.
+      // Convert gif/avif/svg/etc to PNG so KIE accepts it.
       const pngBlob = await dataUrlToPngBlob(dataUrl);
       return await uploadBlobToStorage(pngBlob, "image/png");
     }
