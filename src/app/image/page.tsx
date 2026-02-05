@@ -41,6 +41,52 @@ function getSupabaseClient() {
   return _supabaseClient;
 }
 
+const KIE_START_MIN_INTERVAL_MS = (() => {
+  const raw = process.env.NEXT_PUBLIC_KIE_START_MIN_INTERVAL_MS;
+  const n = raw ? Number(raw) : Number.NaN;
+  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 1100;
+})();
+let kieStartChain: Promise<void> = Promise.resolve();
+let kieNextAllowedStartMs = 0;
+async function waitForKieStart(signal?: AbortSignal) {
+  if (KIE_START_MIN_INTERVAL_MS <= 0) return;
+  if (signal?.aborted) return;
+
+  let done!: () => void;
+  const current = new Promise<void>((r) => (done = r));
+
+  const prev = kieStartChain;
+  kieStartChain = prev
+    .then(async () => {
+      if (signal?.aborted) return;
+
+      const now = Date.now();
+      const waitMs = Math.max(0, kieNextAllowedStartMs - now);
+      kieNextAllowedStartMs = Math.max(kieNextAllowedStartMs, now) + KIE_START_MIN_INTERVAL_MS;
+
+      if (waitMs <= 0) return;
+
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, waitMs);
+        if (!signal) return;
+        if (signal.aborted) {
+          clearTimeout(t);
+          resolve();
+          return;
+        }
+        const onAbort = () => {
+          clearTimeout(t);
+          signal.removeEventListener("abort", onAbort);
+          resolve();
+        };
+        signal.addEventListener("abort", onAbort);
+      });
+    })
+    .finally(done);
+
+  await current;
+}
+
 type Product = {
   id: string;
   name: string;
@@ -1176,9 +1222,10 @@ export default function ImageStudioPage() {
         return;
       }
 
-      // Upload data URIs to storage first to avoid 413 (Content Too Large) errors
-      // This applies to Seedream (KIE requires public URLs) and Nano Banana (large base64 exceeds Vercel limits)
-      const needsUpload = run.modelId.startsWith("seedream") || run.modelId.startsWith("nanobanana");
+      // Upload data URIs to storage first to avoid 413 (Content Too Large) errors and to provide public URLs for KIE.
+      // This applies to Seedream, Nano Banana, and GPT 1.5 (when using image-to-image via KIE).
+      const needsUpload =
+        run.modelId.startsWith("seedream") || run.modelId.startsWith("nanobanana") || run.modelId === "gpt-1.5";
       let resolvedRefs = currentRefSources;
 
       if (needsUpload && currentRefSources.length > 0) {
@@ -1257,6 +1304,10 @@ export default function ImageStudioPage() {
       const worker = async (workerId: number) => {
         // Get model-specific settings for rate limiting
         const workerModel = getModelById(run.modelId);
+        const usesKie =
+          workerModel?.provider === "nanobanana" ||
+          workerModel?.provider === "seedream" ||
+          workerModel?.provider === "kie";
         const needsDelay = workerModel?.maxConcurrency && workerModel.maxConcurrency <= 2;
 
         // Small stagger to avoid bursting the API when parallel > 1
@@ -1272,6 +1323,9 @@ export default function ImageStudioPage() {
             let lastError: { message: string; debug?: unknown; status?: number } | null = null;
 
             for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+              if (usesKie) {
+                await waitForKieStart(run.controller?.signal);
+              }
               const res = await fetch("/api/generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

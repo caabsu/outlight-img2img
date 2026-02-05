@@ -1,6 +1,6 @@
 // src/lib/models.ts
 
-export type Provider = "nanobanana" | "seedream" | "openai";
+export type Provider = "nanobanana" | "seedream" | "kie" | "openai";
 
 export type ModelDef = {
   id: string;            // internal id used by UI
@@ -84,8 +84,8 @@ export const MODEL_LIST: ModelDef[] = [
     id: "gpt-1.5",
     label: "GPT 1.5",
     version: "v1.5",
-    provider: "openai",
-    providerName: "gpt-image-1.5",
+    provider: "kie",
+    providerName: "gpt-image/1.5-text-to-image",
     requiresReference: false,
     sizeOptions: [
       "auto",
