@@ -437,7 +437,8 @@ async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: 
     headers: {
       // helps some CDNs
       "User-Agent": "Outlight/1.0 (+image-fetch)",
-      Accept: "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+      // Prefer formats we can reliably pass through downstream (and that most providers accept).
+      Accept: "image/webp,image/png,image/jpeg,image/*,*/*;q=0.8",
     },
   });
   if (!res.ok) {
