@@ -6,6 +6,8 @@ import { MODEL_LIST, getModelById } from "@/lib/models";
 import {
   loadAdStudioSession,
   debouncedSaveAdSession,
+  serializeAdCampaign,
+  deserializeAdCampaign,
   type AdStudioSession,
 } from "@/lib/session-storage";
 import type { AdConcept, AdImage, LogEntry, AdFeedbackSubmission } from "@/lib/ad-types";
@@ -32,6 +34,30 @@ type Profile = {
 };
 
 type AgentStatus = "idle" | "running" | "done" | "error" | "cancelled";
+
+type AdCampaign = {
+  id: string;
+  name: string;
+  startedAt: number;
+  theme: string;
+  modelId: string;
+  quantity: number;
+  speed: number;
+  aspectRatios: string[];
+  productId: string;
+  productName: string;
+  modelOptions: Record<string, string>;
+  status: AgentStatus;
+  concepts: AdConcept[];
+  images: AdImage[];
+  logEntries: LogEntry[];
+  progress: { done: number; total: number };
+  feedbackRatings: Record<number, number>;
+  selectedImages: Set<string>;
+  controller: AbortController | null;
+};
+
+const MAX_CAMPAIGNS = 10;
 
 /* ========================= PRODUCT SELECTOR MODAL ========================= */
 
@@ -160,6 +186,7 @@ function AgentLog({
     "Creative rationale:": "Rationale",
     "Color palette:": "Palette",
     "Target mood:": "Mood",
+    "Learning:": "Learning",
   };
 
   return (
@@ -242,6 +269,78 @@ function AgentLog({
   );
 }
 
+/* ========================= FEEDBACK ANALYSIS LOG ========================= */
+
+type AnalysisEntry = {
+  type: "thought" | "learning" | "error";
+  message: string;
+  category?: string;
+  timestamp: number;
+};
+
+function FeedbackAnalysisLog({
+  entries,
+  status,
+}: {
+  entries: AnalysisEntry[];
+  status: "idle" | "running" | "done" | "error";
+}) {
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [entries]);
+
+  return (
+    <div ref={logRef} className="max-h-40 overflow-y-auto space-y-1 pt-2 text-xs font-mono">
+      {entries.map((entry, i) => {
+        if (entry.type === "learning") {
+          return (
+            <div key={i} className="flex items-start gap-1.5">
+              <span className="inline-block px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold text-[10px] uppercase tracking-wider shrink-0">
+                {entry.category || "general"}
+              </span>
+              <span className="text-slate-700 dark:text-slate-300">{entry.message}</span>
+            </div>
+          );
+        }
+        if (entry.type === "error") {
+          return (
+            <div key={i} className="text-red-600 dark:text-red-400">{entry.message}</div>
+          );
+        }
+        // thought
+        const isAnalysis = entry.message.startsWith("AI analysis:");
+        if (isAnalysis) {
+          return (
+            <div key={i} className="mt-1">
+              <span className="inline-block px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 font-semibold text-[10px] uppercase tracking-wider mr-1.5">
+                Analysis
+              </span>
+              <span className="text-slate-600 dark:text-slate-300">{entry.message.slice("AI analysis: ".length)}</span>
+            </div>
+          );
+        }
+        return (
+          <div key={i} className="text-slate-500 dark:text-slate-400">{entry.message}</div>
+        );
+      })}
+
+      {status === "running" && (
+        <div className="flex items-center gap-1.5 text-slate-400 pt-0.5">
+          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span>Analyzing...</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ========================= FEEDBACK SECTION ========================= */
 
 function FeedbackSection({
@@ -271,17 +370,132 @@ function FeedbackSection({
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Analysis state
+  const [analysisEntries, setAnalysisEntries] = useState<AnalysisEntry[]>([]);
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [learningCount, setLearningCount] = useState(0);
+
+  async function runAnalysis(feedbackId: string, submittedReason: string) {
+    setAnalysisStatus("running");
+    setAnalysisEntries([]);
+    setShowAnalysis(true);
+
+    try {
+      const res = await fetch("/api/ads/feedback/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          feedbackId,
+          productId,
+          conceptName,
+          conceptDescription,
+          rating,
+          reason: submittedReason || undefined,
+          theme,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Analysis request failed");
+      }
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            switch (event.type) {
+              case "thought":
+                setAnalysisEntries((prev) => [...prev, { type: "thought", message: event.message, timestamp: Date.now() }]);
+                break;
+              case "learning":
+                setAnalysisEntries((prev) => [
+                  ...prev,
+                  { type: "learning", message: event.learning, category: event.category, timestamp: Date.now() },
+                ]);
+                break;
+              case "error":
+                setAnalysisEntries((prev) => [...prev, { type: "error", message: event.message, timestamp: Date.now() }]);
+                setAnalysisStatus("error");
+                break;
+              case "complete":
+                setLearningCount(event.learningCount || 0);
+                setAnalysisStatus("done");
+                break;
+            }
+          } catch {
+            // Skip malformed events
+          }
+        }
+      }
+
+      setAnalysisStatus((prev) => (prev === "running" ? "done" : prev));
+    } catch (err: any) {
+      setAnalysisStatus("error");
+      setAnalysisEntries((prev) => [
+        ...prev,
+        { type: "error", message: err.message || "Analysis failed", timestamp: Date.now() },
+      ]);
+    }
+  }
+
   if (submittedRating !== null) {
     return (
-      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
-        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
-          submittedRating >= 7 ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" :
-          submittedRating >= 4 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" :
-          "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
-        }`}>
-          {submittedRating}/10
-        </span>
-        <span className="text-xs text-slate-400">Feedback submitted</span>
+      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+        <div className="flex items-center gap-2">
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+            submittedRating >= 7 ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" :
+            submittedRating >= 4 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" :
+            "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
+          }`}>
+            {submittedRating}/10
+          </span>
+          <span className="text-xs text-slate-400">Feedback submitted</span>
+
+          {/* Analysis toggle button */}
+          {analysisStatus !== "idle" && (
+            <button
+              onClick={() => setShowAnalysis((v) => !v)}
+              className={`ml-auto flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium transition ${
+                showAnalysis
+                  ? "bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"
+              }`}
+            >
+              {analysisStatus === "running" && (
+                <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              )}
+              {analysisStatus === "done" && learningCount > 0 && (
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-bold">
+                  {learningCount}
+                </span>
+              )}
+              {showAnalysis ? "Hide Analysis" : "View Analysis"}
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className={`w-3.5 h-3.5 transition-transform ${showAnalysis ? "rotate-180" : ""}`}>
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* Analysis log */}
+        {showAnalysis && analysisEntries.length > 0 && (
+          <FeedbackAnalysisLog entries={analysisEntries} status={analysisStatus} />
+        )}
       </div>
     );
   }
@@ -307,7 +521,14 @@ function FeedbackSection({
         body: JSON.stringify(body),
       });
       if (res.ok) {
+        const data = await res.json();
+        const feedbackId = data.feedback?.id;
         onSubmit(conceptIndex, rating);
+
+        // Auto-start analysis SSE
+        if (feedbackId) {
+          void runAnalysis(feedbackId, reason.trim());
+        }
       }
     } catch {
       // Silently fail
@@ -577,6 +798,89 @@ function ImageModal({
   );
 }
 
+/* ========================= CAMPAIGN HISTORY PANEL ========================= */
+
+function CampaignHistoryPanel({
+  campaigns,
+  activeCampaignId,
+  onSelect,
+  onDelete,
+  onClearAll,
+}: {
+  campaigns: AdCampaign[];
+  activeCampaignId: string | null;
+  onSelect: (id: string) => void;
+  onDelete: (id: string) => void;
+  onClearAll: () => void;
+}) {
+  if (campaigns.length === 0) return null;
+
+  const statusDot = (status: AgentStatus) => {
+    switch (status) {
+      case "running":
+        return "bg-amber-500 animate-pulse";
+      case "done":
+        return "bg-emerald-500";
+      case "error":
+        return "bg-red-500";
+      case "cancelled":
+        return "bg-slate-400";
+      default:
+        return "bg-slate-300";
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+          Campaigns
+        </label>
+        {campaigns.length > 1 && (
+          <button
+            onClick={onClearAll}
+            className="text-[10px] text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 font-medium"
+          >
+            Clear All
+          </button>
+        )}
+      </div>
+      <div className="space-y-1 max-h-48 overflow-y-auto">
+        {campaigns.map((c) => (
+          <div
+            key={c.id}
+            onClick={() => onSelect(c.id)}
+            className={`group flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition text-left w-full ${
+              c.id === activeCampaignId
+                ? "bg-indigo-50 dark:bg-indigo-900/20 ring-1 ring-indigo-200 dark:ring-indigo-800"
+                : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full shrink-0 ${statusDot(c.status)}`} />
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-medium text-slate-900 dark:text-white truncate">{c.name}</div>
+              <div className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                {c.productName || "No product"} &middot; {c.images.length} img{c.images.length !== 1 ? "s" : ""}
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(c.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 transition shrink-0"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ========================= MAIN PAGE ========================= */
 
 export default function AdStudioPage() {
@@ -604,64 +908,86 @@ export default function AdStudioPage() {
   const [singleRatio, setSingleRatio] = useState<"1:1" | "9:16">("1:1");
   const [modelOptions, setModelOptions] = useState<Record<string, string>>({});
 
-  // Agent state
-  const [status, setStatus] = useState<AgentStatus>("idle");
-  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
-  const [concepts, setConcepts] = useState<AdConcept[]>([]);
-  const [images, setImages] = useState<AdImage[]>([]);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const controllerRef = useRef<AbortController | null>(null);
+  // Multi-campaign state
+  const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const campaignCountRef = useRef(0);
+
+  // Derive active campaign
+  const activeCampaign = useMemo(
+    () => campaigns.find((c) => c.id === activeCampaignId) || null,
+    [campaigns, activeCampaignId]
+  );
+
+  // Derived state from active campaign
+  const status: AgentStatus = activeCampaign?.status || "idle";
+  const logEntries: LogEntry[] = activeCampaign?.logEntries || [];
+  const concepts: AdConcept[] = activeCampaign?.concepts || [];
+  const images: AdImage[] = activeCampaign?.images || [];
+  const progress = activeCampaign?.progress || { done: 0, total: 0 };
+  const feedbackRatings: Record<number, number> = activeCampaign?.feedbackRatings || {};
+  const selectedImages: Set<string> = activeCampaign?.selectedImages || new Set();
 
   // UI
   const [expandedImage, setExpandedImage] = useState<AdImage | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
   const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
-  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
-  const [feedbackRatings, setFeedbackRatings] = useState<Record<number, number>>({});
 
   const selectedModel = getModelById(modelId);
   const maxSpeed = selectedModel?.maxConcurrency || 5;
   const activeRatios = includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
 
-  const canLaunch = selectedProduct && theme.trim() && activeProfileId && status !== "running";
+  // canLaunch: no longer blocked by running status (parallel campaigns allowed)
+  const canLaunch = selectedProduct && theme.trim() && activeProfileId;
 
-  // Auto-switch to results tab when first image arrives
+  // Auto-switch to results tab when first image arrives on active campaign
   useEffect(() => {
     if (images.length > 0 && rightTab === "activity") {
       setRightTab("results");
     }
   }, [images.length]);
 
-  // Toggle image selection
-  const toggleSelect = useCallback((key: string) => {
-    setSelectedImages((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
+  // --- Campaign update helper ---
+  const updateCampaign = useCallback(
+    (campaignId: string, updater: (c: AdCampaign) => AdCampaign) => {
+      setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? updater(c) : c)));
+    },
+    []
+  );
 
-  // Select all / deselect all
+  // Toggle image selection (scoped to active campaign)
+  const toggleSelect = useCallback(
+    (key: string) => {
+      if (!activeCampaignId) return;
+      updateCampaign(activeCampaignId, (c) => {
+        const next = new Set(c.selectedImages);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return { ...c, selectedImages: next };
+      });
+    },
+    [activeCampaignId, updateCampaign]
+  );
+
+  // Select all / deselect all (scoped to active campaign)
   const allImageKeys = useMemo(() => {
-    const keys: string[] = [];
-    for (const img of images) {
-      keys.push(`${img.conceptIndex}-${img.ratio}`);
-    }
-    return keys;
+    return images.map((img) => `${img.conceptIndex}-${img.ratio}`);
   }, [images]);
 
   const allSelected = allImageKeys.length > 0 && allImageKeys.every((k) => selectedImages.has(k));
 
   const toggleSelectAll = useCallback(() => {
-    if (allSelected) {
-      setSelectedImages(new Set());
-    } else {
-      setSelectedImages(new Set(allImageKeys));
-    }
-  }, [allSelected, allImageKeys]);
+    if (!activeCampaignId) return;
+    updateCampaign(activeCampaignId, (c) => {
+      if (allSelected) {
+        return { ...c, selectedImages: new Set<string>() };
+      } else {
+        return { ...c, selectedImages: new Set(allImageKeys) };
+      }
+    });
+  }, [activeCampaignId, allSelected, allImageKeys, updateCampaign]);
 
   // Download selected images
   async function downloadSelected() {
@@ -671,7 +997,6 @@ export default function AdStudioPage() {
 
     try {
       if (selectedImages.size === 1) {
-        // Single file — direct download
         const key = Array.from(selectedImages)[0];
         const [ciStr, ratio] = key.split("-");
         const ci = parseInt(ciStr);
@@ -689,7 +1014,6 @@ export default function AdStudioPage() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       } else {
-        // Multiple files — use JSZip
         const JSZip = (await import("jszip")).default;
         const zip = new JSZip();
 
@@ -697,7 +1021,6 @@ export default function AdStudioPage() {
           const parts = key.split("-");
           const ci = parseInt(parts[0]);
           const ratioKey = parts.slice(1).join("-");
-          // Map back: "1:1" or "9:16"
           const ratio = ratioKey === "9:16" ? "9:16" : ratioKey === "1:1" ? "1:1" : ratioKey;
           const img = images.find((im) => im.conceptIndex === ci && im.ratio === ratio);
           if (!img) continue;
@@ -732,7 +1055,7 @@ export default function AdStudioPage() {
   // Save session
   const saveSession = useCallback(() => {
     const session: AdStudioSession = {
-      version: 1,
+      version: 2,
       savedAt: Date.now(),
       theme,
       modelId,
@@ -742,18 +1065,11 @@ export default function AdStudioPage() {
       includeBothRatios,
       selectedProductId: selectedProduct?.id || null,
       modelOptions,
-      lastCampaign:
-        status === "done" || status === "error" || status === "cancelled"
-          ? {
-              concepts,
-              images: images.filter((img) => img.url.startsWith("http")).slice(-50),
-              logEntries: logEntries.slice(-100),
-              status: status as "done" | "error" | "cancelled",
-            }
-          : null,
+      campaigns: campaigns.map((c) => serializeAdCampaign(c)),
+      activeCampaignId,
     };
     debouncedSaveAdSession(session);
-  }, [theme, modelId, quantity, speed, includeBothRatios, singleRatio, selectedProduct, modelOptions, status, concepts, images, logEntries]);
+  }, [theme, modelId, quantity, speed, includeBothRatios, singleRatio, selectedProduct, modelOptions, campaigns, activeCampaignId]);
 
   useEffect(() => {
     if (sessionRestored) saveSession();
@@ -815,23 +1131,20 @@ export default function AdStudioPage() {
         }
       }
       setModelOptions(session.modelOptions || {});
-      if (session.lastCampaign) {
-        setConcepts(session.lastCampaign.concepts || []);
-        setImages(session.lastCampaign.images || []);
-        setLogEntries(
-          (session.lastCampaign.logEntries || []).map((e) => ({
-            type: e.type as LogEntry["type"],
-            message: e.message,
-            timestamp: e.timestamp,
-            phase: e.phase,
-          }))
-        );
-        setStatus(session.lastCampaign.status || "idle");
-        // If there are results from a previous campaign, show results tab
-        if (session.lastCampaign.images?.length) {
+
+      // v2: restore campaigns
+      if (session.campaigns && session.campaigns.length > 0) {
+        const restored = session.campaigns.map((sc) => deserializeAdCampaign(sc) as AdCampaign);
+        setCampaigns(restored);
+        setActiveCampaignId(session.activeCampaignId || restored[0]?.id || null);
+        campaignCountRef.current = restored.length;
+        // If there are results, show results tab
+        const active = restored.find((c) => c.id === session.activeCampaignId) || restored[0];
+        if (active?.images?.length) {
           setRightTab("results");
         }
       }
+
       if (session.selectedProductId) {
         const tryRestore = () => {
           setProducts((prev) => {
@@ -846,12 +1159,29 @@ export default function AdStudioPage() {
     setSessionRestored(true);
   }, []);
 
-  // Restore product after products load
+  // Restore product after products load + fill productName for migrated campaigns
   useEffect(() => {
     const session = loadAdStudioSession();
     if (session?.selectedProductId && products.length > 0 && !selectedProduct) {
       const found = products.find((p) => p.id === session.selectedProductId);
       if (found) setSelectedProduct(found);
+    }
+    // Fill missing productName in campaigns from products list
+    if (products.length > 0) {
+      setCampaigns((prev) => {
+        let changed = false;
+        const updated = prev.map((c) => {
+          if (!c.productName && c.productId) {
+            const p = products.find((pr) => pr.id === c.productId);
+            if (p) {
+              changed = true;
+              return { ...c, productName: p.name };
+            }
+          }
+          return c;
+        });
+        return changed ? updated : prev;
+      });
     }
   }, [products, selectedProduct]);
 
@@ -878,36 +1208,25 @@ export default function AdStudioPage() {
     }
   }
 
-  // Launch campaign
-  async function launchCampaign() {
-    if (!canLaunch) return;
-
-    const ctrl = new AbortController();
-    controllerRef.current = ctrl;
-    setStatus("running");
-    setLogEntries([]);
-    setConcepts([]);
-    setImages([]);
-    setProgress({ done: 0, total: 0 });
-    setSelectedImages(new Set());
-    setFeedbackRatings({});
-    setRightTab("activity");
+  // --- runCampaignSSE (extracted, scoped to a campaign) ---
+  async function runCampaignSSE(campaign: AdCampaign) {
+    const campaignId = campaign.id;
 
     try {
       const res = await fetch("/api/ads/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          modelId,
-          quantity,
-          theme,
-          productId: selectedProduct!.id,
-          aspectRatios: activeRatios,
+          modelId: campaign.modelId,
+          quantity: campaign.quantity,
+          theme: campaign.theme,
+          productId: campaign.productId,
+          aspectRatios: campaign.aspectRatios,
           profileId: activeProfileId,
-          concurrency: speed,
-          modelOptions: Object.keys(modelOptions).length > 0 ? modelOptions : undefined,
+          concurrency: campaign.speed,
+          modelOptions: Object.keys(campaign.modelOptions).length > 0 ? campaign.modelOptions : undefined,
         }),
-        signal: ctrl.signal,
+        signal: campaign.controller?.signal,
       });
 
       if (!res.ok) {
@@ -932,34 +1251,52 @@ export default function AdStudioPage() {
             const event = JSON.parse(line.slice(6));
             switch (event.type) {
               case "phase":
-                setLogEntries((prev) => [
-                  ...prev,
-                  { type: "phase", phase: event.phase, message: event.message, timestamp: Date.now() },
-                ]);
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  logEntries: [...c.logEntries, { type: "phase", phase: event.phase, message: event.message, timestamp: Date.now() }],
+                }));
                 break;
               case "thought":
-                setLogEntries((prev) => [...prev, { type: "thought", message: event.message, timestamp: Date.now() }]);
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  logEntries: [...c.logEntries, { type: "thought", message: event.message, timestamp: Date.now() }],
+                }));
                 break;
               case "action":
-                setLogEntries((prev) => [...prev, { type: "action", message: event.message, timestamp: Date.now() }]);
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  logEntries: [...c.logEntries, { type: "action", message: event.message, timestamp: Date.now() }],
+                }));
                 break;
               case "concept":
-                setConcepts((prev) => [...prev, event.concept]);
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  concepts: [...c.concepts, event.concept],
+                }));
                 break;
               case "image":
-                setImages((prev) => [
-                  ...prev,
-                  { conceptIndex: event.conceptIndex, ratio: event.ratio, url: event.url, prompt: event.prompt },
-                ]);
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  images: [...c.images, { conceptIndex: event.conceptIndex, ratio: event.ratio, url: event.url, prompt: event.prompt }],
+                }));
                 break;
               case "progress":
-                setProgress({ done: event.done, total: event.total });
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  progress: { done: event.done, total: event.total },
+                }));
                 break;
               case "error":
-                setLogEntries((prev) => [...prev, { type: "error", message: event.message, timestamp: Date.now() }]);
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  logEntries: [...c.logEntries, { type: "error", message: event.message, timestamp: Date.now() }],
+                }));
                 break;
               case "complete":
-                setStatus("done");
+                updateCampaign(campaignId, (c) => ({
+                  ...c,
+                  status: "done",
+                }));
                 break;
             }
           } catch {
@@ -968,32 +1305,129 @@ export default function AdStudioPage() {
         }
       }
 
-      setStatus((prev) => (prev === "running" ? "done" : prev));
+      // If stream ended but status still running, mark done
+      updateCampaign(campaignId, (c) => (c.status === "running" ? { ...c, status: "done" } : c));
     } catch (err: any) {
       if (err.name === "AbortError") {
-        setStatus("cancelled");
-        setLogEntries((prev) => [
-          ...prev,
-          { type: "phase", phase: "cancelled", message: "Campaign cancelled by user", timestamp: Date.now() },
-        ]);
+        updateCampaign(campaignId, (c) => ({
+          ...c,
+          status: "cancelled",
+          logEntries: [
+            ...c.logEntries,
+            { type: "phase" as const, phase: "cancelled", message: "Campaign cancelled by user", timestamp: Date.now() },
+          ],
+        }));
       } else {
-        setStatus("error");
-        setLogEntries((prev) => [...prev, { type: "error", message: err.message || "Unknown error", timestamp: Date.now() }]);
+        updateCampaign(campaignId, (c) => ({
+          ...c,
+          status: "error",
+          logEntries: [
+            ...c.logEntries,
+            { type: "error" as const, message: err.message || "Unknown error", timestamp: Date.now() },
+          ],
+        }));
       }
-    } finally {
-      controllerRef.current = null;
     }
   }
 
-  function cancelCampaign() {
-    if (controllerRef.current) {
-      controllerRef.current.abort();
-    }
+  // Launch campaign
+  function launchCampaign() {
+    if (!canLaunch) return;
+
+    // Auto-evict oldest non-running campaign if at max
+    setCampaigns((prev) => {
+      if (prev.length >= MAX_CAMPAIGNS) {
+        const nonRunning = prev.filter((c) => c.status !== "running");
+        if (nonRunning.length > 0) {
+          const oldest = nonRunning[0];
+          return prev.filter((c) => c.id !== oldest.id);
+        }
+      }
+      return prev;
+    });
+
+    campaignCountRef.current += 1;
+    const ctrl = new AbortController();
+    const newCampaign: AdCampaign = {
+      id: crypto.randomUUID(),
+      name: `Campaign #${campaignCountRef.current}`,
+      startedAt: Date.now(),
+      theme,
+      modelId,
+      quantity,
+      speed,
+      aspectRatios: [...activeRatios],
+      productId: selectedProduct!.id,
+      productName: selectedProduct!.name,
+      modelOptions: { ...modelOptions },
+      status: "running",
+      concepts: [],
+      images: [],
+      logEntries: [],
+      progress: { done: 0, total: 0 },
+      feedbackRatings: {},
+      selectedImages: new Set(),
+      controller: ctrl,
+    };
+
+    setCampaigns((prev) => [...prev, newCampaign]);
+    setActiveCampaignId(newCampaign.id);
+    setRightTab("activity");
+
+    // Non-blocking — run in parallel
+    void runCampaignSSE(newCampaign);
   }
 
-  const handleFeedbackSubmit = useCallback((conceptIndex: number, rating: number) => {
-    setFeedbackRatings((prev) => ({ ...prev, [conceptIndex]: rating }));
-  }, []);
+  // Cancel a specific campaign
+  function cancelCampaign(id: string) {
+    setCampaigns((prev) =>
+      prev.map((c) => {
+        if (c.id === id && c.controller) {
+          c.controller.abort();
+        }
+        return c;
+      })
+    );
+  }
+
+  // Delete a specific campaign
+  function deleteCampaign(id: string) {
+    // Abort if running
+    setCampaigns((prev) => {
+      const target = prev.find((c) => c.id === id);
+      if (target?.controller) target.controller.abort();
+      const remaining = prev.filter((c) => c.id !== id);
+      // Update active if deleted was active
+      if (activeCampaignId === id) {
+        const next = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+        // Use setTimeout to avoid setState-in-setState
+        setTimeout(() => setActiveCampaignId(next), 0);
+      }
+      return remaining;
+    });
+  }
+
+  // Clear all campaigns
+  function clearAllCampaigns() {
+    setCampaigns((prev) => {
+      for (const c of prev) {
+        if (c.controller) c.controller.abort();
+      }
+      return [];
+    });
+    setActiveCampaignId(null);
+  }
+
+  const handleFeedbackSubmit = useCallback(
+    (conceptIndex: number, rating: number) => {
+      if (!activeCampaignId) return;
+      updateCampaign(activeCampaignId, (c) => ({
+        ...c,
+        feedbackRatings: { ...c.feedbackRatings, [conceptIndex]: rating },
+      }));
+    },
+    [activeCampaignId, updateCampaign]
+  );
 
   const totalImages = quantity * activeRatios.length;
 
@@ -1112,7 +1546,6 @@ export default function AdStudioPage() {
                 onChange={(e) => {
                   setModelId(e.target.value);
                   setModelOptions({});
-                  // Adjust speed if new model has lower max
                   const newModel = getModelById(e.target.value);
                   const newMax = newModel?.maxConcurrency || 5;
                   setSpeed((s) => Math.min(s, newMax));
@@ -1211,28 +1644,29 @@ export default function AdStudioPage() {
             </div>
           </div>
 
-          {/* Launch / Cancel Button */}
+          {/* Launch Button (always available) */}
           <div className="pt-1">
-            {status === "running" ? (
+            <button
+              onClick={launchCampaign}
+              disabled={!canLaunch}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 dark:disabled:from-slate-700 dark:disabled:to-slate-700 text-white disabled:text-slate-500 dark:disabled:text-slate-400 font-semibold text-sm transition shadow-sm disabled:cursor-not-allowed"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+              </svg>
+              Launch Campaign
+            </button>
+
+            {/* Cancel button for active running campaign */}
+            {activeCampaign?.status === "running" && (
               <button
-                onClick={cancelCampaign}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition shadow-sm"
+                onClick={() => cancelCampaign(activeCampaign.id)}
+                className="w-full mt-2 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-semibold text-sm transition shadow-sm"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                   <path fillRule="evenodd" d="M2 10a8 8 0 1116 0 8 8 0 01-16 0zm5-2.25A.75.75 0 017.75 7h4.5a.75.75 0 01.75.75v4.5a.75.75 0 01-.75.75h-4.5a.75.75 0 01-.75-.75v-4.5z" clipRule="evenodd" />
                 </svg>
-                Cancel Campaign
-              </button>
-            ) : (
-              <button
-                onClick={launchCampaign}
-                disabled={!canLaunch}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 dark:disabled:from-slate-700 dark:disabled:to-slate-700 text-white disabled:text-slate-500 dark:disabled:text-slate-400 font-semibold text-sm transition shadow-sm disabled:cursor-not-allowed"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                </svg>
-                Launch Campaign
+                Cancel {activeCampaign.name}
               </button>
             )}
           </div>
@@ -1243,6 +1677,15 @@ export default function AdStudioPage() {
               {quantity} concept{quantity > 1 ? "s" : ""} &times; {activeRatios.length} format{activeRatios.length > 1 ? "s" : ""} = {totalImages} image{totalImages > 1 ? "s" : ""} @ {speed}x speed
             </div>
           )}
+
+          {/* Campaign History Panel */}
+          <CampaignHistoryPanel
+            campaigns={campaigns}
+            activeCampaignId={activeCampaignId}
+            onSelect={setActiveCampaignId}
+            onDelete={deleteCampaign}
+            onClearAll={clearAllCampaigns}
+          />
         </div>
       </div>
 
@@ -1279,9 +1722,10 @@ export default function AdStudioPage() {
             )}
           </button>
 
-          {/* Status indicator */}
-          {status !== "idle" && (
+          {/* Status indicator + campaign name */}
+          {activeCampaign && status !== "idle" && (
             <div className="flex items-center gap-2 ml-auto pr-4">
+              <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-[120px]">{activeCampaign.name}</span>
               <span
                 className={`inline-block w-2 h-2 rounded-full ${
                   status === "running"
@@ -1387,15 +1831,15 @@ export default function AdStudioPage() {
                 <ResultsGrid
                   concepts={concepts}
                   images={images}
-                  aspectRatios={activeRatios}
+                  aspectRatios={activeCampaign?.aspectRatios || activeRatios}
                   selectedImages={selectedImages}
                   onToggleSelect={toggleSelect}
                   onImageClick={setExpandedImage}
-                  productName={selectedProduct?.name || "ad"}
-                  productId={selectedProduct?.id || ""}
+                  productName={activeCampaign?.productName || selectedProduct?.name || "ad"}
+                  productId={activeCampaign?.productId || selectedProduct?.id || ""}
                   profileId={activeProfileId || ""}
-                  theme={theme}
-                  modelId={modelId}
+                  theme={activeCampaign?.theme || theme}
+                  modelId={activeCampaign?.modelId || modelId}
                   feedbackRatings={feedbackRatings}
                   onFeedbackSubmit={handleFeedbackSubmit}
                   campaignDone={status === "done"}
@@ -1422,7 +1866,7 @@ export default function AdStudioPage() {
         <ImageModal
           image={expandedImage}
           conceptName={concepts[expandedImage.conceptIndex]?.name || "Image"}
-          productName={selectedProduct?.name || "ad"}
+          productName={activeCampaign?.productName || selectedProduct?.name || "ad"}
           conceptIndex={expandedImage.conceptIndex}
           onClose={() => setExpandedImage(null)}
         />

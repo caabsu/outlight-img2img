@@ -261,7 +261,29 @@ export const debouncedSaveVideoSession = createDebouncedSave<VideoStudioSession>
 
 // ============ AD STUDIO ============
 
-export type AdStudioSession = {
+export type SerializedAdCampaign = {
+  id: string;
+  name: string;
+  startedAt: number;
+  theme: string;
+  modelId: string;
+  quantity: number;
+  speed: number;
+  aspectRatios: string[];
+  productId: string;
+  productName: string;
+  modelOptions: Record<string, string>;
+  status: "idle" | "done" | "error" | "cancelled";
+  concepts: Array<{ name: string; description: string; headline?: string; tagline?: string; prompts: Record<string, string> }>;
+  images: Array<{ conceptIndex: number; ratio: string; url: string; prompt: string }>;
+  logEntries: Array<{ type: string; message: string; timestamp: number; phase?: string }>;
+  progress: { done: number; total: number };
+  feedbackRatings: Record<number, number>;
+  selectedImages: string[]; // Set<string> serialized as array
+};
+
+// v1 type kept for backward-compat migration detection
+type AdStudioSessionV1 = {
   version: 1;
   savedAt: number;
   theme: string;
@@ -280,12 +302,111 @@ export type AdStudioSession = {
   } | null;
 };
 
+export type AdStudioSession = {
+  version: 2;
+  savedAt: number;
+  theme: string;
+  modelId: string;
+  quantity: number;
+  speed: number;
+  aspectRatios: Record<string, boolean>;
+  includeBothRatios: boolean;
+  selectedProductId: string | null;
+  modelOptions: Record<string, string>;
+  campaigns: SerializedAdCampaign[];
+  activeCampaignId: string | null;
+  // v1 migration field — only present when loading old data
+  lastCampaign?: AdStudioSessionV1["lastCampaign"];
+};
+
+export function serializeAdCampaign(campaign: any): SerializedAdCampaign {
+  // Filter images to only keep HTTP URLs (not large data URIs)
+  const filteredImages = (campaign.images || [])
+    .filter((img: any) => img.url && img.url.startsWith("http"))
+    .slice(-50);
+
+  return {
+    id: campaign.id,
+    name: campaign.name,
+    startedAt: campaign.startedAt,
+    theme: campaign.theme || "",
+    modelId: campaign.modelId || "",
+    quantity: campaign.quantity || 3,
+    speed: campaign.speed || 3,
+    aspectRatios: campaign.aspectRatios || [],
+    productId: campaign.productId || "",
+    productName: campaign.productName || "",
+    modelOptions: campaign.modelOptions || {},
+    status: campaign.status === "running" ? "cancelled" : campaign.status,
+    concepts: campaign.concepts || [],
+    images: filteredImages,
+    logEntries: (campaign.logEntries || []).slice(-100),
+    progress: campaign.progress || { done: 0, total: 0 },
+    feedbackRatings: campaign.feedbackRatings || {},
+    selectedImages: Array.from(campaign.selectedImages || []),
+  };
+}
+
+export function deserializeAdCampaign(data: SerializedAdCampaign): any {
+  return {
+    ...data,
+    selectedImages: new Set(data.selectedImages || []),
+    controller: null,
+  };
+}
+
 export function saveAdStudioSession(session: AdStudioSession): void {
   saveToStorage(STORAGE_KEYS.AD_STUDIO, session);
 }
 
 export function loadAdStudioSession(): AdStudioSession | null {
-  return loadFromStorage<AdStudioSession>(STORAGE_KEYS.AD_STUDIO);
+  const raw = loadFromStorage<any>(STORAGE_KEYS.AD_STUDIO);
+  if (!raw) return null;
+
+  // v1 → v2 migration
+  if (raw.version === 1 || !raw.version) {
+    const v1 = raw as AdStudioSessionV1;
+    const campaigns: SerializedAdCampaign[] = [];
+    if (v1.lastCampaign) {
+      const ratioKeys = Object.keys(v1.aspectRatios || {}).filter((k) => v1.aspectRatios[k]);
+      campaigns.push({
+        id: crypto.randomUUID(),
+        name: "Campaign #1",
+        startedAt: v1.savedAt || Date.now(),
+        theme: v1.theme || "",
+        modelId: v1.modelId || "",
+        quantity: v1.quantity || 3,
+        speed: v1.speed || 3,
+        aspectRatios: ratioKeys.length > 0 ? ratioKeys : ["1:1", "9:16"],
+        productId: v1.selectedProductId || "",
+        productName: "", // Will be filled when products load
+        modelOptions: v1.modelOptions || {},
+        status: v1.lastCampaign.status || "done",
+        concepts: v1.lastCampaign.concepts || [],
+        images: (v1.lastCampaign.images || []).filter((img) => img.url?.startsWith("http")).slice(-50),
+        logEntries: (v1.lastCampaign.logEntries || []).slice(-100),
+        progress: { done: 0, total: 0 },
+        feedbackRatings: {},
+        selectedImages: [],
+      });
+    }
+    return {
+      version: 2,
+      savedAt: v1.savedAt || Date.now(),
+      theme: v1.theme || "",
+      modelId: v1.modelId || "",
+      quantity: v1.quantity || 3,
+      speed: v1.speed || 3,
+      aspectRatios: v1.aspectRatios || {},
+      includeBothRatios: v1.includeBothRatios ?? true,
+      selectedProductId: v1.selectedProductId || null,
+      modelOptions: v1.modelOptions || {},
+      campaigns,
+      activeCampaignId: campaigns[0]?.id || null,
+    };
+  }
+
+  return raw as AdStudioSession;
 }
 
 export const debouncedSaveAdSession = createDebouncedSave<AdStudioSession>(

@@ -111,6 +111,10 @@ Example text overlay section in a prompt:
 
 /* ========================= HELPERS ========================= */
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function getSupabase() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -347,6 +351,9 @@ export async function POST(req: Request) {
         const learnings = await fetchLearnings(productId);
         if (learnings.length > 0) {
           send({ type: "thought", message: `Applying ${learnings.length} learnings from previous campaigns` });
+          for (const l of learnings) {
+            send({ type: "thought", message: `Learning: ${l}` });
+          }
         }
 
         // Phase 2: IDEATE
@@ -416,9 +423,9 @@ export async function POST(req: Request) {
             const task = tasks[idx];
             send({ type: "action", message: `Generating "${task.concept.name}" at ${task.ratio}...` });
 
-            let retries = 1;
+            const maxRetries = 3;
 
-            for (let attempt = 0; attempt <= retries; attempt++) {
+            for (let attempt = 0; attempt <= maxRetries; attempt++) {
               try {
                 const imageUrl = await callGenerateAPI(
                   origin,
@@ -448,15 +455,17 @@ export async function POST(req: Request) {
                 successCount++;
                 break;
               } catch (err: any) {
-                if (attempt < retries) {
+                if (attempt < maxRetries) {
+                  const delay = Math.min(10000, 1000 * 2 ** attempt);
                   send({
                     type: "action",
-                    message: `Retrying "${task.concept.name}" (${task.ratio})...`,
+                    message: `Retrying "${task.concept.name}" (${task.ratio}) — attempt ${attempt + 2}/${maxRetries + 1}...`,
                   });
+                  await sleep(delay);
                 } else {
                   send({
                     type: "error",
-                    message: `Failed: ${task.concept.name} (${task.ratio}) — ${err.message}`,
+                    message: `Failed after ${maxRetries + 1} attempts: ${task.concept.name} (${task.ratio}) — ${err.message}`,
                     conceptIndex: task.ci,
                   });
                   failCount++;
