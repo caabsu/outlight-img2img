@@ -3,8 +3,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 import { createClient } from "@supabase/supabase-js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { getModelById } from "@/lib/models";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -18,7 +17,6 @@ type AdGenerateRequest = {
   theme: string;
   productId: string;
   aspectRatios: string[];
-  knowledgeBaseId?: string;
   profileId: string;
   modelOptions?: {
     quality?: string;
@@ -42,9 +40,11 @@ type CampaignPlan = {
     productAnalysis: string;
     themeInterpretation: string;
     targetMood: string[];
-    visualStyle: string;
+    styleDirection: string;
     colorPalette: string[];
     keyElements: string[];
+    moodBoard: string;
+    creativeRationale: string;
   };
   concepts: Array<{
     name: string;
@@ -52,6 +52,34 @@ type CampaignPlan = {
     prompts: Record<string, string>;
   }>;
 };
+
+/* ========================= SYSTEM PROMPT ========================= */
+
+const AD_STUDIO_SYSTEM_PROMPT = `You are the creative director of Ad Studio, a premium advertising creative platform. Your role is to produce outstanding ad campaign briefs with image generation prompts.
+
+## Prompt Writing Best Practices
+- Write prompts as vivid, cinematic scene descriptions (120-200 words each)
+- Lead with composition and camera angle, then subject, environment, lighting, materials, atmosphere
+- Use specific photographic terminology: focal length, depth of field, exposure, color grading
+- Reference real-world art movements, photographers, and visual styles when relevant
+- Never reference the product by brand name — describe its physical appearance instead
+- Include negative space considerations for text overlays in 9:16 formats
+
+## Theme Handling
+- The creative theme is the user's primary creative input — treat it as sacred
+- Interpret the theme through multiple creative lenses to generate distinct concepts
+- Each concept must feel like a different creative director's interpretation of the same brief
+- Balance between literal and abstract interpretations of the theme
+
+## Aspect Ratio Guidelines
+- 1:1 (Square): Centered, balanced compositions. Product-focused with symmetrical framing. Ideal for social feeds.
+- 9:16 (Vertical/Stories): Leave generous upper 20% and lower 20% for text overlays. Product mid-frame. Immersive, full-screen storytelling with vertical flow.
+
+## Output Quality
+- Be specific with materials (matte, glossy, brushed aluminum, raw linen)
+- Be specific with lighting (golden hour, harsh noon, diffused studio, neon rim)
+- Be specific with atmosphere (misty, crisp, humid, dusty)
+- Each concept should evoke a distinct emotional response`;
 
 /* ========================= HELPERS ========================= */
 
@@ -67,126 +95,85 @@ async function fetchProduct(productId: string) {
   return data;
 }
 
-async function fetchKnowledge(knowledgeBaseId: string): Promise<string> {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-  const { data, error } = await supabase
-    .from("knowledge_bases")
-    .select("content")
-    .eq("id", knowledgeBaseId)
-    .single();
-  if (error || !data?.content) return "";
-  return data.content;
-}
-
-function buildAIPrompt(
+function buildUserMessage(
   product: any,
   theme: string,
   quantity: number,
-  aspectRatios: string[],
-  knowledge: string
+  aspectRatios: string[]
 ): string {
   const ratioList = aspectRatios.join(", ");
   const priceNote = product.shopify_price ? `$${product.shopify_price}` : "N/A";
 
-  return `You are a creative advertising agent. Given a product and a creative theme, produce a complete ad campaign brief with image generation prompts.
+  return `Create an ad campaign for this product:
 
-INPUTS:
-- Product: ${product.name}, Type: ${product.shopify_product_type || "general"}, Vendor: ${product.shopify_vendor || "N/A"}, Price: ${priceNote}
-- Product image: ${product.image_url || "N/A"}
-- Theme: "${theme}"
-- Quantity: ${quantity} concepts
-- Aspect ratios: ${ratioList}
-${knowledge ? `- Knowledge base: "${knowledge}"` : ""}
+PRODUCT:
+- Name: ${product.name}
+- Type: ${product.shopify_product_type || "general"}
+- Vendor: ${product.shopify_vendor || "N/A"}
+- Price: ${priceNote}
+- Product image URL: ${product.image_url || "N/A"}
 
-OUTPUT FORMAT (strict JSON, no markdown fences):
+CREATIVE THEME: "${theme}"
+
+REQUIREMENTS:
+- Generate exactly ${quantity} distinct creative concepts
+- Each concept needs prompts for these aspect ratios: ${ratioList}
+- Each prompt should be 120-200 words of vivid, cinematic scene description
+
+Return ONLY valid JSON (no markdown fences) in this exact format:
 {
   "brief": {
-    "productAnalysis": "...",
-    "themeInterpretation": "...",
-    "targetMood": ["...", "..."],
-    "visualStyle": "...",
-    "colorPalette": ["...", "..."],
-    "keyElements": ["...", "..."]
+    "productAnalysis": "Concise analysis of the product's visual identity and market positioning",
+    "themeInterpretation": "How you interpret the creative theme and its emotional resonance",
+    "targetMood": ["mood1", "mood2", "mood3"],
+    "styleDirection": "The overarching visual style direction for this campaign",
+    "colorPalette": ["color1", "color2", "color3", "color4"],
+    "keyElements": ["element1", "element2", "element3"],
+    "moodBoard": "A vivid description of the mood board — reference films, photographers, art movements, textures, and color worlds that define the visual territory",
+    "creativeRationale": "Why this creative direction will resonate with the audience and elevate the product"
   },
   "concepts": [
     {
-      "name": "...",
-      "description": "...",
+      "name": "Concept Name",
+      "description": "Brief concept description",
       "prompts": {
-        ${aspectRatios.map((r) => `"${r}": "Detailed prompt for ${r} format..."`).join(",\n        ")}
+        ${aspectRatios.map((r) => `"${r}": "Detailed 120-200 word prompt for ${r} format..."`).join(",\n        ")}
       }
     }
   ]
-}
-
-RULES:
-1. Each concept must be a DISTINCT creative direction inspired by the theme
-2. Prompts must be highly detailed (lighting, composition, materials, atmosphere, camera angle)
-3. 9:16 prompts must account for vertical framing with upper/lower negative space for text overlays
-4. 1:1 prompts must be centered, balanced compositions
-5. Reference the product by description, not by name (image AI doesn't know product names)
-6. Incorporate the product's visual attributes from the reference image
-7. Apply knowledge base style guidelines implicitly
-8. Creative variance should scale with theme specificity
-9. Generate exactly ${quantity} concepts
-10. Return ONLY valid JSON, no markdown code fences`;
+}`;
 }
 
 async function callAIForCampaign(
   product: any,
   theme: string,
   quantity: number,
-  aspectRatios: string[],
-  knowledge: string
+  aspectRatios: string[]
 ): Promise<CampaignPlan> {
-  const prompt = buildAIPrompt(product, theme, quantity, aspectRatios, knowledge);
+  const anthropic = new Anthropic();
 
-  // Try Gemini first
-  if (process.env.GEMINI_API_KEY) {
-    const modelsToTry = ["gemini-3-pro-preview", "gemini-2.5-flash"];
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  const userMessage = buildUserMessage(product, theme, quantity, aspectRatios);
 
-    for (const modelName of modelsToTry) {
-      try {
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-        });
-        const text = result.response.text();
-        const cleaned = text.replace(/```json/g, "").replace(/```/g, "").trim();
-        const parsed = JSON.parse(cleaned) as CampaignPlan;
-        if (parsed.brief && Array.isArray(parsed.concepts)) {
-          return parsed;
-        }
-      } catch (e: any) {
-        console.error(`[Ad Agent] Gemini (${modelName}) failed:`, e.message);
-      }
-    }
+  const response = await anthropic.messages.create({
+    model: "claude-sonnet-4-5-20250929",
+    max_tokens: 8192,
+    system: AD_STUDIO_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userMessage }],
+  });
+
+  const textBlock = response.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("No text response from Claude");
   }
 
-  // Fallback to OpenAI
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: "You are a creative advertising agent. Return only valid JSON." },
-          { role: "user", content: prompt },
-        ],
-        response_format: { type: "json_object" },
-      });
-      const content = completion.choices[0].message.content || "{}";
-      const parsed = JSON.parse(content) as CampaignPlan;
-      if (parsed.brief && Array.isArray(parsed.concepts)) {
-        return parsed;
-      }
-    } catch (e: any) {
-      console.error("[Ad Agent] OpenAI failed:", e.message);
-    }
+  const cleaned = textBlock.text.replace(/```json/g, "").replace(/```/g, "").trim();
+  const parsed = JSON.parse(cleaned) as CampaignPlan;
+
+  if (!parsed.brief || !Array.isArray(parsed.concepts)) {
+    throw new Error("Invalid campaign plan structure from Claude");
   }
 
-  throw new Error("No AI provider available. Please configure GEMINI_API_KEY or OPENAI_API_KEY.");
+  return parsed;
 }
 
 async function callGenerateAPI(
@@ -203,18 +190,15 @@ async function callGenerateAPI(
   const modelDef = getModelById(modelId);
   if (!modelDef) throw new Error(`Unknown model: ${modelId}`);
 
-  // Set aspect ratio for models that support it
   if (modelDef.aspectRatioOptions) {
     options.aspect_ratio = aspectRatio;
   }
-  // Set quality/resolution from modelOptions
   if (modelOptions?.quality) {
     options.quality = modelOptions.quality;
   }
   if (modelOptions?.resolution) {
     options.image_size = modelOptions.resolution;
   }
-  // GPT 1.5 specific: map aspect ratio to size
   if (modelId === "gpt-1.5") {
     const sizeMap: Record<string, string> = {
       "1:1": "1024x1024",
@@ -252,9 +236,8 @@ async function callGenerateAPI(
 
 export async function POST(req: Request) {
   const body = (await req.json()) as AdGenerateRequest;
-  const { modelId, quantity, theme, productId, aspectRatios, knowledgeBaseId, profileId, modelOptions } = body;
+  const { modelId, quantity, theme, productId, aspectRatios, profileId, modelOptions } = body;
 
-  // Validate
   if (!modelId || !theme || !productId || !profileId) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
       status: 400,
@@ -263,9 +246,11 @@ export async function POST(req: Request) {
   }
 
   const safeQuantity = Math.max(1, Math.min(10, quantity || 3));
-  const safeRatios = aspectRatios?.length ? aspectRatios : ["1:1", "9:16"];
+  const safeRatios = (aspectRatios?.length ? aspectRatios : ["1:1", "9:16"]).filter((r) =>
+    ["1:1", "9:16"].includes(r)
+  );
+  if (safeRatios.length === 0) safeRatios.push("1:1");
 
-  // Get origin for internal API calls
   const url = new URL(req.url);
   const origin = url.origin;
 
@@ -294,22 +279,29 @@ export async function POST(req: Request) {
         }
         send({ type: "thought", message: `Theme: "${theme}"` });
 
-        const knowledge = knowledgeBaseId ? await fetchKnowledge(knowledgeBaseId) : "";
-        if (knowledge) {
-          send({ type: "thought", message: "Knowledge base loaded" });
-        }
-
         // Phase 2: IDEATE
-        send({ type: "phase", phase: "ideate", message: `Generating ${safeQuantity} creative concepts...` });
-        send({ type: "action", message: "Calling AI to plan campaign..." });
+        send({ type: "phase", phase: "ideate", message: `Generating ${safeQuantity} creative concepts with Claude...` });
+        send({ type: "action", message: "Calling Claude to plan campaign..." });
 
-        const campaign = await callAIForCampaign(product, theme, safeQuantity, safeRatios, knowledge);
+        const campaign = await callAIForCampaign(product, theme, safeQuantity, safeRatios);
 
-        // Stream brief thoughts
+        // Stream richer brief thoughts
         if (campaign.brief) {
-          send({ type: "thought", message: `Visual style: ${campaign.brief.visualStyle}` });
+          send({ type: "thought", message: `Theme interpretation: ${campaign.brief.themeInterpretation}` });
+          if (campaign.brief.moodBoard) {
+            send({ type: "thought", message: `Mood board: ${campaign.brief.moodBoard}` });
+          }
+          if (campaign.brief.styleDirection) {
+            send({ type: "thought", message: `Style direction: ${campaign.brief.styleDirection}` });
+          }
+          if (campaign.brief.creativeRationale) {
+            send({ type: "thought", message: `Creative rationale: ${campaign.brief.creativeRationale}` });
+          }
           if (campaign.brief.colorPalette?.length) {
             send({ type: "thought", message: `Color palette: ${campaign.brief.colorPalette.join(", ")}` });
+          }
+          if (campaign.brief.targetMood?.length) {
+            send({ type: "thought", message: `Target mood: ${campaign.brief.targetMood.join(", ")}` });
           }
         }
 
@@ -325,7 +317,6 @@ export async function POST(req: Request) {
         const totalImages = campaign.concepts.length * safeRatios.length;
         send({ type: "phase", phase: "generate", message: `Generating ${totalImages} images...` });
 
-        // Build task list
         const tasks: Array<{
           ci: number;
           concept: (typeof campaign.concepts)[0];
@@ -341,7 +332,6 @@ export async function POST(req: Request) {
           }
         }
 
-        // Worker pool
         const maxConcurrency = getModelById(modelId)?.maxConcurrency || 3;
         let cursor = 0;
         let done = 0;
@@ -356,7 +346,6 @@ export async function POST(req: Request) {
             send({ type: "action", message: `Generating "${task.concept.name}" at ${task.ratio}...` });
 
             let retries = 1;
-            let succeeded = false;
 
             for (let attempt = 0; attempt <= retries; attempt++) {
               try {
@@ -386,7 +375,6 @@ export async function POST(req: Request) {
                 });
 
                 successCount++;
-                succeeded = true;
                 break;
               } catch (err: any) {
                 if (attempt < retries) {

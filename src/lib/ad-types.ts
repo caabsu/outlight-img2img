@@ -19,9 +19,11 @@ export type AdCampaignResult = {
     productAnalysis: string;
     themeInterpretation: string;
     targetMood: string[];
-    visualStyle: string;
+    styleDirection: string;
     colorPalette: string[];
     keyElements: string[];
+    moodBoard: string;
+    creativeRationale: string;
   };
   concepts: AdConcept[];
   totalImages: number;

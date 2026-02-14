@@ -24,13 +24,6 @@ type Product = {
   shopify_images?: string[] | null;
 };
 
-type KnowledgeBase = {
-  id: string;
-  name: string;
-  content: string;
-  description?: string;
-};
-
 type Profile = {
   id: string;
   name: string;
@@ -160,6 +153,16 @@ function AgentLog({
     complete: "bg-emerald-500",
   };
 
+  // Extract brief-level thoughts for rich display
+  const briefLabels: Record<string, string> = {
+    "Theme interpretation:": "Theme",
+    "Mood board:": "Mood Board",
+    "Style direction:": "Style",
+    "Creative rationale:": "Rationale",
+    "Color palette:": "Palette",
+    "Target mood:": "Mood",
+  };
+
   return (
     <div ref={logRef} className="h-full overflow-y-auto space-y-1 p-3 text-sm font-mono">
       {entries.map((entry, i) => {
@@ -191,7 +194,22 @@ function AgentLog({
             </div>
           );
         }
-        // thought
+
+        // Thought — check if it's a labeled brief thought
+        const matchedLabel = Object.keys(briefLabels).find((prefix) => entry.message.startsWith(prefix));
+        if (matchedLabel) {
+          const label = briefLabels[matchedLabel];
+          const content = entry.message.slice(matchedLabel.length).trim();
+          return (
+            <div key={i} className="pl-4 text-xs mt-1">
+              <span className="inline-block px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold mr-1.5 text-[10px] uppercase tracking-wider">
+                {label}
+              </span>
+              <span className="text-slate-600 dark:text-slate-300">{content}</span>
+            </div>
+          );
+        }
+
         return (
           <div key={i} className="pl-4 text-slate-500 dark:text-slate-400 text-xs">
             {entry.message}
@@ -261,7 +279,7 @@ function ResultsGrid({
               <div className="flex gap-4 flex-wrap">
                 {aspectRatios.map((ratio) => {
                   const img = conceptImages.find((im) => im.ratio === ratio);
-                  const isVertical = ratio === "9:16" || ratio === "2:3" || ratio === "3:4";
+                  const isVertical = ratio === "9:16";
                   const aspectClass = isVertical ? "aspect-[9/16]" : "aspect-square";
 
                   return (
@@ -367,11 +385,10 @@ export default function AdStudioPage() {
   // Data
   const [products, setProducts] = useState<Product[]>([]);
   const [productsLoading, setProductsLoading] = useState(false);
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
 
-  // Profile management
+  // Profile management (silent auto-select from localStorage)
   const [clientId, setClientId] = useState<string | null>(null);
   const [activeProfileId, setActiveProfileId] = useState<string | null>(null);
   const [storedProfileId, setStoredProfileId] = useState<string | null>(null);
@@ -382,8 +399,8 @@ export default function AdStudioPage() {
   const [theme, setTheme] = useState("");
   const [modelId, setModelId] = useState("nanobanana-3-pro");
   const [quantity, setQuantity] = useState(3);
-  const [aspectRatios, setAspectRatios] = useState<Record<string, boolean>>({ "1:1": true, "9:16": true });
-  const [knowledgeBaseId, setKnowledgeBaseId] = useState<string | null>(null);
+  const [includeBothRatios, setIncludeBothRatios] = useState(true);
+  const [singleRatio, setSingleRatio] = useState<"1:1" | "9:16">("1:1");
   const [modelOptions, setModelOptions] = useState<Record<string, string>>({});
 
   // Agent state
@@ -399,11 +416,10 @@ export default function AdStudioPage() {
   const [showProductModal, setShowProductModal] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
 
-  const activeProfile = profiles.find((p) => p.id === activeProfileId) || null;
   const selectedModel = getModelById(modelId);
-  const activeRatios = Object.entries(aspectRatios).filter(([, v]) => v).map(([k]) => k);
+  const activeRatios = includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
 
-  const canLaunch = selectedProduct && theme.trim() && activeProfileId && activeRatios.length > 0 && status !== "running";
+  const canLaunch = selectedProduct && theme.trim() && activeProfileId && status !== "running";
 
   // Save session
   const saveSession = useCallback(() => {
@@ -413,8 +429,8 @@ export default function AdStudioPage() {
       theme,
       modelId,
       quantity,
-      aspectRatios,
-      knowledgeBaseId,
+      aspectRatios: includeBothRatios ? { "1:1": true, "9:16": true } : { [singleRatio]: true },
+      includeBothRatios,
       selectedProductId: selectedProduct?.id || null,
       modelOptions,
       lastCampaign:
@@ -428,7 +444,7 @@ export default function AdStudioPage() {
           : null,
     };
     debouncedSaveAdSession(session);
-  }, [theme, modelId, quantity, aspectRatios, knowledgeBaseId, selectedProduct, modelOptions, status, concepts, images, logEntries]);
+  }, [theme, modelId, quantity, includeBothRatios, singleRatio, selectedProduct, modelOptions, status, concepts, images, logEntries]);
 
   useEffect(() => {
     if (sessionRestored) saveSession();
@@ -448,7 +464,6 @@ export default function AdStudioPage() {
     if (!clientId) return;
     void loadProfiles();
     void loadProducts();
-    void loadKnowledgeBases();
   }, [clientId]);
 
   useEffect(() => {
@@ -482,8 +497,14 @@ export default function AdStudioPage() {
       setTheme(session.theme || "");
       setModelId(session.modelId || "nanobanana-3-pro");
       setQuantity(session.quantity || 3);
-      setAspectRatios(session.aspectRatios || { "1:1": true, "9:16": true });
-      setKnowledgeBaseId(session.knowledgeBaseId);
+      setIncludeBothRatios(session.includeBothRatios ?? true);
+      // Restore single ratio from aspectRatios if not both
+      if (session.includeBothRatios === false && session.aspectRatios) {
+        const keys = Object.keys(session.aspectRatios).filter((k) => session.aspectRatios[k]);
+        if (keys.length === 1 && (keys[0] === "1:1" || keys[0] === "9:16")) {
+          setSingleRatio(keys[0] as "1:1" | "9:16");
+        }
+      }
       setModelOptions(session.modelOptions || {});
       if (session.lastCampaign) {
         setConcepts(session.lastCampaign.concepts || []);
@@ -498,7 +519,6 @@ export default function AdStudioPage() {
         );
         setStatus(session.lastCampaign.status || "idle");
       }
-      // Restore product selection after products are loaded
       if (session.selectedProductId) {
         const tryRestore = () => {
           setProducts((prev) => {
@@ -545,14 +565,6 @@ export default function AdStudioPage() {
     }
   }
 
-  async function loadKnowledgeBases() {
-    try {
-      const res = await fetch("/api/knowledge");
-      const json = await res.json();
-      if (res.ok) setKnowledgeBases(json.items || []);
-    } catch {}
-  }
-
   // Launch campaign
   async function launchCampaign() {
     if (!canLaunch) return;
@@ -575,7 +587,6 @@ export default function AdStudioPage() {
           theme,
           productId: selectedProduct!.id,
           aspectRatios: activeRatios,
-          knowledgeBaseId: knowledgeBaseId || undefined,
           profileId: activeProfileId,
           modelOptions: Object.keys(modelOptions).length > 0 ? modelOptions : undefined,
         }),
@@ -640,7 +651,6 @@ export default function AdStudioPage() {
         }
       }
 
-      // If we reach end of stream without complete event
       setStatus((prev) => (prev === "running" ? "done" : prev));
     } catch (err: any) {
       if (err.name === "AbortError") {
@@ -664,28 +674,46 @@ export default function AdStudioPage() {
     }
   }
 
-  // Available aspect ratio options
-  const availableRatios = ["1:1", "9:16", "16:9", "4:3", "3:4", "2:3", "3:2"];
+  const totalImages = quantity * activeRatios.length;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
-      {/* ============ LEFT PANEL — INPUTS ============ */}
-      <div className="w-[380px] shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-y-auto">
+      {/* ============ LEFT PANEL — INPUTS (420px) ============ */}
+      <div className="w-[420px] shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-y-auto">
         <div className="p-5 space-y-5">
           {/* Header */}
           <div>
             <h1 className="text-lg font-bold text-slate-900 dark:text-white">Ad Studio</h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              AI-powered ad creative generation
+              AI-powered creative campaigns with Claude
             </p>
           </div>
 
-          {/* Product */}
+          {/* Creative Theme (HERO) */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              Creative Theme
+            </label>
+            <div className="relative">
+              <textarea
+                value={theme}
+                onChange={(e) => setTheme(e.target.value)}
+                placeholder="Describe your creative vision... e.g., 'Minimalist Scandinavian winter — muted earth tones, soft morning light through frosted glass, raw linen textures, quiet luxury'"
+                className="w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400 resize-none transition-all"
+                rows={5}
+              />
+              <div className="absolute bottom-2 right-3 text-[10px] text-slate-400">
+                {theme.length}
+              </div>
+            </div>
+          </div>
+
+          {/* Product Selector */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Product</label>
             {selectedProduct ? (
-              <div className="flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
-                <div className="w-12 h-12 rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0">
+              <div className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50">
+                <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-200 dark:bg-slate-700 shrink-0">
                   {selectedProduct.image_url && (
                     <img src={selectedProduct.image_url} alt={selectedProduct.name} className="w-full h-full object-cover" />
                   )}
@@ -698,7 +726,7 @@ export default function AdStudioPage() {
                 </div>
                 <button
                   onClick={() => setShowProductModal(true)}
-                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium"
+                  className="text-xs text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-medium shrink-0"
                 >
                   Change
                 </button>
@@ -707,7 +735,7 @@ export default function AdStudioPage() {
               <button
                 onClick={() => setShowProductModal(true)}
                 disabled={productsLoading}
-                className="w-full flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition text-sm"
+                className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-indigo-400 hover:text-indigo-500 transition text-sm"
               >
                 {productsLoading ? (
                   <>
@@ -729,149 +757,125 @@ export default function AdStudioPage() {
             )}
           </div>
 
-          {/* Theme */}
+          {/* Concepts — Prominent number stepper */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Creative Theme
-            </label>
-            <textarea
-              value={theme}
-              onChange={(e) => setTheme(e.target.value)}
-              placeholder="e.g., Summer vibes, tropical, energetic youth..."
-              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 placeholder:text-slate-400 resize-none"
-              rows={3}
-            />
-          </div>
-
-          {/* Model */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Model</label>
-            <select
-              value={modelId}
-              onChange={(e) => {
-                setModelId(e.target.value);
-                setModelOptions({});
-              }}
-              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            >
-              {MODEL_LIST.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.label} ({m.version})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Model-specific options */}
-          {selectedModel?.qualityOptions && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Quality</label>
-              <select
-                value={modelOptions.quality || selectedModel.qualityOptions[0]}
-                onChange={(e) => setModelOptions((prev) => ({ ...prev, quality: e.target.value }))}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Concepts</label>
+            <div className="flex items-center justify-center gap-4">
+              <button
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={quantity <= 1}
+                className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition text-lg font-medium"
               >
-                {selectedModel.qualityOptions.map((q) => (
-                  <option key={q} value={q}>{q}</option>
+                -
+              </button>
+              <span className="text-2xl font-bold text-slate-900 dark:text-white w-10 text-center tabular-nums">
+                {quantity}
+              </span>
+              <button
+                onClick={() => setQuantity((q) => Math.min(10, q + 1))}
+                disabled={quantity >= 10}
+                className="w-10 h-10 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed transition text-lg font-medium"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          {/* Generation Settings — Compact group */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Generation Settings</label>
+            <div className="space-y-2">
+              {/* Model */}
+              <select
+                value={modelId}
+                onChange={(e) => {
+                  setModelId(e.target.value);
+                  setModelOptions({});
+                }}
+                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              >
+                {MODEL_LIST.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.label} ({m.version})
+                  </option>
                 ))}
               </select>
-            </div>
-          )}
 
-          {selectedModel?.resolutionOptions && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Resolution</label>
-              <select
-                value={modelOptions.resolution || selectedModel.resolutionOptions[0]}
-                onChange={(e) => setModelOptions((prev) => ({ ...prev, resolution: e.target.value }))}
-                className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              >
-                {selectedModel.resolutionOptions.map((r) => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Quantity */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Concepts: {quantity}
-            </label>
-            <input
-              type="range"
-              min={1}
-              max={10}
-              value={quantity}
-              onChange={(e) => setQuantity(Number(e.target.value))}
-              className="w-full accent-indigo-500"
-            />
-            <div className="flex justify-between text-xs text-slate-400 mt-1">
-              <span>1</span>
-              <span>10</span>
+              {/* Quality + Resolution inline */}
+              <div className="flex gap-2">
+                {selectedModel?.qualityOptions && (
+                  <select
+                    value={modelOptions.quality || selectedModel.qualityOptions[0]}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, quality: e.target.value }))}
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {selectedModel.qualityOptions.map((q) => (
+                      <option key={q} value={q}>Quality: {q}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedModel?.resolutionOptions && (
+                  <select
+                    value={modelOptions.resolution || selectedModel.resolutionOptions[0]}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, resolution: e.target.value }))}
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {selectedModel.resolutionOptions.map((r) => (
+                      <option key={r} value={r}>Res: {r}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Aspect Ratios */}
+          {/* Formats — Toggle switch + pill selector */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Formats</label>
-            <div className="flex flex-wrap gap-2">
-              {availableRatios.map((ratio) => (
+            <div className="space-y-3">
+              {/* Toggle: Include both */}
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-sm text-slate-700 dark:text-slate-300">Include both 1:1 and 9:16</span>
                 <button
-                  key={ratio}
-                  onClick={() =>
-                    setAspectRatios((prev) => {
-                      const next = { ...prev, [ratio]: !prev[ratio] };
-                      // Ensure at least one is selected
-                      if (!Object.values(next).some(Boolean)) return prev;
-                      return next;
-                    })
-                  }
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${
-                    aspectRatios[ratio]
-                      ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300"
-                      : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
+                  type="button"
+                  role="switch"
+                  aria-checked={includeBothRatios}
+                  onClick={() => setIncludeBothRatios((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    includeBothRatios ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
                   }`}
                 >
-                  {ratio}
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      includeBothRatios ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
                 </button>
-              ))}
+              </label>
+
+              {/* Single ratio pill selector (only when toggle is off) */}
+              {!includeBothRatios && (
+                <div className="flex gap-2">
+                  {(["1:1", "9:16"] as const).map((ratio) => (
+                    <button
+                      key={ratio}
+                      onClick={() => setSingleRatio(ratio)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+                        singleRatio === ratio
+                          ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300"
+                          : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
+                      }`}
+                    >
+                      {ratio}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-
-          {/* Knowledge Base */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Knowledge Base <span className="font-normal text-slate-400">(optional)</span>
-            </label>
-            <select
-              value={knowledgeBaseId || ""}
-              onChange={(e) => setKnowledgeBaseId(e.target.value || null)}
-              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            >
-              <option value="">None</option>
-              {knowledgeBases.map((kb) => (
-                <option key={kb.id} value={kb.id}>{kb.name}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Profile */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Profile</label>
-            <select
-              value={activeProfileId || ""}
-              onChange={(e) => setActiveProfileId(e.target.value)}
-              className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            >
-              {profiles.map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
           </div>
 
           {/* Launch / Cancel Button */}
-          <div className="pt-2">
+          <div className="pt-1">
             {status === "running" ? (
               <button
                 onClick={cancelCampaign}
@@ -886,7 +890,7 @@ export default function AdStudioPage() {
               <button
                 onClick={launchCampaign}
                 disabled={!canLaunch}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 dark:disabled:bg-slate-700 text-white disabled:text-slate-500 dark:disabled:text-slate-400 font-semibold text-sm transition shadow-sm disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 dark:disabled:from-slate-700 dark:disabled:to-slate-700 text-white disabled:text-slate-500 dark:disabled:text-slate-400 font-semibold text-sm transition shadow-sm disabled:cursor-not-allowed"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                   <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
@@ -896,10 +900,10 @@ export default function AdStudioPage() {
             )}
           </div>
 
-          {/* Summary */}
+          {/* Image count summary */}
           {canLaunch && (
             <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
-              {quantity} concept{quantity > 1 ? "s" : ""} &times; {activeRatios.length} format{activeRatios.length > 1 ? "s" : ""} = {quantity * activeRatios.length} images
+              {quantity} concept{quantity > 1 ? "s" : ""} &times; {activeRatios.length} format{activeRatios.length > 1 ? "s" : ""} = {totalImages} image{totalImages > 1 ? "s" : ""}
             </div>
           )}
         </div>
@@ -907,8 +911,8 @@ export default function AdStudioPage() {
 
       {/* ============ RIGHT PANEL — OUTPUT ============ */}
       <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
-        {/* Agent Log */}
-        <div className="h-64 shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
+        {/* Agent Activity — Enhanced log */}
+        <div className="min-h-[280px] shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
           <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800">
             <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
               Agent Activity
@@ -935,7 +939,7 @@ export default function AdStudioPage() {
           </div>
         </div>
 
-        {/* Results */}
+        {/* Results Grid */}
         <div className="flex-1 overflow-y-auto p-6">
           {concepts.length === 0 && status === "idle" && (
             <div className="flex flex-col items-center justify-center h-full text-center">
@@ -946,7 +950,7 @@ export default function AdStudioPage() {
               </div>
               <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Ready to create</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
-                Select a product, enter a creative theme, and launch your campaign. The AI agent will analyze your product, ideate concepts, and generate images automatically.
+                Enter a creative theme, select a product, and launch your campaign. Claude will analyze your product, ideate concepts, and generate images automatically.
               </p>
             </div>
           )}

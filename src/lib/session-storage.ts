@@ -268,7 +268,7 @@ export type AdStudioSession = {
   modelId: string;
   quantity: number;
   aspectRatios: Record<string, boolean>;
-  knowledgeBaseId: string | null;
+  includeBothRatios: boolean;
   selectedProductId: string | null;
   modelOptions: Record<string, string>;
   lastCampaign: {
