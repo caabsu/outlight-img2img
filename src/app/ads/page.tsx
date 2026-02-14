@@ -153,7 +153,6 @@ function AgentLog({
     complete: "bg-emerald-500",
   };
 
-  // Extract brief-level thoughts for rich display
   const briefLabels: Record<string, string> = {
     "Theme interpretation:": "Theme",
     "Mood board:": "Mood Board",
@@ -195,7 +194,6 @@ function AgentLog({
           );
         }
 
-        // Thought — check if it's a labeled brief thought
         const matchedLabel = Object.keys(briefLabels).find((prefix) => entry.message.startsWith(prefix));
         if (matchedLabel) {
           const label = briefLabels[matchedLabel];
@@ -217,7 +215,6 @@ function AgentLog({
         );
       })}
 
-      {/* Progress bar during generation */}
       {status === "running" && progress.total > 0 && (
         <div className="pl-4 pt-2">
           <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
@@ -232,7 +229,6 @@ function AgentLog({
         </div>
       )}
 
-      {/* Running spinner */}
       {status === "running" && (
         <div className="pl-4 pt-1 flex items-center gap-2 text-xs text-slate-400">
           <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -248,21 +244,40 @@ function AgentLog({
 
 /* ========================= RESULTS GRID ========================= */
 
+function buildImageFilename(
+  productName: string,
+  conceptIndex: number,
+  ratio: string,
+  dateStr: string
+): string {
+  const safeName = productName.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase();
+  const ratioStr = ratio.replace(":", "x");
+  return `${safeName}_${dateStr}_concept-${conceptIndex + 1}_${ratioStr}.png`;
+}
+
 function ResultsGrid({
   concepts,
   images,
   aspectRatios,
+  selectedImages,
+  onToggleSelect,
   onImageClick,
+  productName,
 }: {
   concepts: AdConcept[];
   images: AdImage[];
   aspectRatios: string[];
+  selectedImages: Set<string>;
+  onToggleSelect: (key: string) => void;
   onImageClick: (img: AdImage) => void;
+  productName: string;
 }) {
   if (concepts.length === 0) return null;
 
+  const dateStr = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {concepts.map((concept, ci) => {
         const conceptImages = images.filter((img) => img.conceptIndex === ci);
 
@@ -271,32 +286,55 @@ function ResultsGrid({
             key={ci}
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 overflow-hidden"
           >
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700/50">
-              <h4 className="font-semibold text-slate-900 dark:text-white text-sm">{concept.name}</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{concept.description}</p>
+            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
+              <div>
+                <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
+                  Concept {ci + 1}: {concept.name}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{concept.description}</p>
+              </div>
             </div>
             <div className="p-4">
-              <div className="flex gap-4 flex-wrap">
+              <div className="flex gap-4 items-start">
                 {aspectRatios.map((ratio) => {
                   const img = conceptImages.find((im) => im.ratio === ratio);
                   const isVertical = ratio === "9:16";
                   const aspectClass = isVertical ? "aspect-[9/16]" : "aspect-square";
+                  const imgKey = `${ci}-${ratio}`;
+                  const isSelected = selectedImages.has(imgKey);
 
                   return (
                     <div key={ratio} className="flex flex-col items-center gap-2">
-                      <div
-                        className={`${aspectClass} ${isVertical ? "w-36" : "w-48"} rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition`}
-                        onClick={() => img && onImageClick(img)}
-                      >
-                        {img ? (
-                          <img src={img.url} alt={`${concept.name} ${ratio}`} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <svg className="animate-spin h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      <div className="relative group">
+                        <div
+                          className={`${aspectClass} ${isVertical ? "w-36" : "w-48"} rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition ${isSelected ? "ring-2 ring-indigo-500" : ""}`}
+                          onClick={() => img && onImageClick(img)}
+                        >
+                          {img ? (
+                            <img src={img.url} alt={`${concept.name} ${ratio}`} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">
+                              <svg className="animate-spin h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                            </div>
+                          )}
+                        </div>
+                        {/* Checkbox overlay */}
+                        {img && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onToggleSelect(imgKey); }}
+                            className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition ${
+                              isSelected
+                                ? "bg-indigo-600 border-indigo-600 text-white"
+                                : "bg-white/80 dark:bg-slate-800/80 border-slate-300 dark:border-slate-500 text-transparent hover:border-indigo-400"
+                            }`}
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                              <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
                             </svg>
-                          </div>
+                          </button>
                         )}
                       </div>
                       <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{ratio}</span>
@@ -317,20 +355,26 @@ function ResultsGrid({
 function ImageModal({
   image,
   conceptName,
+  productName,
+  conceptIndex,
   onClose,
 }: {
   image: AdImage;
   conceptName: string;
+  productName: string;
+  conceptIndex: number;
   onClose: () => void;
 }) {
   const handleDownload = async () => {
+    const dateStr = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+    const filename = buildImageFilename(productName, conceptIndex, image.ratio, dateStr);
     try {
       const response = await fetch(image.url);
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${conceptName.replace(/\s+/g, "-").toLowerCase()}-${image.ratio.replace(":", "x")}.png`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -399,6 +443,7 @@ export default function AdStudioPage() {
   const [theme, setTheme] = useState("");
   const [modelId, setModelId] = useState("nanobanana-3-pro");
   const [quantity, setQuantity] = useState(3);
+  const [speed, setSpeed] = useState(3);
   const [includeBothRatios, setIncludeBothRatios] = useState(true);
   const [singleRatio, setSingleRatio] = useState<"1:1" | "9:16">("1:1");
   const [modelOptions, setModelOptions] = useState<Record<string, string>>({});
@@ -415,11 +460,117 @@ export default function AdStudioPage() {
   const [expandedImage, setExpandedImage] = useState<AdImage | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
+  const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [downloading, setDownloading] = useState(false);
 
   const selectedModel = getModelById(modelId);
+  const maxSpeed = selectedModel?.maxConcurrency || 5;
   const activeRatios = includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
 
   const canLaunch = selectedProduct && theme.trim() && activeProfileId && status !== "running";
+
+  // Auto-switch to results tab when first image arrives
+  useEffect(() => {
+    if (images.length > 0 && rightTab === "activity") {
+      setRightTab("results");
+    }
+  }, [images.length]);
+
+  // Toggle image selection
+  const toggleSelect = useCallback((key: string) => {
+    setSelectedImages((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  // Select all / deselect all
+  const allImageKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const img of images) {
+      keys.push(`${img.conceptIndex}-${img.ratio}`);
+    }
+    return keys;
+  }, [images]);
+
+  const allSelected = allImageKeys.length > 0 && allImageKeys.every((k) => selectedImages.has(k));
+
+  const toggleSelectAll = useCallback(() => {
+    if (allSelected) {
+      setSelectedImages(new Set());
+    } else {
+      setSelectedImages(new Set(allImageKeys));
+    }
+  }, [allSelected, allImageKeys]);
+
+  // Download selected images
+  async function downloadSelected() {
+    if (selectedImages.size === 0 || !selectedProduct) return;
+    setDownloading(true);
+    const dateStr = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
+
+    try {
+      if (selectedImages.size === 1) {
+        // Single file — direct download
+        const key = Array.from(selectedImages)[0];
+        const [ciStr, ratio] = key.split("-");
+        const ci = parseInt(ciStr);
+        const img = images.find((im) => im.conceptIndex === ci && im.ratio === (ratio === "9" ? "9:16" : "1:1"));
+        if (!img) return;
+        const filename = buildImageFilename(selectedProduct.name, ci, img.ratio, dateStr);
+        const response = await fetch(img.url);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        // Multiple files — use JSZip
+        const JSZip = (await import("jszip")).default;
+        const zip = new JSZip();
+
+        for (const key of selectedImages) {
+          const parts = key.split("-");
+          const ci = parseInt(parts[0]);
+          const ratioKey = parts.slice(1).join("-");
+          // Map back: "1:1" or "9:16"
+          const ratio = ratioKey === "9:16" ? "9:16" : ratioKey === "1:1" ? "1:1" : ratioKey;
+          const img = images.find((im) => im.conceptIndex === ci && im.ratio === ratio);
+          if (!img) continue;
+          const filename = buildImageFilename(selectedProduct.name, ci, img.ratio, dateStr);
+          try {
+            const response = await fetch(img.url);
+            const blob = await response.blob();
+            zip.file(filename, blob);
+          } catch {
+            // Skip failed downloads
+          }
+        }
+
+        const zipBlob = await zip.generateAsync({ type: "blob" });
+        const safeName = selectedProduct.name.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${safeName}_${dateStr}_ads.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   // Save session
   const saveSession = useCallback(() => {
@@ -429,6 +580,7 @@ export default function AdStudioPage() {
       theme,
       modelId,
       quantity,
+      speed,
       aspectRatios: includeBothRatios ? { "1:1": true, "9:16": true } : { [singleRatio]: true },
       includeBothRatios,
       selectedProductId: selectedProduct?.id || null,
@@ -444,7 +596,7 @@ export default function AdStudioPage() {
           : null,
     };
     debouncedSaveAdSession(session);
-  }, [theme, modelId, quantity, includeBothRatios, singleRatio, selectedProduct, modelOptions, status, concepts, images, logEntries]);
+  }, [theme, modelId, quantity, speed, includeBothRatios, singleRatio, selectedProduct, modelOptions, status, concepts, images, logEntries]);
 
   useEffect(() => {
     if (sessionRestored) saveSession();
@@ -497,8 +649,8 @@ export default function AdStudioPage() {
       setTheme(session.theme || "");
       setModelId(session.modelId || "nanobanana-3-pro");
       setQuantity(session.quantity || 3);
+      setSpeed(session.speed || 3);
       setIncludeBothRatios(session.includeBothRatios ?? true);
-      // Restore single ratio from aspectRatios if not both
       if (session.includeBothRatios === false && session.aspectRatios) {
         const keys = Object.keys(session.aspectRatios).filter((k) => session.aspectRatios[k]);
         if (keys.length === 1 && (keys[0] === "1:1" || keys[0] === "9:16")) {
@@ -518,6 +670,10 @@ export default function AdStudioPage() {
           }))
         );
         setStatus(session.lastCampaign.status || "idle");
+        // If there are results from a previous campaign, show results tab
+        if (session.lastCampaign.images?.length) {
+          setRightTab("results");
+        }
       }
       if (session.selectedProductId) {
         const tryRestore = () => {
@@ -576,6 +732,8 @@ export default function AdStudioPage() {
     setConcepts([]);
     setImages([]);
     setProgress({ done: 0, total: 0 });
+    setSelectedImages(new Set());
+    setRightTab("activity");
 
     try {
       const res = await fetch("/api/ads/generate", {
@@ -588,6 +746,7 @@ export default function AdStudioPage() {
           productId: selectedProduct!.id,
           aspectRatios: activeRatios,
           profileId: activeProfileId,
+          concurrency: speed,
           modelOptions: Object.keys(modelOptions).length > 0 ? modelOptions : undefined,
         }),
         signal: ctrl.signal,
@@ -791,6 +950,10 @@ export default function AdStudioPage() {
                 onChange={(e) => {
                   setModelId(e.target.value);
                   setModelOptions({});
+                  // Adjust speed if new model has lower max
+                  const newModel = getModelById(e.target.value);
+                  const newMax = newModel?.maxConcurrency || 5;
+                  setSpeed((s) => Math.min(s, newMax));
                 }}
                 className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               >
@@ -826,6 +989,20 @@ export default function AdStudioPage() {
                   </select>
                 )}
               </div>
+
+              {/* Speed / Concurrency */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">Speed</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={maxSpeed}
+                  value={speed}
+                  onChange={(e) => setSpeed(Number(e.target.value))}
+                  className="flex-1 accent-indigo-500 h-1.5"
+                />
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 w-8 text-right tabular-nums">{speed}x</span>
+              </div>
             </div>
           </div>
 
@@ -833,7 +1010,6 @@ export default function AdStudioPage() {
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Formats</label>
             <div className="space-y-3">
-              {/* Toggle: Include both */}
               <label className="flex items-center justify-between cursor-pointer">
                 <span className="text-sm text-slate-700 dark:text-slate-300">Include both 1:1 and 9:16</span>
                 <button
@@ -853,7 +1029,6 @@ export default function AdStudioPage() {
                 </button>
               </label>
 
-              {/* Single ratio pill selector (only when toggle is off) */}
               {!includeBothRatios && (
                 <div className="flex gap-2">
                   {(["1:1", "9:16"] as const).map((ratio) => (
@@ -903,7 +1078,7 @@ export default function AdStudioPage() {
           {/* Image count summary */}
           {canLaunch && (
             <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
-              {quantity} concept{quantity > 1 ? "s" : ""} &times; {activeRatios.length} format{activeRatios.length > 1 ? "s" : ""} = {totalImages} image{totalImages > 1 ? "s" : ""}
+              {quantity} concept{quantity > 1 ? "s" : ""} &times; {activeRatios.length} format{activeRatios.length > 1 ? "s" : ""} = {totalImages} image{totalImages > 1 ? "s" : ""} @ {speed}x speed
             </div>
           )}
         </div>
@@ -911,66 +1086,154 @@ export default function AdStudioPage() {
 
       {/* ============ RIGHT PANEL — OUTPUT ============ */}
       <div className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
-        {/* Agent Activity — Enhanced log */}
-        <div className="min-h-[280px] shrink-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
-          <div className="flex items-center justify-between px-4 py-2 border-b border-slate-100 dark:border-slate-800">
-            <h3 className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-              Agent Activity
-            </h3>
-            {status !== "idle" && (
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-block w-2 h-2 rounded-full ${
-                    status === "running"
-                      ? "bg-amber-500 animate-pulse"
-                      : status === "done"
-                        ? "bg-emerald-500"
-                        : status === "error"
-                          ? "bg-red-500"
-                          : "bg-slate-400"
-                  }`}
-                />
-                <span className="text-xs text-slate-500 dark:text-slate-400 capitalize">{status}</span>
-              </div>
+        {/* Tab bar */}
+        <div className="flex items-center gap-0 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
+          <button
+            onClick={() => setRightTab("activity")}
+            className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition ${
+              rightTab === "activity"
+                ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Activity
+            {status === "running" && (
+              <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
             )}
-          </div>
-          <div className="h-[calc(100%-2.5rem)]">
-            <AgentLog entries={logEntries} progress={progress} status={status} />
-          </div>
+          </button>
+          <button
+            onClick={() => setRightTab("results")}
+            className={`px-5 py-2.5 text-xs font-semibold uppercase tracking-wider border-b-2 transition ${
+              rightTab === "results"
+                ? "border-indigo-500 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Results
+            {images.length > 0 && (
+              <span className="ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold px-1">
+                {images.length}
+              </span>
+            )}
+          </button>
+
+          {/* Status indicator */}
+          {status !== "idle" && (
+            <div className="flex items-center gap-2 ml-auto pr-4">
+              <span
+                className={`inline-block w-2 h-2 rounded-full ${
+                  status === "running"
+                    ? "bg-amber-500 animate-pulse"
+                    : status === "done"
+                      ? "bg-emerald-500"
+                      : status === "error"
+                        ? "bg-red-500"
+                        : "bg-slate-400"
+                }`}
+              />
+              <span className="text-xs text-slate-500 dark:text-slate-400 capitalize">{status}</span>
+            </div>
+          )}
         </div>
 
-        {/* Results Grid */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {concepts.length === 0 && status === "idle" && (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-slate-400">
-                  <path fillRule="evenodd" d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.75a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.913-.143z" clipRule="evenodd" />
-                </svg>
+        {/* Tab content */}
+        <div className="flex-1 overflow-hidden">
+          {/* Activity tab */}
+          {rightTab === "activity" && (
+            <div className="h-full">
+              <AgentLog entries={logEntries} progress={progress} status={status} />
+            </div>
+          )}
+
+          {/* Results tab */}
+          {rightTab === "results" && (
+            <div className="h-full flex flex-col overflow-hidden">
+              {/* Selection toolbar */}
+              {images.length > 0 && (
+                <div className="flex items-center gap-3 px-6 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+                  >
+                    <span className={`w-4 h-4 rounded border-2 flex items-center justify-center transition ${
+                      allSelected
+                        ? "bg-indigo-600 border-indigo-600 text-white"
+                        : "border-slate-300 dark:border-slate-600"
+                    }`}>
+                      {allSelected && (
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                          <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </span>
+                    {allSelected ? "Deselect all" : "Select all"}
+                  </button>
+
+                  {selectedImages.size > 0 && (
+                    <>
+                      <span className="text-xs text-slate-400">|</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400">{selectedImages.size} selected</span>
+                      <button
+                        onClick={downloadSelected}
+                        disabled={downloading}
+                        className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-medium transition"
+                      >
+                        {downloading ? (
+                          <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                          </svg>
+                        ) : (
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                            <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
+                            <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
+                          </svg>
+                        )}
+                        Download selected{selectedImages.size > 1 ? ` (${selectedImages.size})` : ""}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Results grid */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {concepts.length === 0 && status === "idle" && (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-slate-400">
+                        <path fillRule="evenodd" d="M14.615 1.595a.75.75 0 01.359.852L12.982 9.75h7.268a.75.75 0 01.548 1.262l-10.5 11.25a.75.75 0 01-1.272-.71l1.992-7.302H3.75a.75.75 0 01-.548-1.262l10.5-11.25a.75.75 0 01.913-.143z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Ready to create</h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
+                      Enter a creative theme, select a product, and launch your campaign. Claude will analyze your product, ideate concepts, and generate images automatically.
+                    </p>
+                  </div>
+                )}
+
+                {concepts.length === 0 && status === "running" && (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <svg className="animate-spin h-8 w-8 text-indigo-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Planning your campaign...</p>
+                  </div>
+                )}
+
+                <ResultsGrid
+                  concepts={concepts}
+                  images={images}
+                  aspectRatios={activeRatios}
+                  selectedImages={selectedImages}
+                  onToggleSelect={toggleSelect}
+                  onImageClick={setExpandedImage}
+                  productName={selectedProduct?.name || "ad"}
+                />
               </div>
-              <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Ready to create</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
-                Enter a creative theme, select a product, and launch your campaign. Claude will analyze your product, ideate concepts, and generate images automatically.
-              </p>
             </div>
           )}
-
-          {concepts.length === 0 && status === "running" && (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <svg className="animate-spin h-8 w-8 text-indigo-500 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Planning your campaign...</p>
-            </div>
-          )}
-
-          <ResultsGrid
-            concepts={concepts}
-            images={images}
-            aspectRatios={activeRatios}
-            onImageClick={setExpandedImage}
-          />
         </div>
       </div>
 
@@ -990,6 +1253,8 @@ export default function AdStudioPage() {
         <ImageModal
           image={expandedImage}
           conceptName={concepts[expandedImage.conceptIndex]?.name || "Image"}
+          productName={selectedProduct?.name || "ad"}
+          conceptIndex={expandedImage.conceptIndex}
           onClose={() => setExpandedImage(null)}
         />
       )}

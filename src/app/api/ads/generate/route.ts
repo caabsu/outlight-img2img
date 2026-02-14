@@ -18,6 +18,7 @@ type AdGenerateRequest = {
   productId: string;
   aspectRatios: string[];
   profileId: string;
+  concurrency?: number;
   modelOptions?: {
     quality?: string;
     resolution?: string;
@@ -236,7 +237,7 @@ async function callGenerateAPI(
 
 export async function POST(req: Request) {
   const body = (await req.json()) as AdGenerateRequest;
-  const { modelId, quantity, theme, productId, aspectRatios, profileId, modelOptions } = body;
+  const { modelId, quantity, theme, productId, aspectRatios, profileId, concurrency, modelOptions } = body;
 
   if (!modelId || !theme || !productId || !profileId) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -332,7 +333,8 @@ export async function POST(req: Request) {
           }
         }
 
-        const maxConcurrency = getModelById(modelId)?.maxConcurrency || 3;
+        const modelMax = getModelById(modelId)?.maxConcurrency || 3;
+        const maxConcurrency = concurrency ? Math.min(Math.max(1, concurrency), modelMax) : modelMax;
         let cursor = 0;
         let done = 0;
         let successCount = 0;

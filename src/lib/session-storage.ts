@@ -267,6 +267,7 @@ export type AdStudioSession = {
   theme: string;
   modelId: string;
   quantity: number;
+  speed: number;
   aspectRatios: Record<string, boolean>;
   includeBothRatios: boolean;
   selectedProductId: string | null;
