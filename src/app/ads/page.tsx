@@ -8,7 +8,7 @@ import {
   debouncedSaveAdSession,
   type AdStudioSession,
 } from "@/lib/session-storage";
-import type { AdConcept, AdImage, LogEntry } from "@/lib/ad-types";
+import type { AdConcept, AdImage, LogEntry, AdFeedbackSubmission } from "@/lib/ad-types";
 
 /* ========================= TYPES ========================= */
 
@@ -242,6 +242,122 @@ function AgentLog({
   );
 }
 
+/* ========================= FEEDBACK SECTION ========================= */
+
+function FeedbackSection({
+  conceptIndex,
+  conceptName,
+  conceptDescription,
+  productId,
+  profileId,
+  theme,
+  modelId,
+  aspectRatios,
+  submittedRating,
+  onSubmit,
+}: {
+  conceptIndex: number;
+  conceptName: string;
+  conceptDescription?: string;
+  productId: string;
+  profileId: string;
+  theme: string;
+  modelId: string;
+  aspectRatios: string[];
+  submittedRating: number | null;
+  onSubmit: (conceptIndex: number, rating: number) => void;
+}) {
+  const [rating, setRating] = useState<number | null>(null);
+  const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  if (submittedRating !== null) {
+    return (
+      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+          submittedRating >= 7 ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" :
+          submittedRating >= 4 ? "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300" :
+          "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
+        }`}>
+          {submittedRating}/10
+        </span>
+        <span className="text-xs text-slate-400">Feedback submitted</span>
+      </div>
+    );
+  }
+
+  async function handleSubmit() {
+    if (rating === null) return;
+    setSubmitting(true);
+    try {
+      const body: AdFeedbackSubmission = {
+        productId,
+        profileId,
+        conceptName,
+        conceptDescription,
+        rating,
+        reason: reason.trim() || undefined,
+        aspectRatiosGenerated: aspectRatios,
+        theme,
+        modelId,
+      };
+      const res = await fetch("/api/ads/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        onSubmit(conceptIndex, rating);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Rate this concept:</span>
+        <div className="flex gap-1">
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            <button
+              key={n}
+              onClick={() => setRating(n)}
+              className={`w-6 h-6 rounded text-xs font-semibold transition ${
+                rating === n
+                  ? n >= 7 ? "bg-emerald-500 text-white" : n >= 4 ? "bg-amber-500 text-white" : "bg-red-500 text-white"
+                  : "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+      {rating !== null && (
+        <div className="flex gap-2 items-end">
+          <input
+            type="text"
+            placeholder="Why? (optional)"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            className="flex-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs text-slate-900 dark:text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400"
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-medium transition shrink-0"
+          >
+            {submitting ? "..." : "Submit"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ========================= RESULTS GRID ========================= */
 
 function buildImageFilename(
@@ -263,6 +379,13 @@ function ResultsGrid({
   onToggleSelect,
   onImageClick,
   productName,
+  productId,
+  profileId,
+  theme,
+  modelId,
+  feedbackRatings,
+  onFeedbackSubmit,
+  campaignDone,
 }: {
   concepts: AdConcept[];
   images: AdImage[];
@@ -271,10 +394,15 @@ function ResultsGrid({
   onToggleSelect: (key: string) => void;
   onImageClick: (img: AdImage) => void;
   productName: string;
+  productId: string;
+  profileId: string;
+  theme: string;
+  modelId: string;
+  feedbackRatings: Record<number, number>;
+  onFeedbackSubmit: (conceptIndex: number, rating: number) => void;
+  campaignDone: boolean;
 }) {
   if (concepts.length === 0) return null;
-
-  const dateStr = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
 
   return (
     <div className="space-y-4">
@@ -286,13 +414,27 @@ function ResultsGrid({
             key={ci}
             className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 overflow-hidden"
           >
-            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/50 flex items-center justify-between">
-              <div>
+            <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/50">
+              <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
                   Concept {ci + 1}: {concept.name}
                 </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{concept.description}</p>
               </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{concept.description}</p>
+              {(concept.headline || concept.tagline) && (
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {concept.headline && (
+                    <span className="inline-block px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold">
+                      {concept.headline}
+                    </span>
+                  )}
+                  {concept.tagline && (
+                    <span className="inline-block px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs italic">
+                      {concept.tagline}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="p-4">
               <div className="flex gap-4 items-start">
@@ -342,6 +484,20 @@ function ResultsGrid({
                   );
                 })}
               </div>
+              {campaignDone && productId && profileId && (
+                <FeedbackSection
+                  conceptIndex={ci}
+                  conceptName={concept.name}
+                  conceptDescription={concept.description}
+                  productId={productId}
+                  profileId={profileId}
+                  theme={theme}
+                  modelId={modelId}
+                  aspectRatios={aspectRatios}
+                  submittedRating={feedbackRatings[ci] ?? null}
+                  onSubmit={onFeedbackSubmit}
+                />
+              )}
             </div>
           </div>
         );
@@ -463,6 +619,7 @@ export default function AdStudioPage() {
   const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [feedbackRatings, setFeedbackRatings] = useState<Record<number, number>>({});
 
   const selectedModel = getModelById(modelId);
   const maxSpeed = selectedModel?.maxConcurrency || 5;
@@ -733,6 +890,7 @@ export default function AdStudioPage() {
     setImages([]);
     setProgress({ done: 0, total: 0 });
     setSelectedImages(new Set());
+    setFeedbackRatings({});
     setRightTab("activity");
 
     try {
@@ -832,6 +990,10 @@ export default function AdStudioPage() {
       controllerRef.current.abort();
     }
   }
+
+  const handleFeedbackSubmit = useCallback((conceptIndex: number, rating: number) => {
+    setFeedbackRatings((prev) => ({ ...prev, [conceptIndex]: rating }));
+  }, []);
 
   const totalImages = quantity * activeRatios.length;
 
@@ -1230,6 +1392,13 @@ export default function AdStudioPage() {
                   onToggleSelect={toggleSelect}
                   onImageClick={setExpandedImage}
                   productName={selectedProduct?.name || "ad"}
+                  productId={selectedProduct?.id || ""}
+                  profileId={activeProfileId || ""}
+                  theme={theme}
+                  modelId={modelId}
+                  feedbackRatings={feedbackRatings}
+                  onFeedbackSubmit={handleFeedbackSubmit}
+                  campaignDone={status === "done"}
                 />
               </div>
             </div>

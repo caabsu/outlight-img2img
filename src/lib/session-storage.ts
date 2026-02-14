@@ -273,7 +273,7 @@ export type AdStudioSession = {
   selectedProductId: string | null;
   modelOptions: Record<string, string>;
   lastCampaign: {
-    concepts: Array<{ name: string; description: string; prompts: Record<string, string> }>;
+    concepts: Array<{ name: string; description: string; headline?: string; tagline?: string; prompts: Record<string, string> }>;
     images: Array<{ conceptIndex: number; ratio: string; url: string; prompt: string }>;
     logEntries: Array<{ type: string; message: string; timestamp: number; phase?: string }>;
     status: "done" | "error" | "cancelled";
