@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 const NAV_LINKS = [
   { label: "Image Studio", href: "/image" },
   { label: "Video Studio", href: "/video" },
+  { label: "Ad Studio", href: "/ads" },
   { label: "Products", href: "/products" },
   { label: "Knowledge", href: "/knowledge" },
   { label: "Library", href: "/library" },
@@ -22,6 +23,7 @@ export function SiteHeader() {
     if (!pathname) return "/image";
     if (pathname.startsWith("/image")) return "/image";
     if (pathname.startsWith("/video")) return "/video";
+    if (pathname.startsWith("/ads")) return "/ads";
     if (pathname.startsWith("/products")) return "/products";
     if (pathname.startsWith("/knowledge")) return "/knowledge";
     if (pathname.startsWith("/library")) return "/library";

@@ -4,6 +4,7 @@
 const STORAGE_KEYS = {
   IMAGE_STUDIO: "ol_image_studio_session",
   VIDEO_STUDIO: "ol_video_studio_session",
+  AD_STUDIO: "ol_ad_studio_session",
 } as const;
 
 // Debounce helper to avoid excessive writes
@@ -34,6 +35,7 @@ export function saveToStorage<T>(key: string, data: T): void {
         console.warn("Still failing, clearing all session storage...");
         localStorage.removeItem(STORAGE_KEYS.IMAGE_STUDIO);
         localStorage.removeItem(STORAGE_KEYS.VIDEO_STUDIO);
+        localStorage.removeItem(STORAGE_KEYS.AD_STUDIO);
         try {
           localStorage.setItem(key, json);
         } catch {
@@ -254,5 +256,38 @@ export function loadVideoStudioSession(): VideoStudioSession | null {
 
 export const debouncedSaveVideoSession = createDebouncedSave<VideoStudioSession>(
   STORAGE_KEYS.VIDEO_STUDIO,
+  1000
+);
+
+// ============ AD STUDIO ============
+
+export type AdStudioSession = {
+  version: 1;
+  savedAt: number;
+  theme: string;
+  modelId: string;
+  quantity: number;
+  aspectRatios: Record<string, boolean>;
+  knowledgeBaseId: string | null;
+  selectedProductId: string | null;
+  modelOptions: Record<string, string>;
+  lastCampaign: {
+    concepts: Array<{ name: string; description: string; prompts: Record<string, string> }>;
+    images: Array<{ conceptIndex: number; ratio: string; url: string; prompt: string }>;
+    logEntries: Array<{ type: string; message: string; timestamp: number; phase?: string }>;
+    status: "done" | "error" | "cancelled";
+  } | null;
+};
+
+export function saveAdStudioSession(session: AdStudioSession): void {
+  saveToStorage(STORAGE_KEYS.AD_STUDIO, session);
+}
+
+export function loadAdStudioSession(): AdStudioSession | null {
+  return loadFromStorage<AdStudioSession>(STORAGE_KEYS.AD_STUDIO);
+}
+
+export const debouncedSaveAdSession = createDebouncedSave<AdStudioSession>(
+  STORAGE_KEYS.AD_STUDIO,
   1000
 );
