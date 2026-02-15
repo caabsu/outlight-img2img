@@ -61,14 +61,6 @@ export async function POST(req: Request) {
           send({ type: "thought", message: `Campaign theme: "${theme}"` });
         }
 
-        // Check if analysis is worthwhile
-        if (!reason && rating >= 5) {
-          send({ type: "thought", message: "Positive rating without specific feedback — no new learnings to extract" });
-          send({ type: "complete", learningCount: 0 });
-          controller.close();
-          return;
-        }
-
         send({ type: "thought", message: "Running AI analysis to extract learnings..." });
 
         // Phase 2: Claude analysis

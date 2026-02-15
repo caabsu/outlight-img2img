@@ -30,3 +30,25 @@ export async function GET(req: Request) {
 
   return Response.json({ learnings: data });
 }
+
+export async function DELETE(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const id = searchParams.get("id");
+
+  if (!id) {
+    return Response.json({ error: "id required" }, { status: 400 });
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+  const { error } = await supabase
+    .from("ad_studio_learnings")
+    .update({ is_active: false })
+    .eq("id", id);
+
+  if (error) {
+    return Response.json({ error: "Failed to delete learning" }, { status: 500 });
+  }
+
+  return Response.json({ success: true });
+}

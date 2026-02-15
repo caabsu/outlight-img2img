@@ -561,14 +561,14 @@ function FeedbackSection({
         <div className="flex gap-2 items-end">
           <input
             type="text"
-            placeholder="Why? (optional)"
+            placeholder="What worked or didn't? (required)"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             className="flex-1 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-xs text-slate-900 dark:text-white rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder:text-slate-400"
           />
           <button
             onClick={handleSubmit}
-            disabled={submitting}
+            disabled={submitting || !reason.trim()}
             className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-xs font-medium transition shrink-0"
           >
             {submitting ? "..." : "Submit"}
@@ -762,9 +762,9 @@ function ImageModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div className="relative max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/80 p-4 backdrop-blur-sm overflow-y-auto" onClick={onClose}>
+      <div className="relative max-w-4xl w-full my-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3 sticky top-0 z-10">
           <div>
             <span className="text-white font-medium text-sm">{conceptName}</span>
             <span className="text-white/60 text-sm ml-2">({image.ratio})</span>
@@ -788,10 +788,263 @@ function ImageModal({
           </div>
         </div>
         <div className="rounded-xl overflow-hidden bg-slate-900">
-          <img src={image.url} alt={`${conceptName} ${image.ratio}`} className="max-h-[80vh] object-contain mx-auto" />
+          <img src={image.url} alt={`${conceptName} ${image.ratio}`} className="w-full object-contain mx-auto" />
         </div>
         <div className="mt-3 p-3 rounded-lg bg-white/5 border border-white/10 max-h-24 overflow-y-auto">
           <p className="text-xs text-white/60 leading-relaxed">{image.prompt}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ========================= KNOWLEDGE PANEL ========================= */
+
+type KnowledgeLearning = {
+  id: string;
+  product_id: string | null;
+  learning: string;
+  category: string;
+  created_at: string;
+};
+
+type CleanupEntry = {
+  type: "thought" | "error";
+  message: string;
+  timestamp: number;
+};
+
+function KnowledgePanel({
+  productId,
+  onClose,
+}: {
+  productId: string;
+  onClose: () => void;
+}) {
+  const [learnings, setLearnings] = useState<KnowledgeLearning[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [cleanupStatus, setCleanupStatus] = useState<"idle" | "running" | "done" | "error">("idle");
+  const [cleanupEntries, setCleanupEntries] = useState<CleanupEntry[]>([]);
+  const [showCleanupLog, setShowCleanupLog] = useState(false);
+  const cleanupLogRef = useRef<HTMLDivElement>(null);
+
+  const fetchLearnings = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/ads/learnings?productId=${productId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setLearnings(data.learnings || []);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => {
+    fetchLearnings();
+  }, [fetchLearnings]);
+
+  useEffect(() => {
+    if (cleanupLogRef.current) {
+      cleanupLogRef.current.scrollTop = cleanupLogRef.current.scrollHeight;
+    }
+  }, [cleanupEntries]);
+
+  async function deleteLearning(id: string) {
+    setLearnings((prev) => prev.filter((l) => l.id !== id));
+    try {
+      await fetch(`/api/ads/learnings?id=${id}`, { method: "DELETE" });
+    } catch {
+      // Refetch on error
+      fetchLearnings();
+    }
+  }
+
+  async function runCleanup() {
+    setCleanupStatus("running");
+    setCleanupEntries([]);
+    setShowCleanupLog(true);
+
+    try {
+      const res = await fetch("/api/ads/learnings/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ productId }),
+      });
+
+      if (!res.ok) throw new Error("Cleanup request failed");
+
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const event = JSON.parse(line.slice(6));
+            switch (event.type) {
+              case "thought":
+                setCleanupEntries((prev) => [...prev, { type: "thought", message: event.message, timestamp: Date.now() }]);
+                break;
+              case "error":
+                setCleanupEntries((prev) => [...prev, { type: "error", message: event.message, timestamp: Date.now() }]);
+                setCleanupStatus("error");
+                break;
+              case "complete":
+                setCleanupStatus("done");
+                // Refetch learnings to show updated list
+                fetchLearnings();
+                break;
+            }
+          } catch {
+            // Skip
+          }
+        }
+      }
+      setCleanupStatus((prev) => (prev === "running" ? "done" : prev));
+    } catch (err: any) {
+      setCleanupStatus("error");
+      setCleanupEntries((prev) => [...prev, { type: "error", message: err.message || "Cleanup failed", timestamp: Date.now() }]);
+    }
+  }
+
+  const categoryColors: Record<string, string> = {
+    composition: "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300",
+    typography: "bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300",
+    color: "bg-pink-50 dark:bg-pink-900/30 text-pink-700 dark:text-pink-300",
+    mood: "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300",
+    product_placement: "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300",
+    text_overlay: "bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-300",
+    aspect_ratio: "bg-cyan-50 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-300",
+    general: "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-2xl flex flex-col max-h-[85vh] rounded-2xl bg-white dark:bg-slate-900 shadow-2xl ring-1 ring-slate-900/10 dark:ring-slate-50/10 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white">Knowledge Base</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Learnings from feedback that guide future campaigns
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={runCleanup}
+              disabled={cleanupStatus === "running" || learnings.length === 0}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/30 disabled:opacity-40 disabled:cursor-not-allowed text-xs font-medium transition"
+            >
+              {cleanupStatus === "running" ? (
+                <svg className="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H4.598a.75.75 0 00-.75.75v3.634a.75.75 0 001.5 0v-2.033l.312.311a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.06-7.358a.75.75 0 00-1.5 0v2.033l-.312-.312A7 7 0 002.848 8.926a.75.75 0 001.45.388 5.5 5.5 0 019.201-2.467l.312.311H11.38a.75.75 0 100 1.5h3.634a.75.75 0 00.75-.75V4.275z" clipRule="evenodd" />
+                </svg>
+              )}
+              Clean Up
+            </button>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                <path fillRule="evenodd" d="M5.47 5.47a.75.75 0 011.06 0L12 10.94l5.47-5.47a.75.75 0 111.06 1.06L13.06 12l5.47 5.47a.75.75 0 11-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 01-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 010-1.06z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Cleanup log */}
+        {showCleanupLog && cleanupEntries.length > 0 && (
+          <div className="border-b border-slate-100 dark:border-slate-800 shrink-0">
+            <button
+              onClick={() => setShowCleanupLog((v) => !v)}
+              className="w-full flex items-center justify-between px-6 py-2 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-50/50 dark:bg-violet-900/10 hover:bg-violet-50 dark:hover:bg-violet-900/20 transition"
+            >
+              <span className="flex items-center gap-1.5">
+                {cleanupStatus === "running" && (
+                  <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                )}
+                Cleanup Log
+              </span>
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+              </svg>
+            </button>
+            <div ref={cleanupLogRef} className="max-h-32 overflow-y-auto px-6 py-2 space-y-1">
+              {cleanupEntries.map((e, i) => (
+                <div key={i} className={`text-xs font-mono ${e.type === "error" ? "text-red-600 dark:text-red-400" : "text-slate-600 dark:text-slate-300"}`}>
+                  {e.message}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Learnings list */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex items-center justify-center h-40 text-sm text-slate-400">
+              <svg className="animate-spin h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Loading...
+            </div>
+          ) : learnings.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <p className="text-sm text-slate-500 dark:text-slate-400">No learnings yet</p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">Rate concepts after campaigns to build your knowledge base</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+              {learnings.map((l) => (
+                <div key={l.id} className="group flex items-start gap-3 px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider shrink-0 mt-0.5 ${categoryColors[l.category] || categoryColors.general}`}>
+                    {l.category.replace("_", " ")}
+                  </span>
+                  <p className="flex-1 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    {l.learning}
+                  </p>
+                  <button
+                    onClick={() => deleteLearning(l.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 transition shrink-0"
+                    title="Remove learning"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/30 shrink-0">
+          <p className="text-[10px] text-slate-400 dark:text-slate-500">
+            {learnings.length} active learning{learnings.length !== 1 ? "s" : ""}
+            {learnings.length > 0 && " — these are automatically applied to future campaigns"}
+          </p>
         </div>
       </div>
     </div>
@@ -931,6 +1184,7 @@ export default function AdStudioPage() {
   // UI
   const [expandedImage, setExpandedImage] = useState<AdImage | null>(null);
   const [showProductModal, setShowProductModal] = useState(false);
+  const [showKnowledge, setShowKnowledge] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
   const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
   const [downloading, setDownloading] = useState(false);
@@ -1437,11 +1691,25 @@ export default function AdStudioPage() {
       <div className="w-[420px] shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 overflow-y-auto">
         <div className="p-5 space-y-5">
           {/* Header */}
-          <div>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-white">Ad Studio</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              AI-powered creative campaigns with Claude
-            </p>
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-lg font-bold text-slate-900 dark:text-white">Ad Studio</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                AI-powered creative campaigns with Claude
+              </p>
+            </div>
+            {selectedProduct && (
+              <button
+                onClick={() => setShowKnowledge(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium transition"
+                title="View Knowledge Base"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                  <path d="M10.75 16.82A7.462 7.462 0 0115 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0018 15.06v-11a.75.75 0 00-.546-.721A9.006 9.006 0 0015 3a8.999 8.999 0 00-4.25 1.065V16.82zM9.25 4.065A8.999 8.999 0 005 3c-.85 0-1.673.118-2.454.339A.75.75 0 002 4.06v11a.75.75 0 00.954.721A7.506 7.506 0 015 15.5c1.579 0 3.042.487 4.25 1.32V4.065z" />
+                </svg>
+                Knowledge
+              </button>
+            )}
           </div>
 
           {/* Creative Theme (HERO) */}
@@ -1869,6 +2137,13 @@ export default function AdStudioPage() {
           productName={activeCampaign?.productName || selectedProduct?.name || "ad"}
           conceptIndex={expandedImage.conceptIndex}
           onClose={() => setExpandedImage(null)}
+        />
+      )}
+
+      {showKnowledge && selectedProduct && (
+        <KnowledgePanel
+          productId={selectedProduct.id}
+          onClose={() => setShowKnowledge(false)}
         />
       )}
     </div>
