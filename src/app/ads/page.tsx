@@ -816,11 +816,18 @@ type CleanupEntry = {
 
 function KnowledgePanel({
   productId,
+  products,
   onClose,
 }: {
-  productId: string;
+  productId: string | null;
+  products: Product[];
   onClose: () => void;
 }) {
+  const productNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const p of products) map[p.id] = p.name;
+    return map;
+  }, [products]);
   const [learnings, setLearnings] = useState<KnowledgeLearning[]>([]);
   const [loading, setLoading] = useState(true);
   const [cleanupStatus, setCleanupStatus] = useState<"idle" | "running" | "done" | "error">("idle");
@@ -831,7 +838,8 @@ function KnowledgePanel({
   const fetchLearnings = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/ads/learnings?productId=${productId}`);
+      // Fetch all learnings across all products
+      const res = await fetch(`/api/ads/learnings?all=true`);
       if (res.ok) {
         const data = await res.json();
         setLearnings(data.learnings || []);
@@ -841,7 +849,7 @@ function KnowledgePanel({
     } finally {
       setLoading(false);
     }
-  }, [productId]);
+  }, []);
 
   useEffect(() => {
     fetchLearnings();
@@ -872,7 +880,7 @@ function KnowledgePanel({
       const res = await fetch("/api/ads/learnings/cleanup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
+        body: JSON.stringify({ productId: productId || undefined }),
       });
 
       if (!res.ok) throw new Error("Cleanup request failed");
@@ -1018,9 +1026,14 @@ function KnowledgePanel({
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {learnings.map((l) => (
                 <div key={l.id} className="group flex items-start gap-3 px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
-                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider shrink-0 mt-0.5 ${categoryColors[l.category] || categoryColors.general}`}>
-                    {l.category.replace("_", " ")}
-                  </span>
+                  <div className="flex flex-col gap-1 shrink-0 mt-0.5">
+                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${categoryColors[l.category] || categoryColors.general}`}>
+                      {l.category.replace("_", " ")}
+                    </span>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-[80px]">
+                      {l.product_id ? (productNameMap[l.product_id] || "Product") : "Global"}
+                    </span>
+                  </div>
                   <p className="flex-1 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                     {l.learning}
                   </p>
@@ -1698,18 +1711,16 @@ export default function AdStudioPage() {
                 AI-powered creative campaigns with Claude
               </p>
             </div>
-            {selectedProduct && (
-              <button
-                onClick={() => setShowKnowledge(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium transition"
-                title="View Knowledge Base"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                  <path d="M10.75 16.82A7.462 7.462 0 0115 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0018 15.06v-11a.75.75 0 00-.546-.721A9.006 9.006 0 0015 3a8.999 8.999 0 00-4.25 1.065V16.82zM9.25 4.065A8.999 8.999 0 005 3c-.85 0-1.673.118-2.454.339A.75.75 0 002 4.06v11a.75.75 0 00.954.721A7.506 7.506 0 015 15.5c1.579 0 3.042.487 4.25 1.32V4.065z" />
-                </svg>
-                Knowledge
-              </button>
-            )}
+            <button
+              onClick={() => setShowKnowledge(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium transition"
+              title="View Knowledge Base"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                <path d="M10.75 16.82A7.462 7.462 0 0115 15.5c.71 0 1.396.098 2.046.282A.75.75 0 0018 15.06v-11a.75.75 0 00-.546-.721A9.006 9.006 0 0015 3a8.999 8.999 0 00-4.25 1.065V16.82zM9.25 4.065A8.999 8.999 0 005 3c-.85 0-1.673.118-2.454.339A.75.75 0 002 4.06v11a.75.75 0 00.954.721A7.506 7.506 0 015 15.5c1.579 0 3.042.487 4.25 1.32V4.065z" />
+              </svg>
+              Knowledge
+            </button>
           </div>
 
           {/* Creative Theme (HERO) */}
@@ -2140,9 +2151,10 @@ export default function AdStudioPage() {
         />
       )}
 
-      {showKnowledge && selectedProduct && (
+      {showKnowledge && (
         <KnowledgePanel
-          productId={selectedProduct.id}
+          productId={selectedProduct?.id || null}
+          products={products}
           onClose={() => setShowKnowledge(false)}
         />
       )}

@@ -9,20 +9,27 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const productId = searchParams.get("productId");
-
-  if (!productId) {
-    return Response.json({ error: "productId required" }, { status: 400 });
-  }
+  const all = searchParams.get("all");
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("ad_studio_learnings")
     .select("*")
     .eq("is_active", true)
-    .or(`product_id.eq.${productId},product_id.is.null`)
-    .order("created_at", { ascending: false })
-    .limit(30);
+    .order("created_at", { ascending: false });
+
+  if (all === "true") {
+    // Fetch all active learnings across all products (for Knowledge panel)
+    query = query.limit(100);
+  } else if (productId) {
+    // Fetch product-specific + global learnings
+    query = query.or(`product_id.eq.${productId},product_id.is.null`).limit(30);
+  } else {
+    return Response.json({ error: "productId or all=true required" }, { status: 400 });
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return Response.json({ error: "Failed to fetch learnings" }, { status: 500 });
