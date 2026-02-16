@@ -17,10 +17,7 @@ type SSEEvent =
   | { type: "complete"; removed: number; kept: number }
   | { type: "error"; message: string };
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const { productId } = body;
-  // productId is optional — if omitted, cleans up all learnings
+export async function POST() {
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -39,17 +36,11 @@ export async function POST(req: Request) {
         // Fetch all active learnings
         send({ type: "thought", message: "Loading knowledge base..." });
 
-        let query = supabase
+        const { data: learnings, error: fetchError } = await supabase
           .from("ad_studio_learnings")
           .select("id, product_id, learning, category, is_active, created_at")
           .eq("is_active", true)
           .order("created_at", { ascending: true });
-
-        if (productId) {
-          query = query.or(`product_id.eq.${productId},product_id.is.null`);
-        }
-
-        const { data: learnings, error: fetchError } = await query;
 
         if (fetchError || !learnings) {
           send({ type: "error", message: "Failed to load learnings" });
@@ -213,7 +204,7 @@ Analyze these learnings and produce a cleaned-up version. Remove duplicates, mer
           } else if (kept.index === -1) {
             // Insert new merged learning
             await supabase.from("ad_studio_learnings").insert({
-              product_id: productId || null,
+              product_id: null,
               learning: kept.learning,
               category: kept.category || "general",
               is_active: true,

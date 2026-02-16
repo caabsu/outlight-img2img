@@ -815,19 +815,10 @@ type CleanupEntry = {
 };
 
 function KnowledgePanel({
-  productId,
-  products,
   onClose,
 }: {
-  productId: string | null;
-  products: Product[];
   onClose: () => void;
 }) {
-  const productNameMap = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const p of products) map[p.id] = p.name;
-    return map;
-  }, [products]);
   const [learnings, setLearnings] = useState<KnowledgeLearning[]>([]);
   const [loading, setLoading] = useState(true);
   const [cleanupStatus, setCleanupStatus] = useState<"idle" | "running" | "done" | "error">("idle");
@@ -838,8 +829,7 @@ function KnowledgePanel({
   const fetchLearnings = useCallback(async () => {
     setLoading(true);
     try {
-      // Fetch all learnings across all products
-      const res = await fetch(`/api/ads/learnings?all=true`);
+      const res = await fetch(`/api/ads/learnings`);
       if (res.ok) {
         const data = await res.json();
         setLearnings(data.learnings || []);
@@ -880,7 +870,7 @@ function KnowledgePanel({
       const res = await fetch("/api/ads/learnings/cleanup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId: productId || undefined }),
+        body: JSON.stringify({}),
       });
 
       if (!res.ok) throw new Error("Cleanup request failed");
@@ -1026,14 +1016,9 @@ function KnowledgePanel({
             <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {learnings.map((l) => (
                 <div key={l.id} className="group flex items-start gap-3 px-6 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition">
-                  <div className="flex flex-col gap-1 shrink-0 mt-0.5">
-                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${categoryColors[l.category] || categoryColors.general}`}>
-                      {l.category.replace("_", " ")}
-                    </span>
-                    <span className="text-[9px] text-slate-400 dark:text-slate-500 truncate max-w-[80px]">
-                      {l.product_id ? (productNameMap[l.product_id] || "Product") : "Global"}
-                    </span>
-                  </div>
+                  <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider shrink-0 mt-0.5 ${categoryColors[l.category] || categoryColors.general}`}>
+                    {l.category.replace("_", " ")}
+                  </span>
                   <p className="flex-1 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
                     {l.learning}
                   </p>
@@ -2153,8 +2138,6 @@ export default function AdStudioPage() {
 
       {showKnowledge && (
         <KnowledgePanel
-          productId={selectedProduct?.id || null}
-          products={products}
           onClose={() => setShowKnowledge(false)}
         />
       )}

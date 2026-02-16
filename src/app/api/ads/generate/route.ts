@@ -131,13 +131,12 @@ async function fetchProduct(productId: string) {
   return data;
 }
 
-async function fetchLearnings(productId: string): Promise<string[]> {
+async function fetchLearnings(): Promise<string[]> {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("ad_studio_learnings")
     .select("learning, category")
     .eq("is_active", true)
-    .or(`product_id.eq.${productId},product_id.is.null`)
     .order("created_at", { ascending: false })
     .limit(20);
 
@@ -348,7 +347,7 @@ export async function POST(req: Request) {
         send({ type: "thought", message: `Theme: "${theme}"` });
 
         // Fetch learnings from previous campaigns
-        const learnings = await fetchLearnings(productId);
+        const learnings = await fetchLearnings();
         if (learnings.length > 0) {
           send({ type: "thought", message: `Applying ${learnings.length} learnings from previous campaigns` });
           for (const l of learnings) {

@@ -172,7 +172,7 @@ Analyze this feedback and extract 1-3 actionable learnings for improving future 
 
         const supabase = getSupabase();
         const rows = learnings.map((l) => ({
-          product_id: productId,
+          product_id: null,
           learning: l.learning,
           category: l.category || "general",
           source_feedback_id: feedbackId,
