@@ -58,7 +58,7 @@ type CampaignPlan = {
 
 /* ========================= SYSTEM PROMPT ========================= */
 
-const AD_STUDIO_SYSTEM_PROMPT = `You are the creative director of Ad Studio for an ecommerce brand that sells lights and lighting products (lamps, pendants, chandeliers, sconces, LED fixtures, etc). Your role is to produce FINISHED static Facebook/Instagram ad creatives — not just product photos, but complete advertisements with text overlay specifications.
+const AD_STUDIO_BASE_PROMPT = `You are the creative director of Ad Studio for an ecommerce brand that sells lights and lighting products (lamps, pendants, chandeliers, sconces, LED fixtures, etc). Your role is to produce FINISHED static Facebook/Instagram ad creatives — not just product photos, but complete advertisements with text overlay specifications.
 
 ## CRITICAL: These Are Finished Ads, Not Product Photos
 Every image prompt MUST describe a COMPLETE ADVERTISEMENT that includes:
@@ -109,6 +109,44 @@ Example text overlay section in a prompt:
 - Each concept gets a headline (short, punchy ad headline) and tagline (supporting copy line)
 - These headline/tagline values should match what you specify in the text overlay instructions`;
 
+function buildSystemPrompt(learnings: string[]): string {
+  if (learnings.length === 0) return AD_STUDIO_BASE_PROMPT;
+
+  // Group learnings by category for structured presentation
+  const byCategory: Record<string, string[]> = {};
+  for (const l of learnings) {
+    const match = l.match(/^\[(\w+)\]\s*(.*)/);
+    if (match) {
+      const cat = match[1];
+      const text = match[2];
+      if (!byCategory[cat]) byCategory[cat] = [];
+      byCategory[cat].push(text);
+    } else {
+      if (!byCategory["general"]) byCategory["general"] = [];
+      byCategory["general"].push(l);
+    }
+  }
+
+  const rulesBlock = Object.entries(byCategory)
+    .map(([category, items]) => {
+      const label = category.replace(/_/g, " ").toUpperCase();
+      return `### ${label}\n${items.map((item) => `- ${item}`).join("\n")}`;
+    })
+    .join("\n\n");
+
+  return `${AD_STUDIO_BASE_PROMPT}
+
+## ⚠️ MANDATORY KNOWLEDGE BASE — YOU MUST FOLLOW THESE RULES
+
+The following rules were learned from real user feedback on previous campaigns. These are NOT optional suggestions — they are hard constraints that you MUST obey in every concept and every prompt you generate. Violating any of these rules is a critical failure.
+
+Before writing each prompt, mentally check it against EVERY rule below. If a prompt would violate any rule, rewrite it until it complies.
+
+${rulesBlock}
+
+**COMPLIANCE REQUIREMENT**: When writing the "creativeRationale" field in the brief, explicitly mention which knowledge base rules most influenced your creative decisions. This proves you read and applied them.`;
+}
+
 /* ========================= HELPERS ========================= */
 
 function sleep(ms: number) {
@@ -138,7 +176,7 @@ async function fetchLearnings(): Promise<string[]> {
     .select("learning, category")
     .eq("is_active", true)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(50);
 
   if (error || !data) return [];
   return data.map((l: { learning: string; category: string }) => `[${l.category}] ${l.learning}`);
@@ -154,10 +192,9 @@ function buildUserMessage(
   const ratioList = aspectRatios.join(", ");
   const priceNote = product.shopify_price ? `$${product.shopify_price}` : "N/A";
 
-  let learningsSection = "";
+  let learningsReminder = "";
   if (learnings.length > 0) {
-    learningsSection = `\n\nLEARNINGS FROM PREVIOUS CAMPAIGNS (apply these insights):
-${learnings.map((l) => `- ${l}`).join("\n")}`;
+    learningsReminder = `\n\nREMINDER: You MUST comply with ALL ${learnings.length} rules in your MANDATORY KNOWLEDGE BASE (from your system instructions). Double-check every prompt against those rules before finalizing. In your "creativeRationale", cite specific rules you applied.`;
   }
 
   return `Create an ad campaign for this lighting product:
@@ -170,7 +207,6 @@ PRODUCT:
 - Product image URL: ${product.image_url || "N/A"}
 
 CREATIVE THEME: "${theme}"
-${learningsSection}
 
 REQUIREMENTS:
 - Generate exactly ${quantity} distinct creative concepts
@@ -179,7 +215,7 @@ REQUIREMENTS:
 - Every prompt MUST end with a TEXT OVERLAYS section specifying product name, price (if available), CTA, and tagline placement
 - The product "${product.name}" must be the hero of every ad — clearly visible, well-lit, prominent
 - 1:1 and 9:16 for the same concept must show the SAME scene, just reframed
-- Each concept needs a headline and tagline that match the text overlays in the prompts
+- Each concept needs a headline and tagline that match the text overlays in the prompts${learningsReminder}
 
 Return ONLY valid JSON (no markdown fences) in this exact format:
 {
@@ -191,7 +227,7 @@ Return ONLY valid JSON (no markdown fences) in this exact format:
     "colorPalette": ["color1", "color2", "color3", "color4"],
     "keyElements": ["element1", "element2", "element3"],
     "moodBoard": "A vivid description of the mood board — reference films, photographers, art movements, textures, and color worlds that define the visual territory",
-    "creativeRationale": "Why this creative direction will resonate with the audience and elevate the product"
+    "creativeRationale": "Why this creative direction will resonate with the audience and elevate the product — MUST reference specific knowledge base rules you applied"
   },
   "concepts": [
     {
@@ -217,11 +253,12 @@ async function callAIForCampaign(
   const anthropic = new Anthropic();
 
   const userMessage = buildUserMessage(product, theme, quantity, aspectRatios, learnings);
+  const systemPrompt = buildSystemPrompt(learnings);
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5-20250929",
     max_tokens: 16384,
-    system: AD_STUDIO_SYSTEM_PROMPT,
+    system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],
   });
 
