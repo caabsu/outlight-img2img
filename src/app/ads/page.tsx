@@ -187,6 +187,8 @@ function AgentLog({
     "Color palette:": "Palette",
     "Target mood:": "Mood",
     "Learning:": "Learning",
+    "Prompt diagnosis:": "Diagnosis",
+    "Analysis:": "Analysis",
   };
 
   return (
@@ -347,6 +349,9 @@ function FeedbackSection({
   conceptIndex,
   conceptName,
   conceptDescription,
+  conceptPrompts,
+  conceptHeadline,
+  conceptTagline,
   productId,
   profileId,
   theme,
@@ -358,6 +363,9 @@ function FeedbackSection({
   conceptIndex: number;
   conceptName: string;
   conceptDescription?: string;
+  conceptPrompts?: Record<string, string>;
+  conceptHeadline?: string;
+  conceptTagline?: string;
   productId: string;
   profileId: string;
   theme: string;
@@ -390,6 +398,9 @@ function FeedbackSection({
           productId,
           conceptName,
           conceptDescription,
+          conceptHeadline,
+          conceptTagline,
+          conceptPrompts,
           rating,
           reason: submittedReason || undefined,
           theme,
@@ -710,6 +721,9 @@ function ResultsGrid({
                   conceptIndex={ci}
                   conceptName={concept.name}
                   conceptDescription={concept.description}
+                  conceptPrompts={concept.prompts}
+                  conceptHeadline={concept.headline}
+                  conceptTagline={concept.tagline}
                   productId={productId}
                   profileId={profileId}
                   theme={theme}

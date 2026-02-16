@@ -17,6 +17,9 @@ type AnalyzeRequest = {
   productId: string;
   conceptName: string;
   conceptDescription?: string;
+  conceptHeadline?: string;
+  conceptTagline?: string;
+  conceptPrompts?: Record<string, string>;
   rating: number;
   reason?: string;
   theme?: string;
@@ -30,7 +33,7 @@ type SSEEvent =
 
 export async function POST(req: Request) {
   const body = (await req.json()) as AnalyzeRequest;
-  const { feedbackId, productId, conceptName, conceptDescription, rating, reason, theme } = body;
+  const { feedbackId, productId, conceptName, conceptDescription, conceptHeadline, conceptTagline, conceptPrompts, rating, reason, theme } = body;
 
   if (!feedbackId || !productId || !conceptName || !rating) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -61,47 +64,83 @@ export async function POST(req: Request) {
           send({ type: "thought", message: `Campaign theme: "${theme}"` });
         }
 
-        send({ type: "thought", message: "Running AI analysis to extract learnings..." });
+        const hasPrompts = conceptPrompts && Object.keys(conceptPrompts).length > 0;
+        if (hasPrompts) {
+          send({ type: "thought", message: `Reviewing ${Object.keys(conceptPrompts!).length} prompt(s) used for this concept...` });
+        }
 
-        // Phase 2: Claude analysis
+        send({ type: "thought", message: "Running deep prompt analysis to extract learnings..." });
+
+        // Phase 2: Claude analysis with full prompt context
         const anthropic = new Anthropic();
 
-        const systemPrompt = `You analyze ad campaign feedback and extract actionable learnings for future ad generation.
+        // Build the prompts section for Claude to analyze
+        let promptsBlock = "";
+        if (hasPrompts) {
+          promptsBlock = Object.entries(conceptPrompts!)
+            .map(([ratio, prompt]) => `--- PROMPT FOR ${ratio} ---\n${prompt}`)
+            .join("\n\n");
+        }
 
-First, write a brief analysis paragraph explaining your reasoning about what this feedback tells us. Consider:
-- What the rating implies about quality
-- What specific aspects the user liked or disliked
-- How this should influence future ad generation
+        const systemPrompt = `You are an expert ad creative analyst. You perform deep, structured analysis of ad campaign feedback by examining the ACTUAL PROMPTS that were used to generate the images.
 
-Then output learnings as a JSON array.
+Your job is to trace user complaints or praise back to SPECIFIC prompt language and produce actionable rules for the prompt-writing AI to follow in future campaigns.
 
-Categories: "composition", "typography", "color", "mood", "product_placement", "text_overlay", "aspect_ratio", "general"
+## Analysis Process
+1. READ the user's feedback and rating carefully
+2. EXAMINE each prompt line by line — identify specific phrases, descriptions, or instructions that caused the issue (or succeeded)
+3. DIAGNOSE the root cause: Was it a composition instruction? A vague product description? Wrong lighting direction? Missing text overlay spec? Incorrect mood language?
+4. PRODUCE learnings that are concrete prompt-writing rules — not vague suggestions
 
-Format your response EXACTLY like this:
-ANALYSIS: [your reasoning paragraph here]
+## What Makes a Good Learning
+BAD (vague): "Improve product consistency in prompts"
+GOOD (specific): "When describing a lighting fixture, always specify the exact fixture type (pendant/sconce/chandelier), material finish (brushed brass/matte black/polished chrome), and dimensions relative to the scene — never use generic terms like 'the light' or 'the product'"
+
+BAD (vague): "Use better color descriptions"
+GOOD (specific): "Specify color values using descriptive pairs (e.g., 'warm honey-amber glow' not 'warm light') and always define both the light emission color AND the fixture body color separately in the prompt"
+
+BAD (vague): "Fix text overlay positioning"
+GOOD (specific): "In 9:16 prompts, always place the product name in the top 15% of frame and CTA button in the bottom 10% — never place text overlays in the middle 60% where the product sits, as it creates visual clutter"
+
+## Categories
+"composition", "typography", "color", "mood", "product_placement", "text_overlay", "aspect_ratio", "prompt_structure", "general"
+
+## Response Format
+PROMPT_DIAGNOSIS: [Analyze the specific prompt language that caused the issue. Quote the problematic phrases directly. Explain exactly why they failed or succeeded.]
+
+ANALYSIS: [Broader analysis connecting the feedback to the prompt diagnosis — what pattern does this reveal?]
 
 LEARNINGS:
 [
-  {"learning": "specific actionable insight...", "category": "composition"}
+  {"learning": "Concrete, actionable rule for the prompt-writing AI...", "category": "category_name"}
 ]`;
+
+        // Build user message with full context
+        let userContent = `A user rated an ad concept ${rating}/10.
+
+CONCEPT DETAILS:
+- Name: "${conceptName}"`;
+        if (conceptDescription) userContent += `\n- Description: "${conceptDescription}"`;
+        if (conceptHeadline) userContent += `\n- Headline: "${conceptHeadline}"`;
+        if (conceptTagline) userContent += `\n- Tagline: "${conceptTagline}"`;
+        if (theme) userContent += `\n- Campaign theme: "${theme}"`;
+        userContent += `\n\nUSER FEEDBACK (${rating}/10): "${reason || "No reason provided."}"`;
+
+        if (promptsBlock) {
+          userContent += `\n\nACTUAL PROMPTS USED TO GENERATE THIS CONCEPT:\n${promptsBlock}`;
+        }
+
+        userContent += `\n\nPerform a thorough analysis:
+1. ${hasPrompts ? "Examine the prompts and identify specific language that caused the issues (or strengths) the user described" : "Based on the concept details, infer what prompt patterns likely caused the issue"}
+2. Trace the user's complaint to root causes in prompt structure, wording, or missing specifications
+3. Extract 2-5 actionable, specific learnings that the prompt-writing AI MUST follow in future campaigns
+4. Each learning should be a concrete rule — not a vague suggestion`;
 
         const response = await anthropic.messages.create({
           model: "claude-sonnet-4-5-20250929",
-          max_tokens: 2048,
+          max_tokens: 4096,
           system: systemPrompt,
-          messages: [
-            {
-              role: "user",
-              content: `A user rated an ad concept ${rating}/10.
-
-Concept: "${conceptName}"
-${conceptDescription ? `Description: "${conceptDescription}"` : ""}
-${theme ? `Theme: "${theme}"` : ""}
-${reason ? `Reason: "${reason}"` : "No reason provided."}
-
-Analyze this feedback and extract 1-3 actionable learnings for improving future ad generation. Focus on what specifically worked (high rating) or didn't work (low rating).`,
-            },
-          ],
+          messages: [{ role: "user", content: userContent }],
         });
 
         const textBlock = response.content.find((b) => b.type === "text");
@@ -114,12 +153,16 @@ Analyze this feedback and extract 1-3 actionable learnings for improving future 
 
         const fullText = textBlock.text;
 
+        // Extract prompt diagnosis section
+        const diagnosisMatch = fullText.match(/PROMPT_DIAGNOSIS:\s*([\s\S]*?)(?=\nANALYSIS:|$)/i);
+        if (diagnosisMatch?.[1]) {
+          send({ type: "thought", message: `Prompt diagnosis: ${diagnosisMatch[1].trim()}` });
+        }
+
         // Extract analysis section
         const analysisMatch = fullText.match(/ANALYSIS:\s*([\s\S]*?)(?=\nLEARNINGS:|$)/i);
         if (analysisMatch?.[1]) {
-          const analysisParagraph = analysisMatch[1].trim();
-          // Stream the analysis as a thought
-          send({ type: "thought", message: `AI analysis: ${analysisParagraph}` });
+          send({ type: "thought", message: `Analysis: ${analysisMatch[1].trim()}` });
         }
 
         // Extract learnings JSON

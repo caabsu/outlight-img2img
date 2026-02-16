@@ -267,10 +267,33 @@ async function callAIForCampaign(
     throw new Error("No text response from Claude");
   }
 
-  const cleaned = textBlock.text.replace(/```json/g, "").replace(/```/g, "").trim();
-  const parsed = JSON.parse(cleaned) as CampaignPlan;
+  const raw = textBlock.text.replace(/```json/g, "").replace(/```/g, "").trim();
 
-  if (!parsed.brief || !Array.isArray(parsed.concepts)) {
+  // Try direct parse first
+  let parsed: CampaignPlan | null = null;
+  try {
+    parsed = JSON.parse(raw) as CampaignPlan;
+  } catch {
+    // Claude may have added text before/after the JSON object — extract it
+    const firstBrace = raw.indexOf("{");
+    const lastBrace = raw.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const jsonStr = raw.slice(firstBrace, lastBrace + 1);
+      try {
+        parsed = JSON.parse(jsonStr) as CampaignPlan;
+      } catch {
+        // Try fixing common issues: trailing commas before closing brackets
+        const fixed = jsonStr
+          .replace(/,\s*}/g, "}")
+          .replace(/,\s*]/g, "]");
+        parsed = JSON.parse(fixed) as CampaignPlan;
+      }
+    } else {
+      throw new Error("No JSON object found in Claude response");
+    }
+  }
+
+  if (!parsed || !parsed.brief || !Array.isArray(parsed.concepts)) {
     throw new Error("Invalid campaign plan structure from Claude");
   }
 
