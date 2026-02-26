@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 800;
 
 import { NextResponse } from "next/server";
 
@@ -34,6 +35,7 @@ type PostBody = {
     n_frames?: "10" | "15" | "25";
     image_urls?: string[];
     aspect_ratio?: "portrait" | "landscape";
+    size?: "standard" | "high";
     shots?: Array<{ duration: number; scene: string }>;
   };
 };

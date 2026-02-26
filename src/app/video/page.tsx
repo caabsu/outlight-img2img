@@ -1111,10 +1111,12 @@ export default function VideoStudioPage() {
             body: JSON.stringify(body),
             signal: controller.signal,
           });
-          const json = await res.json().catch(() => ({}));
+          const rawText = await res.text();
+          let json: any = {};
+          try { json = JSON.parse(rawText); } catch { json = { _raw: rawText.slice(0, 300) }; }
           if (!res.ok) {
-            console.error("[VideoRun][batch] Error response:", res.status, JSON.stringify(json));
-            throw new Error(json.error || "Generation failed");
+            console.error("[VideoRun][batch] Error response:", res.status, rawText.slice(0, 500));
+            throw new Error(json.error || `HTTP ${res.status}: ${rawText.slice(0, 200)}`);
           }
           pushVideo({ id: crypto.randomUUID(), prompt: `${prompt} [img ${index + 1}]`, url: json.videoUrl });
           incProgress();
@@ -1228,10 +1230,12 @@ export default function VideoStudioPage() {
             body: JSON.stringify(body),
             signal: controller.signal,
           });
-          const json = await res.json().catch(() => ({}));
+          const rawText = await res.text();
+          let json: any = {};
+          try { json = JSON.parse(rawText); } catch { json = { _raw: rawText.slice(0, 300) }; }
           if (!res.ok) {
-            console.error("[VideoRun] Error response:", res.status, JSON.stringify(json));
-            throw new Error(json.error || `Generation failed (${index + 1})`);
+            console.error("[VideoRun] Error response:", res.status, rawText.slice(0, 500));
+            throw new Error(json.error || `HTTP ${res.status}: ${rawText.slice(0, 200)}`);
           }
           pushVideo({ id: crypto.randomUUID(), prompt: line, url: json.videoUrl });
           incProgress();
