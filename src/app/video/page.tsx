@@ -360,7 +360,7 @@ function ProductSelectorModal({
 }
 
 type VideoProvider = "kling" | "veo" | "sora";
-type VideoModelKind = "veo" | "storyboard" | "kling26";
+type VideoModelKind = "veo" | "storyboard" | "sora-t2v" | "sora-i2v" | "kling26";
 
 type VideoModelOption = {
   id: string;
@@ -417,6 +417,7 @@ type VideoRunContext = {
     frames: "10" | "15" | "25";
     aspect: "portrait" | "landscape";
     size: "standard" | "high";
+    removeWatermark: boolean;
     shots: string;
     imageUrl: string;
   };
@@ -440,7 +441,8 @@ const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> 
   {
     label: "Sora (OpenAI)",
     options: [
-      { id: "sora-2-pro-image-to-video", provider: "sora", label: "Sora 2 Pro (Image-to-Video)", kind: "sora-i2v", requiresImage: true },
+      { id: "sora-2-pro-text-to-video", provider: "sora", label: "Sora 2 Pro Text-to-Video", kind: "sora-t2v" },
+      { id: "sora-2-pro-image-to-video", provider: "sora", label: "Sora 2 Pro Image-to-Video", kind: "sora-i2v", requiresImage: true },
       { id: "sora-2-pro-storyboard", provider: "sora", label: "Sora 2 Pro Storyboard", kind: "storyboard", requiresImage: true },
     ],
   },
@@ -542,17 +544,26 @@ export default function VideoStudioPage() {
   const [soraFrames, setSoraFrames] = useState<"10" | "15" | "25">("15");
   const [soraAspect, setSoraAspect] = useState<"portrait" | "landscape">("landscape");
   const [soraSize, setSoraSize] = useState<"standard" | "high">("standard");
+  const [soraRemoveWatermark, setSoraRemoveWatermark] = useState(false);
   const [soraShotsText, setSoraShotsText] = useState(
     `5|Establishing shot of the scene\n10|Add detail or talent`
   );
   const [soraImageUrl, setSoraImageUrl] = useState("");
 
+  const isSoraT2V = videoModelDef.kind === "sora-t2v";
+  const isSoraI2V = videoModelDef.kind === "sora-i2v";
+  const isSoraStoryboard = isSora && videoModelDef.kind === "storyboard";
+
+  // Clamp soraFrames to 15 when switching to T2V/I2V (25s is storyboard-only)
+  useEffect(() => {
+    if ((isSoraT2V || isSoraI2V) && soraFrames === "25") {
+      setSoraFrames("15");
+    }
+  }, [isSoraT2V, isSoraI2V, soraFrames]);
+
   const trimmedSoraImageUrl = soraImageUrl.trim();
   const finalReferenceUrl = isSora ? trimmedSoraImageUrl || resolvedVideoReferenceUrl : resolvedVideoReferenceUrl;
-  // Kling 2.6 and Veo don't require images (auto-selects mode based on availability)
-  // Only Sora Storyboard strictly requires images
-  const videoNeedsImage = isSora && (videoModelDef.kind === "storyboard" || videoModelDef.kind === "sora-i2v");
-  const isSoraStoryboard = isSora && videoModelDef.kind === "storyboard";
+  const videoNeedsImage = videoModelDef.requiresImage === true;
   const videoSomethingRunning = videoRuns.some((run) => run.status === "running");
   const canStartVideo = videoPromptLines.length > 0 && (!videoNeedsImage || !!finalReferenceUrl);
   const canStartBatch = batchVideoPrompt.trim().length > 0 && batchVideoImages.length > 0;
@@ -613,6 +624,7 @@ export default function VideoStudioPage() {
     if (session.soraFrames) setSoraFrames(session.soraFrames as any);
     if (session.soraAspect) setSoraAspect(session.soraAspect as any);
     if (session.soraSize) setSoraSize(session.soraSize as any);
+    if (typeof session.soraRemoveWatermark === "boolean") setSoraRemoveWatermark(session.soraRemoveWatermark);
     if (typeof session.videoParallel === "number") setVideoParallel(session.videoParallel);
     if (session.customUrl) setCustomVideoUrl(session.customUrl);
     if (session.batchVideoImages?.length) setBatchVideoImages(session.batchVideoImages);
@@ -645,6 +657,7 @@ export default function VideoStudioPage() {
       soraFrames,
       soraAspect,
       soraSize,
+      soraRemoveWatermark,
       videoParallel,
       customUrl: customVideoUrl,
       batchVideoImages: batchVideoImages.filter((u) => !u.startsWith("data:")), // Don't save large data URIs
@@ -663,6 +676,7 @@ export default function VideoStudioPage() {
     soraFrames,
     soraAspect,
     soraSize,
+    soraRemoveWatermark,
     videoParallel,
     customVideoUrl,
     batchVideoImages,
@@ -919,7 +933,7 @@ export default function VideoStudioPage() {
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
-      sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
+      sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
 
     addRun(run);
@@ -959,7 +973,7 @@ export default function VideoStudioPage() {
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
-      sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
+      sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
     };
 
@@ -1053,18 +1067,28 @@ export default function VideoStudioPage() {
               imageUrls: imgs,
               ...(seedVal ? { seeds: seedVal } : {}),
             };
-          } else {
+          } else if (runIsSora) {
             provider = "sora";
-            // Upload data URIs to storage (Sora/KIE requires public HTTP URLs)
-            const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
-            const isStoryboard = modelOption.kind === "storyboard";
+            const soraKind = modelOption.kind;
             const soraInput: any = {
-              n_frames: context.sora.frames,
+              n_frames: soraKind === "storyboard" ? context.sora.frames : (context.sora.frames === "25" ? "15" : context.sora.frames),
               aspect_ratio: context.sora.aspect,
-              size: context.sora.size,
-              image_urls: [uploadedUrl],
+              upload_method: "url",
             };
-            if (isStoryboard) {
+            if (soraKind === "sora-t2v") {
+              // Text-to-Video: prompt only, no image_urls, no shots
+              soraInput.size = context.sora.size;
+              soraInput.remove_watermark = context.sora.removeWatermark;
+            } else if (soraKind === "sora-i2v") {
+              // Image-to-Video: prompt + image
+              const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
+              soraInput.image_urls = [uploadedUrl];
+              soraInput.size = context.sora.size;
+              soraInput.remove_watermark = context.sora.removeWatermark;
+            } else {
+              // Storyboard: prompt + image + shots
+              const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
+              soraInput.image_urls = [uploadedUrl];
               const shots = context.sora.shots
                 .split(/\r?\n/)
                 .map((row) => row.trim())
@@ -1154,8 +1178,9 @@ export default function VideoStudioPage() {
               ...(imgs.length > 0 ? { imageUrls: imgs } : {}),
               ...(seedVal ? { seeds: seedVal } : {}),
             };
-          } else {
+          } else if (runIsSora) {
             provider = "sora";
+            const soraKind = modelOption.kind;
             // Resolve image URLs and upload data URIs to storage
             let soraImgUrls = context.sora.imageUrl
               ? [context.sora.imageUrl]
@@ -1165,14 +1190,23 @@ export default function VideoStudioPage() {
             if (soraImgUrls.some((url) => url.startsWith("data:"))) {
               soraImgUrls = await Promise.all(soraImgUrls.map((url) => uploadToStorage(url)));
             }
-            const isStoryboard = modelOption.kind === "storyboard";
             const soraInput: any = {
-              n_frames: context.sora.frames,
+              n_frames: soraKind === "storyboard" ? context.sora.frames : (context.sora.frames === "25" ? "15" : context.sora.frames),
               aspect_ratio: context.sora.aspect,
-              size: context.sora.size,
-              ...(soraImgUrls.length > 0 ? { image_urls: soraImgUrls } : {}),
+              upload_method: "url",
             };
-            if (isStoryboard) {
+            if (soraKind === "sora-t2v") {
+              // Text-to-Video: prompt only, no image_urls, no shots
+              soraInput.size = context.sora.size;
+              soraInput.remove_watermark = context.sora.removeWatermark;
+            } else if (soraKind === "sora-i2v") {
+              // Image-to-Video: prompt + image
+              if (soraImgUrls.length > 0) soraInput.image_urls = soraImgUrls;
+              soraInput.size = context.sora.size;
+              soraInput.remove_watermark = context.sora.removeWatermark;
+            } else {
+              // Storyboard: prompt + image + shots
+              if (soraImgUrls.length > 0) soraInput.image_urls = soraImgUrls;
               const shots = context.sora.shots
                 .split(/\r?\n/)
                 .map((row) => row.trim())
@@ -1348,6 +1382,12 @@ export default function VideoStudioPage() {
                                     </select>
                                 </div>
                             </div>
+                            {(isSoraT2V || isSoraI2V) && (
+                              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                                  <input type="checkbox" checked={soraRemoveWatermark} onChange={e => setSoraRemoveWatermark(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
+                                  Remove Watermark
+                              </label>
+                            )}
                             {isSoraStoryboard && (
                               <div>
                                 <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Shots (duration|scene per line)</label>
@@ -1360,6 +1400,11 @@ export default function VideoStudioPage() {
                                 />
                               </div>
                             )}
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                                {isSoraT2V && "Text-to-Video mode (prompt only, no image)"}
+                                {isSoraI2V && "Image-to-Video mode (prompt + reference image)"}
+                                {isSoraStoryboard && "Storyboard mode (prompt + image + shot timeline)"}
+                            </p>
                         </div>
                      )}
                  </div>

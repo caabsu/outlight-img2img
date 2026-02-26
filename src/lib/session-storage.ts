@@ -196,6 +196,7 @@ export type VideoStudioSession = {
   soraFrames: string;
   soraAspect: string;
   soraSize?: string;
+  soraRemoveWatermark?: boolean;
   // General
   videoParallel: number;
   // References
