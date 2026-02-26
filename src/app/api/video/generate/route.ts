@@ -358,19 +358,9 @@ export async function POST(req: Request) {
         aspect_ratio: input.aspect_ratio || "landscape",
       };
 
-      // Add size/quality for pro models
-      if (input.size && input.size !== "standard") {
-        soraInput.size = input.size;
-      }
-
       // Add image URLs if provided
       if (input.image_urls && input.image_urls.length > 0) {
         soraInput.image_urls = input.image_urls;
-      }
-
-      // Add remove_watermark if specified
-      if (typeof input.remove_watermark === "boolean") {
-        soraInput.remove_watermark = input.remove_watermark;
       }
 
       // Add shots only for storyboard model
