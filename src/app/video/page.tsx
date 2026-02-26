@@ -1073,7 +1073,6 @@ export default function VideoStudioPage() {
             const soraInput: any = {
               n_frames: soraKind === "storyboard" ? context.sora.frames : (context.sora.frames === "25" ? "15" : context.sora.frames),
               aspect_ratio: context.sora.aspect,
-              upload_method: "url",
             };
             if (soraKind === "sora-t2v") {
               // Text-to-Video: prompt only, no image_urls, no shots
@@ -1193,7 +1192,6 @@ export default function VideoStudioPage() {
             const soraInput: any = {
               n_frames: soraKind === "storyboard" ? context.sora.frames : (context.sora.frames === "25" ? "15" : context.sora.frames),
               aspect_ratio: context.sora.aspect,
-              upload_method: "url",
             };
             if (soraKind === "sora-t2v") {
               // Text-to-Video: prompt only, no image_urls, no shots

@@ -36,7 +36,6 @@ type PostBody = {
     aspect_ratio?: "portrait" | "landscape";
     size?: "standard" | "high";
     remove_watermark?: boolean;
-    upload_method?: string;
     shots?: Array<{ duration: number; scene: string }>;
   };
 };
@@ -370,11 +369,6 @@ export async function POST(req: Request) {
       // Add remove_watermark if specified
       if (typeof input.remove_watermark === "boolean") {
         soraInput.remove_watermark = input.remove_watermark;
-      }
-
-      // Add upload_method if specified
-      if (input.upload_method) {
-        soraInput.upload_method = input.upload_method;
       }
 
       // Add shots only for storyboard model
