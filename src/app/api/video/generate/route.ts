@@ -40,28 +40,72 @@ type PostBody = {
   };
 };
 
+// ---- Content-policy retry helpers ----
+const CONTENT_POLICY_PATTERNS = [
+  /content.*polic/i,
+  /moderation/i,
+  /sentinel_block/i,
+  /didn.*look right/i,
+  /blocked.*request/i,
+];
+
+function isContentPolicyError(msg: string): boolean {
+  return CONTENT_POLICY_PATTERNS.some((re) => re.test(msg));
+}
+
+/** Rephrase a prompt with professional cinematography framing to reduce false-positive moderation triggers */
+function rephraseForRetry(prompt: string, attempt: number): string {
+  const suffixes = [
+    " Cinematic lighting, professional product photography, editorial style.",
+    " Shot on 35mm film, shallow depth of field, commercial production quality.",
+  ];
+  return prompt + (suffixes[attempt - 1] || suffixes[0]);
+}
+
 // ---- Generic KIE API (for Kling, Sora) ----
-async function kieCreateTask(payload: any) {
-  console.log("[KIE] createTask payload:", JSON.stringify(payload, null, 2));
-  const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${KIE_KEY}`,
-    },
-    body: JSON.stringify(payload),
-  });
-  const json = await res.json().catch(() => ({}));
-  console.log("[KIE] createTask response:", res.status, JSON.stringify(json, null, 2));
-  if (!res.ok || json?.code !== 200) {
-    const msg = json?.message || json?.msg || `KIE createTask failed (${res.status})`;
-    // Include payload keys in error for debugging
-    const inputKeys = payload?.input ? Object.keys(payload.input).join(",") : "none";
-    throw new Error(`${msg} [model=${payload?.model}, inputKeys=${inputKeys}, v=3]`);
+async function kieCreateTask(payload: any, { retryOnPolicy = false, maxRetries = 2 } = {}) {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= (retryOnPolicy ? maxRetries : 0); attempt++) {
+    const currentPayload = attempt === 0
+      ? payload
+      : {
+          ...payload,
+          input: { ...payload.input, prompt: rephraseForRetry(payload.input.prompt, attempt) },
+        };
+
+    console.log(`[KIE] createTask attempt ${attempt + 1}:`, JSON.stringify(currentPayload, null, 2));
+    const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${KIE_KEY}`,
+      },
+      body: JSON.stringify(currentPayload),
+    });
+    const json = await res.json().catch(() => ({}));
+    console.log(`[KIE] createTask response (attempt ${attempt + 1}):`, res.status, JSON.stringify(json, null, 2));
+
+    if (!res.ok || json?.code !== 200) {
+      const msg = json?.message || json?.msg || `KIE createTask failed (${res.status})`;
+
+      // If content-policy error and we have retries left, rephrase and try again
+      if (retryOnPolicy && attempt < maxRetries && isContentPolicyError(msg)) {
+        console.log(`[KIE] Content policy hit, retrying with rephrased prompt (attempt ${attempt + 2})...`);
+        lastError = new Error(msg);
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+
+      const inputKeys = payload?.input ? Object.keys(payload.input).join(",") : "none";
+      throw new Error(`${msg} [model=${payload?.model}, inputKeys=${inputKeys}, v=4]`);
+    }
+    const taskId = json?.data?.taskId as string | undefined;
+    if (!taskId) throw new Error("KIE taskId missing");
+    return taskId;
   }
-  const taskId = json?.data?.taskId as string | undefined;
-  if (!taskId) throw new Error("KIE taskId missing");
-  return taskId;
+
+  throw lastError || new Error("KIE createTask failed after retries");
 }
 
 async function kiePoll(taskId: string, maxMs = 240_000) {
@@ -386,7 +430,7 @@ export async function POST(req: Request) {
 
       console.log("[Sora] Payload:", JSON.stringify(payload, null, 2));
 
-      const taskId = await kieCreateTask(payload);
+      const taskId = await kieCreateTask(payload, { retryOnPolicy: true });
       const { url } = await kiePoll(taskId, 480_000); // 8 minutes max for Sora
       return NextResponse.json({ videoUrl: url });
     }
