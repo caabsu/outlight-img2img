@@ -352,11 +352,19 @@ export async function POST(req: Request) {
 
       const soraModel = model || "sora-2-pro-image-to-video";
 
+      const isStoryboard = soraModel.includes("storyboard");
+      const isT2V = soraModel.includes("text-to-video");
+
       const soraInput: Record<string, any> = {
-        prompt, // Overall theme/story
+        prompt,
         n_frames: input.n_frames || "10",
         aspect_ratio: input.aspect_ratio || "landscape",
       };
+
+      // T2V and I2V require size (T2V defaults high, I2V defaults standard per KIE docs)
+      if (!isStoryboard) {
+        soraInput.size = input.size || (isT2V ? "high" : "standard");
+      }
 
       // Add image URLs if provided
       if (input.image_urls && input.image_urls.length > 0) {
@@ -364,7 +372,7 @@ export async function POST(req: Request) {
       }
 
       // Add shots only for storyboard model
-      if (soraModel.includes("storyboard") && input.shots && input.shots.length > 0) {
+      if (isStoryboard && input.shots && input.shots.length > 0) {
         soraInput.shots = input.shots;
       }
 
