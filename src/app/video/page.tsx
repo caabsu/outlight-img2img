@@ -1076,14 +1076,10 @@ export default function VideoStudioPage() {
             };
             if (soraKind === "sora-t2v") {
               // Text-to-Video: prompt only, no image_urls, no shots
-              soraInput.size = context.sora.size;
-              soraInput.remove_watermark = context.sora.removeWatermark;
             } else if (soraKind === "sora-i2v") {
               // Image-to-Video: prompt + image
               const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
               soraInput.image_urls = [uploadedUrl];
-              soraInput.size = context.sora.size;
-              soraInput.remove_watermark = context.sora.removeWatermark;
             } else {
               // Storyboard: prompt + image + shots
               const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
@@ -1199,13 +1195,9 @@ export default function VideoStudioPage() {
             };
             if (soraKind === "sora-t2v") {
               // Text-to-Video: prompt only, no image_urls, no shots
-              soraInput.size = context.sora.size;
-              soraInput.remove_watermark = context.sora.removeWatermark;
             } else if (soraKind === "sora-i2v") {
               // Image-to-Video: prompt + image
               if (soraImgUrls.length > 0) soraInput.image_urls = soraImgUrls;
-              soraInput.size = context.sora.size;
-              soraInput.remove_watermark = context.sora.removeWatermark;
             } else {
               // Storyboard: prompt + image + shots
               if (soraImgUrls.length > 0) soraInput.image_urls = soraImgUrls;
@@ -1380,20 +1372,7 @@ export default function VideoStudioPage() {
                                         <option value="portrait">Portrait</option>
                                     </select>
                                 </div>
-                                <div>
-                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Quality</label>
-                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={soraSize} onChange={e => setSoraSize(e.target.value as any)}>
-                                        <option value="standard">Standard</option>
-                                        <option value="high">High</option>
-                                    </select>
-                                </div>
                             </div>
-                            {(isSoraT2V || isSoraI2V) && (
-                              <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                                  <input type="checkbox" checked={soraRemoveWatermark} onChange={e => setSoraRemoveWatermark(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
-                                  Remove Watermark
-                              </label>
-                            )}
                             {isSoraStoryboard && (
                               <div>
                                 <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Shots (duration|scene per line)</label>

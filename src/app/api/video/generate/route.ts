@@ -34,8 +34,6 @@ type PostBody = {
     n_frames?: "10" | "15" | "25";
     image_urls?: string[];
     aspect_ratio?: "portrait" | "landscape";
-    size?: "standard" | "high";
-    remove_watermark?: boolean;
     shots?: Array<{ duration: number; scene: string }>;
   };
 };
