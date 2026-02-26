@@ -53,7 +53,9 @@ async function kieCreateTask(payload: any) {
   console.log("[KIE] createTask response:", res.status, JSON.stringify(json, null, 2));
   if (!res.ok || json?.code !== 200) {
     const msg = json?.message || json?.msg || `KIE createTask failed (${res.status})`;
-    throw new Error(msg);
+    // Include payload keys in error for debugging
+    const inputKeys = payload?.input ? Object.keys(payload.input).join(",") : "none";
+    throw new Error(`${msg} [model=${payload?.model}, inputKeys=${inputKeys}, v=3]`);
   }
   const taskId = json?.data?.taskId as string | undefined;
   if (!taskId) throw new Error("KIE taskId missing");
