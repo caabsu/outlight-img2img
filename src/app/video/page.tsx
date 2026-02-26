@@ -1108,6 +1108,7 @@ export default function VideoStudioPage() {
             };
           }
 
+          console.log("[VideoRun][batch] Sora request body:", JSON.stringify(body, null, 2));
           const res = await fetch("/api/video/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1115,7 +1116,10 @@ export default function VideoStudioPage() {
             signal: controller.signal,
           });
           const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json.error || "Generation failed");
+          if (!res.ok) {
+            console.error("[VideoRun][batch] Error response:", res.status, JSON.stringify(json));
+            throw new Error(json.error || "Generation failed");
+          }
           pushVideo({ id: crypto.randomUUID(), prompt: `${prompt} [img ${index + 1}]`, url: json.videoUrl });
           incProgress();
         });
@@ -1225,6 +1229,7 @@ export default function VideoStudioPage() {
             };
           }
 
+          console.log("[VideoRun] Sora request body:", JSON.stringify(body, null, 2));
           const res = await fetch("/api/video/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1232,7 +1237,10 @@ export default function VideoStudioPage() {
             signal: controller.signal,
           });
           const json = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(json.error || `Generation failed (${index + 1})`);
+          if (!res.ok) {
+            console.error("[VideoRun] Error response:", res.status, JSON.stringify(json));
+            throw new Error(json.error || `Generation failed (${index + 1})`);
+          }
           pushVideo({ id: crypto.randomUUID(), prompt: line, url: json.videoUrl });
           incProgress();
         });
@@ -1812,6 +1820,11 @@ export default function VideoStudioPage() {
                         <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                              <div className="h-full bg-slate-900 dark:bg-slate-50 transition-all duration-500" style={{ width: `${activeVideoRun.progress.total > 0 ? Math.round((activeVideoRun.progress.done / activeVideoRun.progress.total) * 100) : 0}%` }} />
                         </div>
+                        {activeVideoRun.status === "error" && activeVideoRun.error && (
+                          <div className="mt-2 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
+                            <p className="text-xs text-rose-700 dark:text-rose-300 font-mono break-all">{activeVideoRun.error}</p>
+                          </div>
+                        )}
                       </div>
 
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-950/30">

@@ -42,6 +42,7 @@ type PostBody = {
 
 // ---- Generic KIE API (for Kling, Sora) ----
 async function kieCreateTask(payload: any) {
+  console.log("[KIE] createTask payload:", JSON.stringify(payload, null, 2));
   const res = await fetch(`${KIE_BASE}/api/v1/jobs/createTask`, {
     method: "POST",
     headers: {
@@ -51,6 +52,7 @@ async function kieCreateTask(payload: any) {
     body: JSON.stringify(payload),
   });
   const json = await res.json().catch(() => ({}));
+  console.log("[KIE] createTask response:", res.status, JSON.stringify(json, null, 2));
   if (!res.ok || json?.code !== 200) {
     const msg = json?.message || json?.msg || `KIE createTask failed (${res.status})`;
     throw new Error(msg);
