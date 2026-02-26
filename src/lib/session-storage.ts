@@ -195,6 +195,7 @@ export type VideoStudioSession = {
   // Model options - Sora
   soraFrames: string;
   soraAspect: string;
+  soraSize?: string;
   // General
   videoParallel: number;
   // References

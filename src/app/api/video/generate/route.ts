@@ -34,6 +34,7 @@ type PostBody = {
     n_frames?: "10" | "15" | "25";
     image_urls?: string[];
     aspect_ratio?: "portrait" | "landscape";
+    size?: "standard" | "high";
     shots?: Array<{ duration: number; scene: string }>;
   };
 };
@@ -340,23 +341,42 @@ export async function POST(req: Request) {
       }
     }
 
-    /* -------- SORA (OpenAI Storyboard) -------- */
+    /* -------- SORA (OpenAI via KIE) -------- */
     if (provider === "sora") {
       if (!input) {
         return NextResponse.json({ error: "Sora requires input object" }, { status: 400 });
       }
 
-      const payload = {
-        model: model || "sora-2-pro-storyboard",
-        callBackUrl: "",
-        input: {
-          prompt, // Overall theme/story
-          n_frames: input.n_frames || "15",
-          aspect_ratio: input.aspect_ratio || "landscape",
-          ...(input.image_urls && input.image_urls.length > 0 ? { image_urls: input.image_urls } : {}),
-          ...(input.shots && input.shots.length > 0 ? { shots: input.shots } : {}),
-        },
+      const soraModel = model || "sora-2-pro-image-to-video";
+
+      const soraInput: Record<string, any> = {
+        prompt, // Overall theme/story
+        n_frames: input.n_frames || "10",
+        aspect_ratio: input.aspect_ratio || "landscape",
       };
+
+      // Add size/quality for pro models
+      if (input.size && input.size !== "standard") {
+        soraInput.size = input.size;
+      }
+
+      // Add image URLs if provided
+      if (input.image_urls && input.image_urls.length > 0) {
+        soraInput.image_urls = input.image_urls;
+      }
+
+      // Add shots only for storyboard model
+      if (soraModel.includes("storyboard") && input.shots && input.shots.length > 0) {
+        soraInput.shots = input.shots;
+      }
+
+      const payload = {
+        model: soraModel,
+        callBackUrl: "",
+        input: soraInput,
+      };
+
+      console.log("[Sora] Payload:", JSON.stringify(payload, null, 2));
 
       const taskId = await kieCreateTask(payload);
       const { url } = await kiePoll(taskId, 480_000); // 8 minutes max for Sora

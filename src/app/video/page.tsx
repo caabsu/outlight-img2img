@@ -416,6 +416,7 @@ type VideoRunContext = {
   sora: {
     frames: "10" | "15" | "25";
     aspect: "portrait" | "landscape";
+    size: "standard" | "high";
     shots: string;
     imageUrl: string;
   };
@@ -437,8 +438,11 @@ const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> 
     ],
   },
   {
-    label: "Sora (Storyboard)",
-    options: [{ id: "sora-2-pro-storyboard", provider: "sora", label: "Sora 2 Pro Storyboard", kind: "storyboard", requiresImage: true }],
+    label: "Sora (OpenAI)",
+    options: [
+      { id: "sora-2-pro-image-to-video", provider: "sora", label: "Sora 2 Pro (Image-to-Video)", kind: "sora-i2v", requiresImage: true },
+      { id: "sora-2-pro-storyboard", provider: "sora", label: "Sora 2 Pro Storyboard", kind: "storyboard", requiresImage: true },
+    ],
   },
 ];
 
@@ -537,6 +541,7 @@ export default function VideoStudioPage() {
 
   const [soraFrames, setSoraFrames] = useState<"10" | "15" | "25">("15");
   const [soraAspect, setSoraAspect] = useState<"portrait" | "landscape">("landscape");
+  const [soraSize, setSoraSize] = useState<"standard" | "high">("standard");
   const [soraShotsText, setSoraShotsText] = useState(
     `5|Establishing shot of the scene\n10|Add detail or talent`
   );
@@ -546,7 +551,8 @@ export default function VideoStudioPage() {
   const finalReferenceUrl = isSora ? trimmedSoraImageUrl || resolvedVideoReferenceUrl : resolvedVideoReferenceUrl;
   // Kling 2.6 and Veo don't require images (auto-selects mode based on availability)
   // Only Sora Storyboard strictly requires images
-  const videoNeedsImage = isSora && videoModelDef.kind === "storyboard";
+  const videoNeedsImage = isSora && (videoModelDef.kind === "storyboard" || videoModelDef.kind === "sora-i2v");
+  const isSoraStoryboard = isSora && videoModelDef.kind === "storyboard";
   const videoSomethingRunning = videoRuns.some((run) => run.status === "running");
   const canStartVideo = videoPromptLines.length > 0 && (!videoNeedsImage || !!finalReferenceUrl);
   const canStartBatch = batchVideoPrompt.trim().length > 0 && batchVideoImages.length > 0;
@@ -606,6 +612,7 @@ export default function VideoStudioPage() {
     if (session.veoAspect) setVeoAspect(session.veoAspect as any);
     if (session.soraFrames) setSoraFrames(session.soraFrames as any);
     if (session.soraAspect) setSoraAspect(session.soraAspect as any);
+    if (session.soraSize) setSoraSize(session.soraSize as any);
     if (typeof session.videoParallel === "number") setVideoParallel(session.videoParallel);
     if (session.customUrl) setCustomVideoUrl(session.customUrl);
     if (session.batchVideoImages?.length) setBatchVideoImages(session.batchVideoImages);
@@ -637,6 +644,7 @@ export default function VideoStudioPage() {
       veoAspect,
       soraFrames,
       soraAspect,
+      soraSize,
       videoParallel,
       customUrl: customVideoUrl,
       batchVideoImages: batchVideoImages.filter((u) => !u.startsWith("data:")), // Don't save large data URIs
@@ -654,6 +662,7 @@ export default function VideoStudioPage() {
     veoAspect,
     soraFrames,
     soraAspect,
+    soraSize,
     videoParallel,
     customVideoUrl,
     batchVideoImages,
@@ -910,7 +919,7 @@ export default function VideoStudioPage() {
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
-      sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
+      sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
 
     addRun(run);
@@ -950,7 +959,7 @@ export default function VideoStudioPage() {
       referenceUrls: [...selectedRefs],
       kling26: { duration: kling26Duration, aspect: kling26Aspect, sound: kling26Sound },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
-      sora: { frames: soraFrames, aspect: soraAspect, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
+      sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
     };
 
@@ -1046,25 +1055,33 @@ export default function VideoStudioPage() {
             };
           } else {
             provider = "sora";
-            const shots = context.sora.shots
-              .split(/\r?\n/)
-              .map((row) => row.trim())
-              .filter(Boolean)
-              .map((row) => {
-                const [durStr, ...rest] = row.split("|");
-                const duration = Math.max(1, Number(durStr.trim() || "1"));
-                const scene = rest.join("|").trim() || prompt;
-                return { duration, scene };
-              });
+            // Upload data URIs to storage (Sora/KIE requires public HTTP URLs)
+            const uploadedUrl = imageUrl.startsWith("data:") ? await uploadToStorage(imageUrl) : imageUrl;
+            const isStoryboard = modelOption.kind === "storyboard";
+            const soraInput: any = {
+              n_frames: context.sora.frames,
+              aspect_ratio: context.sora.aspect,
+              size: context.sora.size,
+              image_urls: [uploadedUrl],
+            };
+            if (isStoryboard) {
+              const shots = context.sora.shots
+                .split(/\r?\n/)
+                .map((row) => row.trim())
+                .filter(Boolean)
+                .map((row) => {
+                  const [durStr, ...rest] = row.split("|");
+                  const duration = Math.max(1, Number(durStr.trim() || "1"));
+                  const scene = rest.join("|").trim() || prompt;
+                  return { duration, scene };
+                });
+              soraInput.shots = shots;
+            }
             body = {
               provider,
               model: run.modelId,
-              input: {
-                n_frames: context.sora.frames,
-                aspect_ratio: context.sora.aspect,
-                image_urls: [imageUrl],
-                shots,
-              },
+              prompt,
+              input: soraInput,
             };
           }
 
@@ -1139,30 +1156,40 @@ export default function VideoStudioPage() {
             };
           } else {
             provider = "sora";
-            const shots = context.sora.shots
-              .split(/\r?\n/)
-              .map((row) => row.trim())
-              .filter(Boolean)
-              .map((row) => {
-                const [durStr, ...rest] = row.split("|");
-                const duration = Math.max(1, Number(durStr.trim() || "1"));
-                const scene = rest.join("|").trim() || line;
-                return { duration, scene };
-              });
-            const imageUrls = context.sora.imageUrl
+            // Resolve image URLs and upload data URIs to storage
+            let soraImgUrls = context.sora.imageUrl
               ? [context.sora.imageUrl]
               : context.referenceUrl
               ? [context.referenceUrl]
               : [];
+            if (soraImgUrls.some((url) => url.startsWith("data:"))) {
+              soraImgUrls = await Promise.all(soraImgUrls.map((url) => uploadToStorage(url)));
+            }
+            const isStoryboard = modelOption.kind === "storyboard";
+            const soraInput: any = {
+              n_frames: context.sora.frames,
+              aspect_ratio: context.sora.aspect,
+              size: context.sora.size,
+              ...(soraImgUrls.length > 0 ? { image_urls: soraImgUrls } : {}),
+            };
+            if (isStoryboard) {
+              const shots = context.sora.shots
+                .split(/\r?\n/)
+                .map((row) => row.trim())
+                .filter(Boolean)
+                .map((row) => {
+                  const [durStr, ...rest] = row.split("|");
+                  const duration = Math.max(1, Number(durStr.trim() || "1"));
+                  const scene = rest.join("|").trim() || line;
+                  return { duration, scene };
+                });
+              soraInput.shots = shots;
+            }
             body = {
               provider,
               model: run.modelId,
-              input: {
-                n_frames: context.sora.frames,
-                aspect_ratio: context.sora.aspect,
-                image_urls: imageUrls,
-                shots,
-              },
+              prompt: line,
+              input: soraInput,
             };
           }
 
@@ -1292,6 +1319,47 @@ export default function VideoStudioPage() {
                                     <input type="number" min="10000" max="99999" className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="10000-99999" value={veoSeed} onChange={e => setVeoSeed(e.target.value)} />
                                 </div>
                             </div>
+                        </div>
+                     )}
+                     {/* Sora Params */}
+                     {isSora && (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Duration</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={soraFrames} onChange={e => setSoraFrames(e.target.value as any)}>
+                                        <option value="10">10s</option>
+                                        <option value="15">15s</option>
+                                        {isSoraStoryboard && <option value="25">25s</option>}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={soraAspect} onChange={e => setSoraAspect(e.target.value as any)}>
+                                        <option value="landscape">Landscape</option>
+                                        <option value="portrait">Portrait</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={soraSize} onChange={e => setSoraSize(e.target.value as any)}>
+                                        <option value="standard">Standard</option>
+                                        <option value="high">High</option>
+                                    </select>
+                                </div>
+                            </div>
+                            {isSoraStoryboard && (
+                              <div>
+                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Shots (duration|scene per line)</label>
+                                <textarea
+                                  className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100 font-mono"
+                                  rows={3}
+                                  placeholder={"5|Establishing shot of the scene\n10|Close-up with detail"}
+                                  value={soraShotsText}
+                                  onChange={e => setSoraShotsText(e.target.value)}
+                                />
+                              </div>
+                            )}
                         </div>
                      )}
                  </div>
