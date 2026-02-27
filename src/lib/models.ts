@@ -37,19 +37,8 @@ export const NB2_OUTPUT_FORMATS = ["jpg", "png"] as const;
 
 export const MODEL_LIST: ModelDef[] = [
   {
-    id: "nanobanana-2",
-    label: "Nano Banana 2",
-    version: "v2",
-    provider: "kie",
-    providerName: "nano-banana-2",
-    requiresReference: false,
-    aspectRatioOptions: NB2_ASPECT_RATIOS,
-    resolutionOptions: NB2_RESOLUTIONS,
-    maxConcurrency: 5,
-  },
-  {
     id: "nanobanana-3-pro",
-    label: "Nano Banana Pro",
+    label: "Nano Banana Pro (Legacy)",
     version: "v3-pro",
     provider: "nanobanana",
     providerName: "gemini-3-pro-image-preview",
@@ -67,8 +56,17 @@ export const MODEL_LIST: ModelDef[] = [
       "21:9",
     ],
     resolutionOptions: ["1K", "2K", "4K"],
-    // KIE API supports concurrent tasks - each request creates its own async task
-    // Allow up to 5 concurrent requests to significantly speed up batch generation
+    maxConcurrency: 5,
+  },
+  {
+    id: "nanobanana-2",
+    label: "Nano Banana 2",
+    version: "v2",
+    provider: "kie",
+    providerName: "nano-banana-2",
+    requiresReference: false,
+    aspectRatioOptions: NB2_ASPECT_RATIOS,
+    resolutionOptions: NB2_RESOLUTIONS,
     maxConcurrency: 5,
   },
   {
