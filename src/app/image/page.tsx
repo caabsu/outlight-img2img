@@ -16,6 +16,9 @@ import {
   GPT15_SIZE_OPTIONS,
   GPT15_QUALITY_OPTIONS,
   GPT15_BACKGROUND_OPTIONS,
+  NB2_ASPECT_RATIOS,
+  NB2_RESOLUTIONS,
+  NB2_OUTPUT_FORMATS,
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
@@ -561,6 +564,12 @@ export default function ImageStudioPage() {
   const [gpt15Quality, setGpt15Quality] = useState<string>("auto");
   const [gpt15Background, setGpt15Background] = useState<string>("auto");
   const isGpt15 = modelDef.id === "gpt-1.5";
+  // Nano Banana 2 options
+  const [nb2AspectRatio, setNb2AspectRatio] = useState<string>("auto");
+  const [nb2Resolution, setNb2Resolution] = useState<string>("1K");
+  const [nb2OutputFormat, setNb2OutputFormat] = useState<string>("jpg");
+  const [nb2GoogleSearch, setNb2GoogleSearch] = useState<boolean>(false);
+  const isNanoBanana2 = modelDef.id === "nanobanana-2";
   // Prompt column width (resizable)
   const [promptColumnWidth, setPromptColumnWidth] = useState<number>(700);
   const isResizingRef = useRef(false);
@@ -701,6 +710,10 @@ export default function ImageStudioPage() {
     if (session.gpt15Size) setGpt15Size(session.gpt15Size);
     if (session.gpt15Quality) setGpt15Quality(session.gpt15Quality);
     if (session.gpt15Background) setGpt15Background(session.gpt15Background);
+    if (session.nb2AspectRatio) setNb2AspectRatio(session.nb2AspectRatio);
+    if (session.nb2Resolution) setNb2Resolution(session.nb2Resolution);
+    if (session.nb2OutputFormat) setNb2OutputFormat(session.nb2OutputFormat);
+    if (typeof session.nb2GoogleSearch === "boolean") setNb2GoogleSearch(session.nb2GoogleSearch);
     if (typeof session.promptColumnWidth === "number" && session.promptColumnWidth >= 400 && session.promptColumnWidth <= 1200) {
       setPromptColumnWidth(session.promptColumnWidth);
     }
@@ -739,6 +752,10 @@ export default function ImageStudioPage() {
       gpt15Size,
       gpt15Quality,
       gpt15Background,
+      nb2AspectRatio,
+      nb2Resolution,
+      nb2OutputFormat,
+      nb2GoogleSearch,
       promptColumnWidth,
       speed,
       customUrls: customUrls.filter((u) => u && !u.startsWith("data:")), // Don't save large data URIs
@@ -761,6 +778,10 @@ export default function ImageStudioPage() {
     gpt15Size,
     gpt15Quality,
     gpt15Background,
+    nb2AspectRatio,
+    nb2Resolution,
+    nb2OutputFormat,
+    nb2GoogleSearch,
     promptColumnWidth,
     speed,
     customUrls,
@@ -1421,6 +1442,14 @@ export default function ImageStudioPage() {
                         seed: sdSeed === "" ? null : sdSeed,
                       };
                     }
+                    if (runModel.id === "nanobanana-2") {
+                      return {
+                        aspect_ratio: nb2AspectRatio,
+                        image_size: nb2Resolution,
+                        output_format: nb2OutputFormat,
+                        google_search: nb2GoogleSearch,
+                      };
+                    }
                     if (runModel.id === "nanobanana-3-pro") {
                       return {
                         aspect_ratio: nbAspectRatio,
@@ -1591,6 +1620,57 @@ export default function ImageStudioPage() {
                               <option key={res} value={res}>{res}</option>
                             ))}
                         </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+                  {isNanoBanana2 && (
+                <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                        <select
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            value={nb2AspectRatio}
+                            onChange={(e) => setNb2AspectRatio(e.target.value)}
+                        >
+                            {NB2_ASPECT_RATIOS.map((ar) => (
+                              <option key={ar} value={ar}>{ar === "auto" ? "Auto" : ar}</option>
+                            ))}
+                        </select>
+                    </div>
+                     <div>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                         <select
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            value={nb2Resolution}
+                            onChange={(e) => setNb2Resolution(e.target.value)}
+                        >
+                            {NB2_RESOLUTIONS.map((r) => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                        </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Format</label>
+                        <select
+                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            value={nb2OutputFormat}
+                            onChange={(e) => setNb2OutputFormat(e.target.value)}
+                        >
+                            {NB2_OUTPUT_FORMATS.map((f) => (
+                              <option key={f} value={f}>{f.toUpperCase()}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="flex items-end pb-0.5">
+                        <label className="flex items-center gap-1.5 text-[10px] text-slate-600 dark:text-slate-400 cursor-pointer">
+                          <input type="checkbox" checked={nb2GoogleSearch} onChange={(e) => setNb2GoogleSearch(e.target.checked)} />
+                          Google Search
+                        </label>
                     </div>
                   </div>
                 </div>

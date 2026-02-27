@@ -15,6 +15,9 @@ import {
   GPT15_SIZE_OPTIONS,
   GPT15_QUALITY_OPTIONS,
   GPT15_BACKGROUND_OPTIONS,
+  NB2_ASPECT_RATIOS,
+  NB2_RESOLUTIONS,
+  NB2_OUTPUT_FORMATS,
 } from "@/lib/models";
 
 /* ========================= ENV ========================= */
@@ -63,6 +66,9 @@ type PostBody = {
     // GPT 1.5 options
     gpt_size?: string;         // "auto"|"1024x1024"|"1536x1024"|"1024x1536"
     gpt_background?: string;   // "auto"|"opaque"|"transparent"
+    // Nano Banana 2 options
+    output_format?: string;    // "jpg"|"png"
+    google_search?: boolean;
   };
 };
 
@@ -922,6 +928,81 @@ export async function POST(req: Request) {
           { status: poll.status }
         );
       }
+      await logUsage(profileId, modelId);
+      return NextResponse.json({ imageDataUrl: poll.url });
+    }
+
+    /* -------- Nano Banana 2 via KIE -------- */
+    if (modelId === "nanobanana-2") {
+      if (!KIE_KEY) return NextResponse.json({ error: "KIE API key missing" }, { status: 500 });
+
+      // Validate aspect ratio
+      const nb2ArSet = new Set<string>(NB2_ASPECT_RATIOS);
+      const aspect_ratio = nb2ArSet.has(options?.aspect_ratio || "")
+        ? options!.aspect_ratio! : "auto";
+
+      // Validate resolution
+      const nb2ResSet = new Set<string>(NB2_RESOLUTIONS);
+      const resolution = nb2ResSet.has(options?.image_size || "")
+        ? options!.image_size! : "1K";
+
+      // Validate output format
+      const nb2FmtSet = new Set<string>(NB2_OUTPUT_FORMATS);
+      const output_format = nb2FmtSet.has(options?.output_format || "")
+        ? options!.output_format! : "jpg";
+
+      // Google search toggle
+      const google_search = options?.google_search === true;
+
+      // Build input
+      const inputPayload: Record<string, any> = {
+        prompt,
+        aspect_ratio,
+        resolution,
+        output_format,
+        google_search,
+      };
+
+      // Reference images (up to 14, must be HTTP URLs)
+      const httpRefs = referenceUrls.filter(u => /^https?:\/\//i.test(u));
+      if (httpRefs.length > 0) {
+        inputPayload.image_input = httpRefs.slice(0, 14);
+      }
+
+      // Reject data: URIs
+      if (referenceUrls.length > httpRefs.length) {
+        return NextResponse.json(
+          { error: "Nano Banana 2 requires public HTTP/HTTPS URLs for reference images" },
+          { status: 400 }
+        );
+      }
+
+      const payload = {
+        model: "nano-banana-2",
+        callBackUrl: "",
+        input: inputPayload,
+      };
+
+      const modeLabel = httpRefs.length > 0 ? "Nano Banana 2 Image-to-Image" : "Nano Banana 2";
+
+      const createResult = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
+      if (!createResult.taskId) {
+        const msg = createResult.createJson?.message || createResult.createJson?.msg || "Nano Banana 2 createTask failed";
+        return NextResponse.json({ error: msg, debug: createResult.createJson || null }, { status: createResult.transient ? 503 : 502 });
+      }
+
+      const poll = await kiePollForResultUrl({
+        taskId: createResult.taskId,
+        signal: req.signal,
+        label: modeLabel,
+        maxMs: 600_000,
+        logEvery: 10,
+      });
+
+      if (!poll.ok) {
+        return NextResponse.json({ error: poll.error, debug: poll.debug ?? null }, { status: poll.status });
+      }
+
       await logUsage(profileId, modelId);
       return NextResponse.json({ imageDataUrl: poll.url });
     }

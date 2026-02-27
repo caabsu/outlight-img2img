@@ -103,6 +103,11 @@ export type ImageStudioSession = {
   gpt15Size: string;
   gpt15Quality: string;
   gpt15Background: string;
+  // Nano Banana 2 options
+  nb2AspectRatio: string;
+  nb2Resolution: string;
+  nb2OutputFormat: string;
+  nb2GoogleSearch: boolean;
   // Layout
   promptColumnWidth: number;
   speed: number;

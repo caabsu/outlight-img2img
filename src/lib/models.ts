@@ -26,15 +26,26 @@ export type ModelDef = {
   maxConcurrency?: number;
 };
 
+export const NB2_ASPECT_RATIOS = [
+  "auto", "1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1",
+  "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9",
+] as const;
+
+export const NB2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
+
+export const NB2_OUTPUT_FORMATS = ["jpg", "png"] as const;
+
 export const MODEL_LIST: ModelDef[] = [
   {
     id: "nanobanana-2",
-    label: "Nano Banana (Legacy)",
-    version: "v2.5",
-    provider: "nanobanana",
-    providerName: "gemini-2.5-flash-image",
+    label: "Nano Banana 2",
+    version: "v2",
+    provider: "kie",
+    providerName: "nano-banana-2",
     requiresReference: false,
-    maxConcurrency: 5,  // Allow concurrent requests for faster batch generation
+    aspectRatioOptions: NB2_ASPECT_RATIOS,
+    resolutionOptions: NB2_RESOLUTIONS,
+    maxConcurrency: 5,
   },
   {
     id: "nanobanana-3-pro",
