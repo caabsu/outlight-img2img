@@ -14,15 +14,18 @@ type VideoProvider = "kling" | "veo" | "sora";
 type PostBody = {
   provider?: VideoProvider;
   model?: string;
-  mode?: "kling26";
+  mode?: "kling30";
   // shared
   prompt: string;
-  duration?: "5" | "10";          // KIE expects string "5" | "10"
-  aspect_ratio?: "16:9" | "9:16" | "1:1"; // text2video and kling26
+  duration?: string;              // KIE expects string "3"-"15"
+  aspect_ratio?: "16:9" | "9:16" | "1:1";
 
-  // Kling 2.6 specific
-  image_urls?: string[];          // Array of image URLs for Kling 2.6
-  sound?: boolean;                // Generate with sound for Kling 2.6
+  // Kling 3.0 specific
+  image_urls?: string[];          // Reference images (first/last frame)
+  sound?: boolean;                // Generate with sound
+  kling_mode?: "std" | "pro";    // Standard vs Pro quality
+  negative_prompt?: string;       // Negative prompt
+  cfg_scale?: number;             // 0-1, prompt adherence
 
   // Veo-specific
   aspectRatio?: "16:9" | "9:16" | "Auto";
@@ -352,9 +355,12 @@ export async function POST(req: Request) {
       prompt,
       duration = "5",
       aspect_ratio,
-      // Kling 2.6 specific
+      // Kling 3.0 specific
       image_urls,
       sound,
+      kling_mode,
+      negative_prompt,
+      cfg_scale,
       // Veo
       aspectRatio,
       generationType,
@@ -366,32 +372,41 @@ export async function POST(req: Request) {
 
     if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
 
-    /* -------- KLING 2.6 -------- */
+    /* -------- KLING 3.0 -------- */
     if (provider === "kling") {
-      // Kling 2.6 uses different payload structure
-      // Model is determined by whether image_urls are provided
-      const isImageToVideo = image_urls && image_urls.length > 0;
-      const kling26Model = model || (isImageToVideo ? "kling-2.6/image-to-video" : "kling-2.6/text-to-video");
-
-      const payload: any = {
-        model: kling26Model,
-        callBackUrl: "",
-        input: {
-          prompt,
-          sound: sound ?? false,
-          duration,
-        },
+      const klingInput: Record<string, any> = {
+        prompt,
+        sound: sound ?? false,
+        duration: String(Math.max(3, Math.min(15, Number(duration) || 5))),
+        mode: kling_mode || "pro",
+        multi_shots: false,
       };
 
-      // Add image_urls for image-to-video
-      if (isImageToVideo) {
-        payload.input.image_urls = image_urls;
-      } else {
-        // Text-to-video requires aspect_ratio
-        if (aspect_ratio) {
-          payload.input.aspect_ratio = aspect_ratio;
-        }
+      // Aspect ratio
+      if (aspect_ratio) {
+        klingInput.aspect_ratio = aspect_ratio;
       }
+
+      // Reference images (first/last frame)
+      if (image_urls && image_urls.length > 0) {
+        klingInput.image_urls = image_urls;
+      }
+
+      // Negative prompt
+      if (negative_prompt) {
+        klingInput.negative_prompt = negative_prompt;
+      }
+
+      // CFG scale (prompt adherence 0-1)
+      if (typeof cfg_scale === "number" && cfg_scale >= 0 && cfg_scale <= 1) {
+        klingInput.cfg_scale = cfg_scale;
+      }
+
+      const payload = {
+        model: "kling-3.0/video",
+        callBackUrl: "",
+        input: klingInput,
+      };
 
       const taskId = await kieCreateTask(payload);
       const { url } = await kiePoll(taskId, 300_000); // 5 minutes max

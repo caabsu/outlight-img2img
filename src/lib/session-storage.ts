@@ -191,10 +191,13 @@ export type VideoStudioSession = {
   savedAt: number;
   promptsText: string;
   videoModel: string;
-  // Model options - Kling 2.6
-  kling26Duration?: string;
-  kling26Aspect?: string;
-  kling26Sound?: boolean;
+  // Model options - Kling 3.0
+  kling30Duration?: string;
+  kling30Aspect?: string;
+  kling30Sound?: boolean;
+  kling30Mode?: string;
+  kling30NegPrompt?: string;
+  kling30CfgScale?: number;
   // Model options - Veo
   veoAspect: string;
   // Model options - Sora
