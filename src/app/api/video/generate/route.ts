@@ -108,23 +108,66 @@ async function kieCreateTask(payload: any, { retryOnPolicy = false, maxRetries =
   throw lastError || new Error("KIE createTask failed after retries");
 }
 
+function isTransientStatus(status: number): boolean {
+  return [408, 429, 500, 502, 503, 504].includes(status);
+}
+
+function isKieSuccessState(s: string): boolean {
+  return ["success", "succeed", "succeeded", "done", "complete", "completed"].includes(s);
+}
+
+function isKieFailState(s: string): boolean {
+  return ["fail", "failed", "error", "errored"].includes(s);
+}
+
 async function kiePoll(taskId: string, maxMs = 240_000) {
   const start = Date.now();
   let lastState = "waiting";
+  let pollDelayMs = 3000;          // start at 3 s
+  const maxDelay = 15_000;         // cap at 15 s
+  const initialDelay = 3000;
+  let pollCount = 0;
+
   while (Date.now() - start < maxMs) {
-    await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
-      headers: { Authorization: `Bearer ${KIE_KEY}` },
-    });
-    const json = await res.json().catch(() => ({}));
+    const jitter = Math.floor(Math.random() * Math.min(500, Math.max(50, pollDelayMs / 4)));
+    await new Promise((r) => setTimeout(r, pollDelayMs + jitter));
+    pollCount++;
+
+    let res: Response;
+    let json: any;
+    try {
+      res = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+        headers: { Authorization: `Bearer ${KIE_KEY}` },
+      });
+      json = await res.json().catch(() => ({}));
+    } catch (networkErr: any) {
+      // Network-level error (DNS, socket reset, etc.) — treat as transient
+      pollDelayMs = Math.min(maxDelay, Math.floor(pollDelayMs * 1.5));
+      console.warn(`[KIE] Poll #${pollCount} network error: ${networkErr?.message}; retrying in ${pollDelayMs}ms`);
+      continue;
+    }
+
     if (!res.ok || json?.code !== 200) {
+      const transient = isTransientStatus(res.status) || isTransientStatus(Number(json?.code));
+      if (transient) {
+        pollDelayMs = Math.min(maxDelay, Math.floor(pollDelayMs * 1.5));
+        console.warn(
+          `[KIE] Poll #${pollCount} transient error (http=${res.status}, code=${json?.code}); retrying in ${pollDelayMs}ms`
+        );
+        continue;
+      }
       const msg = json?.message || json?.msg || "KIE query failed";
       throw new Error(msg);
     }
-    lastState = json?.data?.state || "unknown";
 
-    if (lastState === "success") {
-      // resultJson: "{\"resultUrls\":[\"https://...mp4\"]}"
+    lastState = (json?.data?.state || "unknown").toLowerCase();
+
+    if (pollCount === 1 || pollCount % 10 === 0) {
+      const elapsed = Math.round((Date.now() - start) / 1000);
+      console.log(`[KIE] Poll #${pollCount} (${elapsed}s): state=${lastState}`);
+    }
+
+    if (isKieSuccessState(lastState)) {
       try {
         const parsed = JSON.parse(json?.data?.resultJson || "{}");
         const urls: string[] = parsed?.resultUrls || [];
@@ -134,12 +177,19 @@ async function kiePoll(taskId: string, maxMs = 240_000) {
         throw new Error("Malformed KIE resultJson");
       }
     }
-    if (lastState === "fail") {
+    if (isKieFailState(lastState)) {
       const failMsg = json?.data?.failMsg || "KIE reported failure";
       throw new Error(failMsg);
     }
+
+    // Gradually recover delay after transient back-offs
+    if (pollDelayMs > initialDelay) {
+      pollDelayMs = Math.max(initialDelay, Math.floor(pollDelayMs * 0.9));
+    }
   }
-  throw new Error(`KIE generation timed out (last state: ${lastState})`);
+
+  const elapsed = Math.round((Date.now() - start) / 1000);
+  throw new Error(`KIE generation timed out after ${elapsed}s / ${pollCount} polls (last state: ${lastState})`);
 }
 
 // ---- Veo 3.1 Dedicated API ----
@@ -431,7 +481,7 @@ export async function POST(req: Request) {
       console.log("[Sora] Payload:", JSON.stringify(payload, null, 2));
 
       const taskId = await kieCreateTask(payload, { retryOnPolicy: true });
-      const { url } = await kiePoll(taskId, 480_000); // 8 minutes max for Sora
+      const { url } = await kiePoll(taskId, 720_000); // 12 minutes max for Sora
       return NextResponse.json({ videoUrl: url });
     }
 
