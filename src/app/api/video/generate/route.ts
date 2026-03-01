@@ -24,8 +24,6 @@ type PostBody = {
   image_urls?: string[];          // Reference images (first/last frame)
   sound?: boolean;                // Generate with sound
   kling_mode?: "std" | "pro";    // Standard vs Pro quality
-  negative_prompt?: string;       // Negative prompt
-  cfg_scale?: number;             // 0-1, prompt adherence
 
   // Veo-specific
   aspectRatio?: "16:9" | "9:16" | "Auto";
@@ -359,8 +357,6 @@ export async function POST(req: Request) {
       image_urls,
       sound,
       kling_mode,
-      negative_prompt,
-      cfg_scale,
       // Veo
       aspectRatio,
       generationType,
@@ -392,16 +388,6 @@ export async function POST(req: Request) {
         klingInput.image_urls = image_urls;
       }
 
-      // Negative prompt
-      if (negative_prompt) {
-        klingInput.negative_prompt = negative_prompt;
-      }
-
-      // CFG scale (prompt adherence 0-1)
-      if (typeof cfg_scale === "number" && cfg_scale >= 0 && cfg_scale <= 1) {
-        klingInput.cfg_scale = cfg_scale;
-      }
-
       const payload = {
         model: "kling-3.0/video",
         callBackUrl: "",
@@ -409,7 +395,7 @@ export async function POST(req: Request) {
       };
 
       const taskId = await kieCreateTask(payload);
-      const { url } = await kiePoll(taskId, 300_000); // 5 minutes max
+      const { url } = await kiePoll(taskId, 600_000); // 10 minutes max (Pro + long duration)
       return NextResponse.json({ videoUrl: url });
     }
 

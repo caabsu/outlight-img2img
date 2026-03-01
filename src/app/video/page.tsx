@@ -407,8 +407,6 @@ type VideoRunContext = {
     aspect: "16:9" | "9:16" | "1:1";
     sound: boolean;
     mode: "std" | "pro";
-    negative_prompt: string;
-    cfg_scale: number;
   };
   veo: {
     aspect: VeoRatio;
@@ -538,8 +536,6 @@ export default function VideoStudioPage() {
   const [kling30Aspect, setKling30Aspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [kling30Sound, setKling30Sound] = useState<boolean>(false);
   const [kling30Mode, setKling30Mode] = useState<"std" | "pro">("pro");
-  const [kling30NegPrompt, setKling30NegPrompt] = useState<string>("");
-  const [kling30CfgScale, setKling30CfgScale] = useState<number>(0.5);
 
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
   const [veoSeed, setVeoSeed] = useState("");
@@ -627,8 +623,6 @@ export default function VideoStudioPage() {
     if (session.kling30Aspect) setKling30Aspect(session.kling30Aspect as any);
     if (typeof session.kling30Sound === "boolean") setKling30Sound(session.kling30Sound);
     if (session.kling30Mode) setKling30Mode(session.kling30Mode as any);
-    if (session.kling30NegPrompt) setKling30NegPrompt(session.kling30NegPrompt);
-    if (typeof session.kling30CfgScale === "number") setKling30CfgScale(session.kling30CfgScale);
     if (session.veoAspect) setVeoAspect(session.veoAspect as any);
     if (session.soraFrames) setSoraFrames(session.soraFrames as any);
     if (session.soraAspect) setSoraAspect(session.soraAspect as any);
@@ -663,8 +657,6 @@ export default function VideoStudioPage() {
       kling30Aspect,
       kling30Sound,
       kling30Mode,
-      kling30NegPrompt,
-      kling30CfgScale,
       veoAspect,
       soraFrames,
       soraAspect,
@@ -685,8 +677,6 @@ export default function VideoStudioPage() {
     kling30Aspect,
     kling30Sound,
     kling30Mode,
-    kling30NegPrompt,
-    kling30CfgScale,
     veoAspect,
     soraFrames,
     soraAspect,
@@ -946,7 +936,7 @@ export default function VideoStudioPage() {
       customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
-      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode, negative_prompt: kling30NegPrompt, cfg_scale: kling30CfgScale },
+      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
@@ -986,7 +976,7 @@ export default function VideoStudioPage() {
       customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
-      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode, negative_prompt: kling30NegPrompt, cfg_scale: kling30CfgScale },
+      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
@@ -1057,8 +1047,6 @@ export default function VideoStudioPage() {
               aspect_ratio: context.kling30.aspect,
               sound: context.kling30.sound,
               kling_mode: context.kling30.mode,
-              cfg_scale: context.kling30.cfg_scale,
-              ...(context.kling30.negative_prompt ? { negative_prompt: context.kling30.negative_prompt } : {}),
               image_urls: [imageUrl],
             };
           } else if (runIsVeo) {
@@ -1164,8 +1152,6 @@ export default function VideoStudioPage() {
               aspect_ratio: context.kling30.aspect,
               sound: context.kling30.sound,
               kling_mode: context.kling30.mode,
-              cfg_scale: context.kling30.cfg_scale,
-              ...(context.kling30.negative_prompt ? { negative_prompt: context.kling30.negative_prompt } : {}),
               ...(imageUrls.length > 0 ? { image_urls: imageUrls } : {}),
             };
           } else if (runIsVeo) {
@@ -1359,18 +1345,6 @@ export default function VideoStudioPage() {
                                         <option value="std">Standard</option>
                                     </select>
                                 </div>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">CFG Scale (Prompt Adherence)</label>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <input type="range" min="0" max="1" step="0.05" value={kling30CfgScale} onChange={e => setKling30CfgScale(Number(e.target.value))} className="flex-1 h-1.5 accent-indigo-600" />
-                                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400 w-7 text-right">{kling30CfgScale.toFixed(2)}</span>
-                                </div>
-                                <p className="text-[9px] text-slate-400 dark:text-slate-600 mt-0.5">0 = creative, 0.5 = balanced, 1 = strict</p>
-                            </div>
-                            <div>
-                                <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Negative Prompt</label>
-                                <input type="text" className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" placeholder="Elements to avoid..." value={kling30NegPrompt} onChange={e => setKling30NegPrompt(e.target.value)} />
                             </div>
                             <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer select-none">
                                 <input type="checkbox" checked={kling30Sound} onChange={e => setKling30Sound(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
