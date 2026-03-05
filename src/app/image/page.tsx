@@ -453,7 +453,7 @@ type Run = {
 };
 
 const RUN_SPEED_OPTIONS: RunSpeed[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-const MAX_CONCURRENT_RUNS = 10;
+const MAX_CONCURRENT_RUNS = 20;
 const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "gmltn123";
 
 function safeName(value: string) {
