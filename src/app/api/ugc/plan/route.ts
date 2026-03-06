@@ -30,6 +30,53 @@ const FAST_TALKING_WORDS_PER_SECOND = 2.85;
 const MIN_DIALOGUE_CLIP_SECONDS = 4;
 const MAX_DIALOGUE_CLIP_SECONDS = 8;
 
+type UgcAnthropicCreativeScript = {
+  id: string;
+  title: string;
+  rationale: string;
+  hook: string;
+  cta: string;
+  dialogue: string;
+};
+
+type UgcAnthropicCreativeAvatar = {
+  id: string;
+  label: string;
+  persona: string;
+  wardrobe: string;
+  castingRationale: string;
+  voiceStyle: string;
+};
+
+type UgcAnthropicCreativeScene = {
+  id: string;
+  title: string;
+  summary: string;
+  environment: string;
+  avatarId: string;
+  camera: string;
+  lighting: string;
+};
+
+type UgcAnthropicCreativeBroll = {
+  id: string;
+  title: string;
+  objective: string;
+  angle: string;
+  lens: string;
+  lighting: string;
+  withoutHuman: boolean;
+};
+
+type UgcAnthropicCreativePlan = {
+  productAnalysis: string;
+  selectedScriptId: string;
+  scriptOptions: UgcAnthropicCreativeScript[];
+  avatarOptions: UgcAnthropicCreativeAvatar[];
+  sceneVariations: UgcAnthropicCreativeScene[];
+  bRollImagePlans: UgcAnthropicCreativeBroll[];
+};
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -277,7 +324,8 @@ function buildSceneVariations(
   productName: string,
   productAppearance: string,
   settings: UgcPlanRequest["settings"],
-  category: string
+  category: string,
+  overrides: UgcAnthropicCreativeScene[] = []
 ): UgcSceneVariation[] {
   const baseEnvironment = inferEnvironment(script.dialogue, category);
   const cameraDirections = [
@@ -297,11 +345,15 @@ function buildSceneVariations(
   const sceneCount = clamp(settings.sceneVariationCount, 1, MAX_SCENE_VARIATIONS);
 
   return Array.from({ length: sceneCount }, (_, index) => {
-    const avatar = avatarOptions[index % avatarOptions.length];
-    const camera = cameraDirections[index % cameraDirections.length];
-    const lighting = lightingDirections[index % lightingDirections.length];
-    const title = `Base Scene ${index + 1}`;
+    const override = overrides[index];
+    const avatar =
+      avatarOptions.find((option) => option.id === cleanText(override?.avatarId)) ||
+      avatarOptions[index % avatarOptions.length];
+    const camera = cleanText(override?.camera) || cameraDirections[index % cameraDirections.length];
+    const lighting = cleanText(override?.lighting) || lightingDirections[index % lightingDirections.length];
+    const title = cleanText(override?.title) || `Base Scene ${index + 1}`;
     const summary =
+      cleanText(override?.summary) ||
       index === 0
         ? "Most conversion-safe version with clean product visibility and a direct creator setup."
         : index === 1
@@ -309,16 +361,17 @@ function buildSceneVariations(
           : index === 2
             ? "Warmer, more lived-in take for higher social-native credibility."
             : "Alternate performance-safe variation that preserves continuity for clip batching.";
+    const environment = cleanText(override?.environment) || baseEnvironment;
 
     return {
       id: makeId("scene", index),
       title,
       summary,
-      environment: baseEnvironment,
+      environment,
       avatarId: avatar.id,
       camera,
       lighting,
-      prompt: `Place this exact referenced ${category || "product"} for ${productName} into a 9:16 ${settings.imageResolution} UGC base scene. Preserve the real product exactly: ${productAppearance}. Include ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. The person should appear to be filming themselves or holding the recording device, looking directly into the camera, ready to talk to the viewer. Environment: ${baseEnvironment}. Camera framing: ${camera}. Lighting: ${lighting}. Keep the product clearly readable in frame, do not change its design, and make the scene stable enough to use as the starting image for multiple talking clips.`,
+      prompt: `Place this exact referenced ${category || "product"} for ${productName} into a 9:16 ${settings.imageResolution} UGC base scene. Preserve the real product exactly: ${productAppearance}. Include ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. The person should appear to be filming themselves or holding the recording device, looking directly into the camera, ready to talk to the viewer. Environment: ${environment}. Camera framing: ${camera}. Lighting: ${lighting}. Keep the product clearly readable in frame, do not change its design, and make the scene stable enough to use as the starting image for multiple talking clips.`,
     };
   });
 }
@@ -377,7 +430,8 @@ function buildBrollImagePlans(
   script: UgcScriptOption,
   productName: string,
   productAppearance: string,
-  settings: UgcPlanRequest["settings"]
+  settings: UgcPlanRequest["settings"],
+  overrides: UgcAnthropicCreativeBroll[] = []
 ): UgcBrollImagePlan[] {
   const shotBlueprints = [
     {
@@ -426,17 +480,24 @@ function buildBrollImagePlans(
 
   return Array.from({ length: count }, (_, index) => {
     const shot = shotBlueprints[index % shotBlueprints.length];
+    const override = overrides[index];
+    const title = cleanText(override?.title) || shot.title;
+    const objective = cleanText(override?.objective) || shot.objective;
+    const angle = cleanText(override?.angle) || shot.angle;
+    const lens = cleanText(override?.lens) || shot.lens;
+    const lighting = cleanText(override?.lighting) || shot.lighting;
+    const withoutHuman = typeof override?.withoutHuman === "boolean" ? override.withoutHuman : shot.withoutHuman;
     return {
       id: makeId("broll-image", index),
       index,
-      title: shot.title,
-      objective: shot.objective,
-      angle: shot.angle,
-      lens: shot.lens,
-      lighting: shot.lighting,
-      withoutHuman: shot.withoutHuman,
-      prompt: `Create a ${settings.imageAspectRatio}, ${settings.imageResolution} starting frame for a B-roll clip about ${productName}. Match the approved room and preserve the exact product appearance: ${productAppearance}. Shot intent: ${shot.objective}. Angle: ${shot.angle}. Lens: ${shot.lens}. Lighting: ${shot.lighting}. ${
-        shot.withoutHuman
+      title,
+      objective,
+      angle,
+      lens,
+      lighting,
+      withoutHuman,
+      prompt: `Create a ${settings.imageAspectRatio}, ${settings.imageResolution} starting frame for a B-roll clip about ${productName}. Match the approved room and preserve the exact product appearance: ${productAppearance}. Shot intent: ${objective}. Angle: ${angle}. Lens: ${lens}. Lighting: ${lighting}. ${
+        withoutHuman
           ? "Remove the person unless hands are essential, and keep continuity with the same scene."
           : "If a person appears, keep them secondary and the product primary."
       } This image is a starting point for motion, not a final still, so give it clear movement potential and edit-ready composition. Reference the script claim: "${script.hook}"`,
@@ -614,6 +675,107 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
   };
 }
 
+function hasAnthropicCreativeShape(plan: any): plan is UgcAnthropicCreativePlan {
+  return (
+    plan &&
+    typeof plan.productAnalysis === "string" &&
+    typeof plan.selectedScriptId === "string" &&
+    Array.isArray(plan.scriptOptions) &&
+    plan.scriptOptions.length > 0 &&
+    Array.isArray(plan.avatarOptions) &&
+    plan.avatarOptions.length > 0 &&
+    Array.isArray(plan.sceneVariations) &&
+    plan.sceneVariations.length > 0 &&
+    Array.isArray(plan.bRollImagePlans) &&
+    plan.bRollImagePlans.length > 0
+  );
+}
+
+function buildPlanFromAnthropicCreative(
+  input: UgcPlanRequest,
+  baseline: UgcWorkflowPlan,
+  creative: UgcAnthropicCreativePlan
+): UgcWorkflowPlan {
+  const productName = cleanText(input.product.name) || "the product";
+  const category = cleanText(input.product.category) || "creator-friendly product";
+  const productAppearance =
+    cleanText(input.product.appearanceNotes) ||
+    `${productName} should stay visually consistent with its real product form, premium materials, and original brand cues.`;
+
+  const scriptOptions = baseline.scriptOptions.map((fallback, index) => {
+    const option = creative.scriptOptions[index];
+    const dialogue = cleanText(option?.dialogue) || fallback.dialogue;
+    const estimatedSeconds = estimateDurationSeconds(dialogue, input.script.totalSeconds);
+    return {
+      id: fallback.id,
+      title: cleanText(option?.title) || fallback.title,
+      rationale: cleanText(option?.rationale) || fallback.rationale,
+      hook: cleanText(option?.hook) || splitSentences(dialogue)[0] || fallback.hook,
+      cta: cleanText(option?.cta) || fallback.cta,
+      dialogue,
+      estimatedSeconds,
+      beats: buildScriptBeats(dialogue, estimatedSeconds),
+    } satisfies UgcScriptOption;
+  });
+
+  const avatarOptions = baseline.avatarOptions.map((fallback, index) => {
+    const option = creative.avatarOptions[index];
+    return {
+      id: fallback.id,
+      label: cleanText(option?.label) || fallback.label,
+      persona: cleanText(option?.persona) || fallback.persona,
+      wardrobe: cleanText(option?.wardrobe) || fallback.wardrobe,
+      castingRationale: cleanText(option?.castingRationale) || fallback.castingRationale,
+      voiceStyle: cleanText(option?.voiceStyle) || fallback.voiceStyle,
+    } satisfies UgcAvatarOption;
+  });
+
+  const selectedScript =
+    scriptOptions.find((option) => option.id === cleanText(creative.selectedScriptId)) || scriptOptions[0];
+  const sceneVariations = buildSceneVariations(
+    selectedScript,
+    avatarOptions,
+    productName,
+    productAppearance,
+    input.settings,
+    category,
+    creative.sceneVariations
+  );
+  const dialogueClips = buildDialogueClips(
+    selectedScript,
+    productName,
+    sceneVariations[0]?.environment || inferEnvironment(selectedScript.dialogue, category),
+    input.settings
+  );
+  const bRollImagePlans = buildBrollImagePlans(
+    selectedScript,
+    productName,
+    productAppearance,
+    input.settings,
+    creative.bRollImagePlans
+  );
+  const bRollClipPlans = buildBrollClipPlans(bRollImagePlans, input.settings);
+
+  return {
+    productAnalysis: cleanText(creative.productAnalysis) || baseline.productAnalysis,
+    selectedScriptId: selectedScript.id,
+    scriptOptions,
+    avatarOptions,
+    sceneVariations,
+    dialogueClips,
+    bRollImagePlans,
+    bRollClipPlans,
+    approvalGates: buildApprovalGates(input.settings.safeMode),
+    architecture: buildArchitecture(input.promptPack, input.settings.safeMode),
+    summary: {
+      estimatedDurationSeconds: dialogueClips[dialogueClips.length - 1]?.endSecond || selectedScript.estimatedSeconds,
+      totalDialogueClips: dialogueClips.length,
+      totalBrollClips: bRollClipPlans.length,
+      sceneVariationCount: sceneVariations.length,
+    },
+  };
+}
+
 function extractJsonObject(text: string) {
   const match = text.match(/\{[\s\S]*\}/);
   if (!match) return null;
@@ -703,9 +865,9 @@ RULES
 async function tryAnthropicPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
-  const prompt = `You are orchestrating an AI UGC video advertisement workflow.
+  const prompt = `You are planning the creative layer for an AI UGC video advertisement workflow.
 
-Improve the baseline workflow plan below. Keep the same top-level JSON shape and keep array lengths unchanged unless an array is empty. Preserve IDs where they already exist. Return only JSON.
+Return only JSON. Do not add markdown fences. Use the exact ids and array counts provided below.
 
 INPUTS
 - Campaign: ${input.campaignName || "Untitled UGC Workflow"}
@@ -715,20 +877,58 @@ INPUTS
 - Knowledge: ${input.knowledge || "None"}
 - Override instructions: ${input.overrideInstructions || "None"}
 
-AGENT PROMPTS
-${JSON.stringify(input.promptPack, null, 2)}
+AGENT INTENT
+- Strategist: ${cleanText(input.promptPack.strategist) || DEFAULT_UGC_PROMPT_PACK.strategist}
+- Scene architect: ${cleanText(input.promptPack.sceneArchitect) || DEFAULT_UGC_PROMPT_PACK.sceneArchitect}
+- Dialogue director: ${cleanText(input.promptPack.dialogueDirector) || DEFAULT_UGC_PROMPT_PACK.dialogueDirector}
+- B-roll director: ${cleanText(input.promptPack.bRollDirector) || DEFAULT_UGC_PROMPT_PACK.bRollDirector}
 
-BASELINE PLAN
-${JSON.stringify(baseline, null, 2)}
+RETURN THIS EXACT JSON SHAPE
+{
+  "productAnalysis": "string",
+  "selectedScriptId": "${baseline.selectedScriptId}",
+  "scriptOptions": [
+    ${baseline.scriptOptions
+      .map(
+        (option) =>
+          `{ "id": "${option.id}", "title": "string", "rationale": "string", "hook": "string", "cta": "string", "dialogue": "string" }`
+      )
+      .join(",\n    ")}
+  ],
+  "avatarOptions": [
+    ${baseline.avatarOptions
+      .map(
+        (avatar) =>
+          `{ "id": "${avatar.id}", "label": "string", "persona": "string", "wardrobe": "string", "castingRationale": "string", "voiceStyle": "string" }`
+      )
+      .join(",\n    ")}
+  ],
+  "sceneVariations": [
+    ${baseline.sceneVariations
+      .map(
+        (scene) =>
+          `{ "id": "${scene.id}", "title": "string", "summary": "string", "environment": "string", "avatarId": "avatar-1 | avatar-2 | avatar-3", "camera": "string", "lighting": "string" }`
+      )
+      .join(",\n    ")}
+  ],
+  "bRollImagePlans": [
+    ${baseline.bRollImagePlans
+      .map(
+        (plan) =>
+          `{ "id": "${plan.id}", "title": "string", "objective": "string", "angle": "string", "lens": "string", "lighting": "string", "withoutHuman": true }`
+      )
+      .join(",\n    ")}
+  ]
+}
 
 RULES
-1. Dialogue clips must preserve the exact spoken text in order.
-2. Dialogue clip prompts should explicitly direct the person in the image to say the exact script naturally with synced audio.
-3. Every scene and B-roll image prompt must stay 9:16-first, commercially realistic, and preserve the referenced product.
-4. Scene prompts should keep a believable on-camera person looking toward the viewer as if filming themselves.
-5. B-roll planning is separate from dialogue planning; do not collapse them.
-6. If safe mode is enabled, approval gates must stay required.
-7. Do not add markdown fences. Return only valid JSON.`;
+1. Keep the dialogue natural, creator-friendly, and easy to say on camera.
+2. Match the runtime target by making each script concise but complete.
+3. SelectedScriptId must match one of the provided script ids.
+4. Scene directions must preserve the referenced product and feel believable for a selfie-style talking ad.
+5. B-roll directions must be designed as start frames for motion, not polished final stills.
+6. Do not include prompts, beats, dialogue clip batches, approval gates, architecture, or summary fields.
+7. Return only valid JSON.`;
 
   try {
     const anthropic = new Anthropic({
@@ -739,9 +939,9 @@ RULES
     const response = await anthropic.messages.create(
       {
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-        max_tokens: 8192,
+        max_tokens: 4096,
         system:
-          "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
+          "You are a production planner for AI UGC video ads. Return only the creative planning layer in valid JSON, keep ids exactly as provided, and optimize for a fast, usable response.",
         messages: [{ role: "user", content: prompt }],
       },
       {
@@ -753,7 +953,7 @@ RULES
     if (!textBlock || textBlock.type !== "text") return null;
 
     const parsed = extractJsonObject(textBlock.text);
-    return hasPlanShape(parsed) ? parsed : null;
+    return hasAnthropicCreativeShape(parsed) ? buildPlanFromAnthropicCreative(input, baseline, parsed) : null;
   } catch (error) {
     console.error("UGC Anthropic plan error:", error);
     return null;
