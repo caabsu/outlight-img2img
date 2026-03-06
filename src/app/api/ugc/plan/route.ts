@@ -1,5 +1,5 @@
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
@@ -25,7 +25,7 @@ import {
 
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
-const REMOTE_PLANNER_TIMEOUT_MS = 25000;
+const REMOTE_PLANNER_TIMEOUT_MS = 55000;
 const FAST_TALKING_WORDS_PER_SECOND = 2.85;
 const MIN_DIALOGUE_CLIP_SECONDS = 4;
 const MAX_DIALOGUE_CLIP_SECONDS = 8;
