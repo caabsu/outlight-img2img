@@ -25,6 +25,9 @@ import {
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
 const REMOTE_PLANNER_TIMEOUT_MS = 9000;
+const FAST_TALKING_WORDS_PER_SECOND = 2.85;
+const MIN_DIALOGUE_CLIP_SECONDS = 4;
+const MAX_DIALOGUE_CLIP_SECONDS = 8;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -122,23 +125,38 @@ function buildScriptBeats(dialogue: string, requestedSeconds: number): UgcScript
 
 function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDurationSeconds: number) {
   const sentences = splitSentences(dialogue);
-  const clipCount = Math.max(1, Math.ceil(totalSeconds / clipDurationSeconds));
-  if (sentences.length <= clipCount) {
-    return Array.from({ length: clipCount }, (_, index) => ({
-      id: makeId("clip-segment", index),
-      text: sentences[index] || sentences[sentences.length - 1] || dialogue,
-    }));
+  const preferredSeconds = clamp(clipDurationSeconds, MIN_DIALOGUE_CLIP_SECONDS, 7);
+  const targetWordsPerClip = Math.max(11, Math.round(FAST_TALKING_WORDS_PER_SECOND * preferredSeconds));
+  const maxWordsPerClip = Math.max(targetWordsPerClip + 5, 18);
+
+  if (sentences.length === 0) {
+    const fallbackDuration = clamp(
+      Math.round(Math.max(totalSeconds, MIN_DIALOGUE_CLIP_SECONDS)),
+      MIN_DIALOGUE_CLIP_SECONDS,
+      MAX_DIALOGUE_CLIP_SECONDS
+    );
+    return [
+      {
+        id: makeId("clip-segment", 0),
+        text: cleanText(dialogue),
+        durationSeconds: fallbackDuration,
+        wordCount: countWords(dialogue),
+      },
+    ];
   }
 
-  const targetWords = Math.max(1, Math.ceil(countWords(dialogue) / clipCount));
-  const clips: Array<{ id: string; text: string }> = [];
+  const clips: Array<{ id: string; text: string; wordCount: number }> = [];
   let current: string[] = [];
   let currentWords = 0;
 
   sentences.forEach((sentence) => {
     const words = countWords(sentence);
-    if (clips.length < clipCount - 1 && current.length > 0 && currentWords + words > targetWords) {
-      clips.push({ id: makeId("clip-segment", clips.length), text: current.join(" ") });
+    if (current.length > 0 && (currentWords >= targetWordsPerClip || currentWords + words > maxWordsPerClip)) {
+      clips.push({
+        id: makeId("clip-segment", clips.length),
+        text: current.join(" "),
+        wordCount: currentWords,
+      });
       current = [];
       currentWords = 0;
     }
@@ -147,14 +165,31 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
   });
 
   if (current.length > 0) {
-    clips.push({ id: makeId("clip-segment", clips.length), text: current.join(" ") });
+    clips.push({
+      id: makeId("clip-segment", clips.length),
+      text: current.join(" "),
+      wordCount: currentWords,
+    });
   }
 
-  while (clips.length < clipCount) {
-    clips.push({ id: makeId("clip-segment", clips.length), text: clips[clips.length - 1]?.text || dialogue });
+  while (clips.length > 1 && clips[clips.length - 1].wordCount < 7) {
+    const tail = clips.pop();
+    if (!tail) break;
+    const previous = clips[clips.length - 1];
+    previous.text = `${previous.text} ${tail.text}`.trim();
+    previous.wordCount += tail.wordCount;
   }
 
-  return clips.slice(0, clipCount);
+  return clips.map((clip, index) => ({
+    id: clip.id || makeId("clip-segment", index),
+    text: clip.text,
+    wordCount: clip.wordCount,
+    durationSeconds: clamp(
+      Math.round(clip.wordCount / FAST_TALKING_WORDS_PER_SECOND),
+      MIN_DIALOGUE_CLIP_SECONDS,
+      MAX_DIALOGUE_CLIP_SECONDS
+    ),
+  }));
 }
 
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
@@ -313,8 +348,11 @@ function buildDialogueClips(
   ];
 
   return segments.map((segment, index) => {
-    const startSecond = index * settings.clipDurationSeconds;
-    const endSecond = startSecond + settings.clipDurationSeconds;
+    const priorDuration = segments
+      .slice(0, index)
+      .reduce((total, item) => total + item.durationSeconds, 0);
+    const startSecond = priorDuration;
+    const endSecond = startSecond + segment.durationSeconds;
     const objective = objectives[Math.min(index, objectives.length - 1)];
     const movement = movements[index % movements.length];
     const camera = cameras[index % cameras.length];
@@ -323,11 +361,13 @@ function buildDialogueClips(
       index,
       startSecond,
       endSecond,
+      durationSeconds: segment.durationSeconds,
+      wordCount: segment.wordCount,
       spokenText: segment.text,
       objective,
       movement,
       camera,
-      prompt: `Use the selected base scene as the starting image for a ${settings.clipDurationSeconds}-second ${settings.videoAspectRatio} UGC video for ${productName}. The person in the image naturally speaks, with subtle and natural movements. They say this exact script: "${segment.text}". Keep synced spoken audio, accurate mouth movement, and continuity with the same avatar, wardrobe, room, product placement, and lighting. Movement: ${movement} Camera behavior: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. The result should feel like believable creator footage and cut cleanly with the clips before and after it.`,
+      prompt: `Use the selected base scene as the starting image for a ${segment.durationSeconds}-second ${settings.videoAspectRatio} UGC video for ${productName}. The person in the image naturally speaks at a relatively fast but believable creator pace, with subtle and natural movements. They say this exact script: "${segment.text}". Keep synced spoken audio, accurate mouth movement, and continuity with the same avatar, wardrobe, room, product placement, and lighting. This clip should feel efficiently delivered, not slow or padded, and should cover the full line cleanly within ${segment.durationSeconds} seconds. Movement: ${movement} Camera behavior: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. The result should feel like believable creator footage and cut cleanly with the clips before and after it.`,
     };
   });
 }
@@ -565,7 +605,7 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
     approvalGates: buildApprovalGates(input.settings.safeMode),
     architecture: buildArchitecture(input.promptPack, input.settings.safeMode),
     summary: {
-      estimatedDurationSeconds: selectedScript.estimatedSeconds,
+      estimatedDurationSeconds: dialogueClips[dialogueClips.length - 1]?.endSecond || selectedScript.estimatedSeconds,
       totalDialogueClips: dialogueClips.length,
       totalBrollClips: bRollClipPlans.length,
       sceneVariationCount: sceneVariations.length,

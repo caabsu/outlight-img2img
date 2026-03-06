@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const SUPABASE_KEY =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 // little helper
 function slugify(s: string) {
@@ -18,11 +19,15 @@ function slugify(s: string) {
 
 export async function GET(req: Request) {
   try {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      return NextResponse.json({ error: "Supabase is not configured.", products: [] }, { status: 503 });
+    }
+
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim().toLowerCase();
     const source = searchParams.get("source"); // "shopify" | "manual" | null (all)
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let query = supabase
       .from("products")
@@ -61,6 +66,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      return NextResponse.json({ error: "Supabase is not configured." }, { status: 503 });
+    }
+
     const body = await req.json().catch(() => ({}));
     const name: string | undefined = body?.name?.trim();
     const image_url: string | undefined = body?.image_url?.trim();
@@ -71,7 +80,7 @@ export async function POST(req: Request) {
     }
     if (!slug) slug = slugify(name);
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
     const { data, error } = await supabase
       .from("products")
       .insert([{ name, slug, image_url }])

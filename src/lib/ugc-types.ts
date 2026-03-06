@@ -99,6 +99,8 @@ export type UgcDialogueClipPlan = {
   index: number;
   startSecond: number;
   endSecond: number;
+  durationSeconds: number;
+  wordCount: number;
   spokenText: string;
   objective: string;
   movement: string;
@@ -186,7 +188,7 @@ export const DEFAULT_UGC_PROMPT_PACK: UgcAgentPromptPack = {
   sceneArchitect:
     "You are the Scene Architect. Study the approved script and product image, then design vertical base-scene prompts that preserve the exact product appearance. Each scene must include a believable on-camera person who feels right for the script, appears to be filming themselves, and looks toward the camera. Match the room and styling to the script so the result feels commercially usable and consistent enough to support both talking clips and B-roll.",
   dialogueDirector:
-    "You are the Dialogue Director. Split the approved script into ordered 5-second Kling 3.0 clip prompts. Preserve the exact spoken words, explicitly direct the person in the image to say that exact line with synced audio, and add subtle natural movement, expression, and camera behavior. Keep the room, wardrobe, lighting, and avatar consistent across every clip so the full ad can be stitched together cleanly.",
+    "You are the Dialogue Director. Split the approved script into ordered Kling 3.0 clip prompts with smart, fast-paced durations, usually around 4 to 8 seconds. Preserve the exact spoken words, minimize unnecessary fragmentation, explicitly direct the person in the image to say that exact line with synced audio, and add subtle natural movement, expression, and camera behavior. Keep the room, wardrobe, lighting, and avatar consistent across every clip so the full ad can be stitched together cleanly.",
   bRollDirector:
     "You are the B-roll Director. Use the approved base scene and product reference to plan supporting coverage. Create vertical start-frame prompts for alternate angles, product details, wider room views, empty-scene variants, and before/after moments that match the script and can cut naturally around the talking clips.",
   safetyCoordinator:
