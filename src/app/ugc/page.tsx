@@ -26,9 +26,10 @@ type Product = {
   shopify_product_type?: string | null;
 };
 
-type PlanSource = "heuristic" | "gemini" | "openai";
+type PlanSource = "heuristic" | "anthropic" | "gemini" | "openai";
 type RenderStatus = "idle" | "running" | "done" | "error";
 type ApprovalStatus = "pending" | "approved" | "rejected" | "skipped";
+type UgcStageView = "setup" | "plan" | "scene" | "clips" | "broll";
 
 type ActivityEntry = {
   id: string;
@@ -69,6 +70,56 @@ type ApprovalState = Record<
 
 const UGC_PROFILE_ID = "00000000-0000-0000-0000-000000000000";
 const VIDEO_MODEL_OPTIONS = [{ id: "kling-3.0", label: "Kling 3.0", note: "Current execution path" }] as const;
+const PRESET_OPTIONS = [
+  {
+    id: "quick",
+    name: "Quick Test",
+    description: "Shorter run with fewer variations.",
+    settings: {
+      safeMode: "fast" as UgcSafeMode,
+      dialogueSeconds: 15,
+      clipDurationSeconds: 5,
+      sceneVariationCount: 3,
+      bRollClipCount: 3,
+    },
+    theme: "Quick product demo",
+  },
+  {
+    id: "balanced",
+    name: "Balanced",
+    description: "Default setup for a clean first pass.",
+    settings: {
+      safeMode: "safe" as UgcSafeMode,
+      dialogueSeconds: 20,
+      clipDurationSeconds: 5,
+      sceneVariationCount: 4,
+      bRollClipCount: 4,
+    },
+    theme: "Creator testimonial",
+  },
+  {
+    id: "review",
+    name: "Review First",
+    description: "More options with approval at each step.",
+    settings: {
+      safeMode: "safe" as UgcSafeMode,
+      dialogueSeconds: 25,
+      clipDurationSeconds: 5,
+      sceneVariationCount: 5,
+      bRollClipCount: 5,
+    },
+    theme: "Before and after",
+  },
+] as const;
+
+const THEME_SUGGESTIONS = [
+  "Creator testimonial",
+  "Problem and solution",
+  "Before and after",
+  "Quick product demo",
+  "Office walkthrough",
+  "Lifestyle routine",
+] as const;
 
 function cn(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
@@ -224,6 +275,72 @@ function SectionCard({
   );
 }
 
+function OverlaySheet({
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-[30px] border border-slate-800 bg-white shadow-2xl dark:bg-slate-950">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+          <div>
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{title}</h3>
+            {subtitle ? <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{subtitle}</p> : null}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-full border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-400 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+          >
+            Close
+          </button>
+        </div>
+        <div className="overflow-y-auto p-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function StepButton({
+  active,
+  label,
+  hint,
+  status,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  hint: string;
+  status: ApprovalStatus | RenderStatus;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        "flex min-w-[150px] flex-1 items-start justify-between rounded-[22px] border px-4 py-3 text-left transition",
+        active
+          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+          : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700"
+      )}
+    >
+      <div>
+        <div className="text-sm font-semibold">{label}</div>
+        <div className={cn("mt-1 text-xs", active ? "text-slate-300 dark:text-slate-700" : "text-slate-500 dark:text-slate-400")}>
+          {hint}
+        </div>
+      </div>
+      <StatusPill status={status} />
+    </button>
+  );
+}
+
 function ProductSelectorModal({
   products,
   search,
@@ -357,7 +474,7 @@ function ApprovalPanel({
       <textarea
         value={state.note}
         onChange={(event) => onNoteChange(event.target.value)}
-        placeholder="Add approval feedback or override instructions"
+        placeholder="If you want changes, describe them here. This note will guide the next run."
         disabled={disabled}
         className="min-h-[88px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
       />
@@ -374,7 +491,7 @@ function ApprovalPanel({
           disabled={disabled}
           className="rounded-full bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Disapprove
+          Needs changes
         </button>
       </div>
     </div>
@@ -408,7 +525,7 @@ function ScriptOptionCard({
           ~{script.estimatedSeconds}s
         </span>
       </div>
-      <div className="mb-3 rounded-2xl bg-slate-50 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900 dark:text-slate-300">
+      <div className="mb-3 rounded-2xl bg-slate-50 p-3 text-sm leading-6 text-slate-700 dark:bg-slate-900 dark:text-slate-300 line-clamp-6">
         {script.dialogue}
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -469,7 +586,6 @@ function ImageRenderCard({
           </div>
           <StatusPill status={render.status} />
         </div>
-        <p className="line-clamp-4 text-xs leading-5 text-slate-600 dark:text-slate-400">{render.prompt}</p>
         <div className="flex gap-2">
           {!hideSelect ? (
             <button
@@ -523,7 +639,6 @@ function VideoRenderCard({
           <div className="text-sm font-semibold text-slate-900 dark:text-white">{render.title}</div>
           <StatusPill status={render.status} />
         </div>
-        <p className="line-clamp-4 text-xs leading-5 text-slate-600 dark:text-slate-400">{render.prompt}</p>
         <div className="flex gap-2">
           <button
             onClick={onToggle}
@@ -550,7 +665,6 @@ export default function UgcStudioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productSearch, setProductSearch] = useState("");
   const [productsLoading, setProductsLoading] = useState(false);
-  const [showProductModal, setShowProductModal] = useState(false);
   const [productSource, setProductSource] = useState<"catalog" | "upload">("catalog");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [uploadedProductName, setUploadedProductName] = useState("Custom product");
@@ -558,11 +672,8 @@ export default function UgcStudioPage() {
   const [appearanceNotes, setAppearanceNotes] = useState("");
   const [scriptMode, setScriptMode] = useState<"generate" | "upload">("generate");
   const [scriptText, setScriptText] = useState("");
-  const [audience, setAudience] = useState("busy professionals");
-  const [primaryBenefit, setPrimaryBenefit] = useState("cuts decision fatigue and looks premium on camera");
-  const [offer, setOffer] = useState("there is a launch bundle with free shipping");
-  const [cta, setCta] = useState("Tap below to try it.");
-  const [tone, setTone] = useState("direct creator energy with premium polish");
+  const [theme, setTheme] = useState("Creator testimonial");
+  const [description, setDescription] = useState("");
   const [knowledge, setKnowledge] = useState("");
   const [settings, setSettings] = useState(DEFAULT_UGC_WORKFLOW_SETTINGS);
   const [promptPack, setPromptPack] = useState<UgcAgentPromptPack>(DEFAULT_UGC_PROMPT_PACK);
@@ -585,6 +696,9 @@ export default function UgcStudioPage() {
   const [brollLoading, setBrollLoading] = useState(false);
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showPromptPanel, setShowPromptPanel] = useState(false);
+  const [showPresetPanel, setShowPresetPanel] = useState(false);
+  const [activeStage, setActiveStage] = useState<UgcStageView>("setup");
 
   const imageModelOptions = useMemo(() => MODEL_LIST.filter((model) => model.id !== "nanobanana-3-pro"), []);
   const selectedScene = useMemo(
@@ -632,6 +746,19 @@ export default function UgcStudioPage() {
   );
 
   const promptPackView = sectionPromptPack(promptPack, plan);
+  const filteredCatalogProducts = useMemo(() => {
+    if (!productSearch.trim()) return products.slice(0, 24);
+    const query = productSearch.toLowerCase();
+    return products
+      .filter(
+        (product) =>
+          product.name.toLowerCase().includes(query) ||
+          product.slug.toLowerCase().includes(query) ||
+          product.shopify_vendor?.toLowerCase().includes(query) ||
+          product.shopify_product_type?.toLowerCase().includes(query)
+      )
+      .slice(0, 24);
+  }, [products, productSearch]);
 
   const addActivity = (stage: string, message: string, tone: ActivityEntry["tone"] = "info") => {
     setActivity((current) => [
@@ -708,6 +835,7 @@ export default function UgcStudioPage() {
       setUploadedProductName(file.name.replace(/\.[^.]+$/, ""));
       setUploadedProductUrl(url);
       setProductSource("upload");
+      setActiveStage("setup");
       addActivity("product", "Custom product image uploaded and ready.", "success");
     } catch (error: any) {
       setErrorMessage(error?.message || "Upload failed");
@@ -722,6 +850,7 @@ export default function UgcStudioPage() {
     const text = await file.text();
     setScriptMode("upload");
     setScriptText(text);
+    setActiveStage("setup");
     addActivity("script", `Imported script from ${file.name}.`, "success");
   };
 
@@ -759,11 +888,8 @@ export default function UgcStudioPage() {
         mode: scriptMode,
         text: scriptText,
         totalSeconds: settings.dialogueSeconds,
-        tone,
-        audience,
-        primaryBenefit,
-        offer,
-        cta,
+        theme,
+        description,
       },
       settings,
       promptPack,
@@ -794,6 +920,7 @@ export default function UgcStudioPage() {
           status: settings.safeMode === "safe" ? "pending" : "approved",
         },
       }));
+      setActiveStage("plan");
       addActivity("plan", `Workflow plan ready with ${nextPlan.summary.totalDialogueClips} dialogue clips and ${nextPlan.summary.totalBrollClips} B-roll clips.`, "success");
     } catch (error: any) {
       setErrorMessage(error?.message || "Failed to build plan");
@@ -818,6 +945,7 @@ export default function UgcStudioPage() {
     }
 
     const variations = plan.sceneVariations;
+    setActiveStage("scene");
     setSceneLoading(true);
     setErrorMessage(null);
     const initial = variations.map((variation) => ({
@@ -892,6 +1020,7 @@ export default function UgcStudioPage() {
     }
 
     const clips = plan.dialogueClips;
+    setActiveStage("clips");
     setDialogueLoading(true);
     setErrorMessage(null);
     const initial = clips.map((clip) => ({
@@ -965,6 +1094,7 @@ export default function UgcStudioPage() {
     }
 
     const shots = plan.bRollImagePlans;
+    setActiveStage("broll");
     setBrollSeedLoading(true);
     setErrorMessage(null);
     const initial = shots.map((shot) => ({
@@ -1046,6 +1176,7 @@ export default function UgcStudioPage() {
     });
 
     setBrollVideos(initial);
+    setActiveStage("broll");
     addActivity("broll", `Rendering ${initial.length} B-roll clips from approved seed images.`);
 
     try {
@@ -1143,65 +1274,56 @@ export default function UgcStudioPage() {
     });
   };
 
-  const dialogueLaneSteps = [
-    {
-      label: "Script strategy",
-      description: "Generates selectable dialogue, beat map, and approval-aware workflow contract.",
-      status: plan ? approvals.script.status : "pending",
-    },
-    {
-      label: "Base scene render",
-      description: "Creates avatar-scene candidates anchored to the product and script context.",
-      status: sceneLoading ? "running" : sceneRenders.some((render) => render.status === "done") ? approvals.scene.status : "pending",
-    },
-    {
-      label: "Dialogue clip batch",
-      description: "Renders contiguous 5-second talking-head clips from the approved base scene.",
-      status: dialogueLoading
-        ? "running"
-        : dialogueVideos.some((render) => render.status === "done")
-          ? approvals.dialogue.status
-          : "pending",
-    },
-  ] as const;
+  const applyPreset = (presetId: (typeof PRESET_OPTIONS)[number]["id"]) => {
+    const preset = PRESET_OPTIONS.find((item) => item.id === presetId);
+    if (!preset) return;
+    setSettings((current) => ({
+      ...current,
+      safeMode: preset.settings.safeMode,
+      dialogueSeconds: preset.settings.dialogueSeconds,
+      clipDurationSeconds: preset.settings.clipDurationSeconds,
+      sceneVariationCount: preset.settings.sceneVariationCount,
+      bRollClipCount: preset.settings.bRollClipCount,
+      videoDurationSeconds: preset.settings.clipDurationSeconds,
+    }));
+    setTheme(preset.theme);
+    setShowPresetPanel(false);
+    addActivity("setup", `${preset.name} preset applied.`, "success");
+  };
 
-  const brollLaneSteps = [
-    {
-      label: "Shot planning",
-      description: "Derives non-dialogue coverage from the approved script and scene continuity.",
-      status: plan ? approvals.script.status : "pending",
-    },
-    {
-      label: "Seed image render",
-      description: "Creates starting frames for product-only, empty-scene, and angle-shifted B-roll.",
-      status: brollSeedLoading
-        ? "running"
-        : brollSeedImages.some((render) => render.status === "done")
-          ? "done"
-          : "pending",
-    },
-    {
-      label: "B-roll clip batch",
-      description: "Turns the approved seed images into cutaway clips ready for vertical edit assembly.",
-      status: brollLoading ? "running" : brollVideos.some((render) => render.status === "done") ? approvals.broll.status : "pending",
-    },
-  ] as const;
+  const stageStatuses: Record<UgcStageView, ApprovalStatus | RenderStatus> = {
+    setup: planLoading ? "running" : plan ? "done" : "pending",
+    plan: planLoading ? "running" : plan ? approvals.script.status : "pending",
+    scene: sceneLoading ? "running" : sceneRenders.some((render) => render.url) ? approvals.scene.status : "pending",
+    clips: dialogueLoading ? "running" : dialogueVideos.some((video) => video.url) ? approvals.dialogue.status : "pending",
+    broll: brollLoading || brollSeedLoading ? "running" : brollVideos.some((video) => video.url) ? approvals.broll.status : "pending",
+  };
+
+  const recentActivity = activity.slice(0, 5);
+  const selectedScript =
+    plan?.scriptOptions.find((script) => script.id === selectedScriptId) ||
+    plan?.scriptOptions.find((script) => script.id === plan.selectedScriptId) ||
+    null;
+  const selectedScenePlan = plan?.sceneVariations.find((scene) => scene.id === (selectedScene?.planId || selectedSceneId)) || null;
+  const selectedAvatar = plan?.avatarOptions.find((avatar) => avatar.id === (selectedScene?.avatarId || selectedScenePlan?.avatarId)) || null;
+  const activePlannerLabel =
+    planSource === "anthropic" ? "Claude" : planSource === "gemini" ? "Gemini" : planSource === "openai" ? "OpenAI" : "Built-in";
 
   return (
     <div className="relative overflow-hidden">
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.18),_transparent_38%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.16),_transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.85),rgba(248,250,252,0))] dark:bg-[radial-gradient(circle_at_top_left,_rgba(251,191,36,0.10),_transparent_35%),radial-gradient(circle_at_top_right,_rgba(14,165,233,0.10),_transparent_25%),linear-gradient(180deg,rgba(2,6,23,0.88),rgba(2,6,23,0))]" />
-      <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-[1680px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <section className="relative overflow-hidden rounded-[32px] border border-slate-200/80 bg-white/90 p-6 shadow-[0_28px_90px_-48px_rgba(15,23,42,0.42)] dark:border-slate-800 dark:bg-slate-950/85">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
             <div>
               <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-700 dark:text-amber-300">
-                UGC Video Ad Studio
+                UGC Video Studio
               </div>
               <h1 className="max-w-4xl text-3xl font-semibold tracking-tight text-slate-950 dark:text-white md:text-4xl">
-                Dual-agent workflow for creator-led video ads, from script selection to scene seeds and ordered 5-second clip batches.
+                Generate a talking UGC ad, then build matching B-roll from the same scene.
               </h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-400">
-                This page plans and executes a high-control UGC pipeline: choose or upload a script, anchor the product, render avatar-scene variations, batch talking-head clips, then run a separate B-roll agent for alternate-angle coverage. Safe mode inserts explicit approval gates and honors your latest override instruction at every stage.
+                Start with a product, duration, theme, and short brief. The page writes script options, creates base scene choices, renders talking clips in 5-second parts, then builds extra coverage from the same look.
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <button
@@ -1209,7 +1331,19 @@ export default function UgcStudioPage() {
                   disabled={planLoading}
                   className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                 >
-                  {planLoading ? "Planning..." : "Build workflow plan"}
+                  {planLoading ? "Generating scripts..." : "Generate scripts"}
+                </button>
+                <button
+                  onClick={() => setShowPresetPanel(true)}
+                  className="rounded-full border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                >
+                  Presets
+                </button>
+                <button
+                  onClick={() => setShowPromptPanel(true)}
+                  className="rounded-full border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                >
+                  Prompt settings
                 </button>
                 <button
                   onClick={exportWorkflowJson}
@@ -1223,7 +1357,7 @@ export default function UgcStudioPage() {
                   disabled={!plan}
                   className="rounded-full border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
                 >
-                  Export prompt pack
+                  Export prompts
                 </button>
               </div>
             </div>
@@ -1231,410 +1365,1036 @@ export default function UgcStudioPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                  Runtime
+                  Duration
                 </div>
                 <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">{settings.dialogueSeconds}s</div>
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Default creator dialogue length</div>
+                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Default talking length</div>
               </div>
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                  Batches
+                  Talking clips
                 </div>
                 <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
                   {Math.ceil(settings.dialogueSeconds / settings.clipDurationSeconds)}
                 </div>
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">5-second dialogue clip groups</div>
+                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">5-second parts</div>
               </div>
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                  Scene Seeds
+                  Scene options
                 </div>
                 <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">{settings.sceneVariationCount}</div>
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Vertical base-scene variations</div>
+                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Base image choices</div>
               </div>
               <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                  Mode
+                  Review mode
                 </div>
-                <div className="mt-3 text-3xl font-semibold capitalize text-slate-950 dark:text-white">
-                  {settings.safeMode}
+                <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">
+                  {settings.safeMode === "safe" ? "On" : "Off"}
                 </div>
-                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">Approval gate behavior</div>
+                <div className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  {settings.safeMode === "safe" ? "Stops for approval" : "Runs straight through"}
+                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="grid gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
+        {errorMessage ? (
+          <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">
+            {errorMessage}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap gap-3">
+          <StepButton
+            active={activeStage === "setup"}
+            label="1. Setup"
+            hint="Script input and product"
+            status={stageStatuses.setup}
+            onClick={() => setActiveStage("setup")}
+          />
+          <StepButton
+            active={activeStage === "plan"}
+            label="2. Scripts"
+            hint="Pick the best direction"
+            status={stageStatuses.plan}
+            onClick={() => setActiveStage("plan")}
+          />
+          <StepButton
+            active={activeStage === "scene"}
+            label="3. Base scene"
+            hint="Choose the look"
+            status={stageStatuses.scene}
+            onClick={() => setActiveStage("scene")}
+          />
+          <StepButton
+            active={activeStage === "clips"}
+            label="4. Talking clips"
+            hint="Render the main ad"
+            status={stageStatuses.clips}
+            onClick={() => setActiveStage("clips")}
+          />
+          <StepButton
+            active={activeStage === "broll"}
+            label="5. B-roll"
+            hint="Extra coverage"
+            status={stageStatuses.broll}
+            onClick={() => setActiveStage("broll")}
+          />
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <div className="space-y-6 xl:sticky xl:top-20 xl:self-start">
-            <SectionCard title="Campaign Setup" eyebrow="Configure">
+            <SectionCard title="Summary">
               <div className="space-y-4">
-                <label className="block">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                    Campaign name
-                  </div>
-                  <input
-                    value={campaignName}
-                    onChange={(event) => setCampaignName(event.target.value)}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                  />
-                </label>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Safe mode
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Product
+                      </div>
+                      <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">
+                        {selectedProductCard.name || "Pick a product"}
+                      </div>
                     </div>
-                    <select
-                      value={settings.safeMode}
-                      onChange={(event) =>
-                        setSettings((current) => ({
-                          ...current,
-                          safeMode: event.target.value as UgcSafeMode,
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    >
-                      <option value="safe">Safe: block for approval</option>
-                      <option value="fast">Fast: autopilot execution</option>
-                    </select>
-                  </label>
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Video model
-                    </div>
-                    <select
-                      value={settings.videoModelId}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, videoModelId: event.target.value }))
-                      }
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    >
-                      {VIDEO_MODEL_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Dialogue seconds
-                    </div>
-                    <input
-                      type="number"
-                      min={5}
-                      max={60}
-                      value={settings.dialogueSeconds}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, dialogueSeconds: Number(event.target.value) || 20 }))
-                      }
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                  </label>
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Clip duration
-                    </div>
-                    <input
-                      type="number"
-                      min={3}
-                      max={10}
-                      value={settings.clipDurationSeconds}
-                      onChange={(event) =>
-                        setSettings((current) => ({
-                          ...current,
-                          clipDurationSeconds: Number(event.target.value) || 5,
-                          videoDurationSeconds: Number(event.target.value) || 5,
-                        }))
-                      }
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                  </label>
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Scene variations
-                    </div>
-                    <input
-                      type="number"
-                      min={1}
-                      max={8}
-                      value={settings.sceneVariationCount}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, sceneVariationCount: Number(event.target.value) || 4 }))
-                      }
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                  </label>
-                  <label className="block">
-                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      B-roll clips
-                    </div>
-                    <input
-                      type="number"
-                      min={1}
-                      max={8}
-                      value={settings.bRollClipCount}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, bRollClipCount: Number(event.target.value) || 4 }))
-                      }
-                      className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                  </label>
-                </div>
-
-                <label className="block">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                    Image model
-                  </div>
-                  <select
-                    value={settings.imageModelId}
-                    onChange={(event) => setSettings((current) => ({ ...current, imageModelId: event.target.value }))}
-                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                  >
-                    {imageModelOptions.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 text-xs leading-6 text-slate-600 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-400">
-                  All generated visuals are planned for <span className="font-semibold text-slate-900 dark:text-white">9:16</span> framing.
-                  Base scene and B-roll seeds are set to <span className="font-semibold text-slate-900 dark:text-white">2K</span>.
-                  Dialogue and B-roll video clips render in ordered {settings.clipDurationSeconds}-second batches.
-                </div>
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Script Source" eyebrow="Step 1">
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-900">
-                  <button
-                    onClick={() => setScriptMode("generate")}
-                    className={cn(
-                      "rounded-2xl px-3 py-2 text-sm font-semibold transition",
-                      scriptMode === "generate"
-                        ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                        : "text-slate-500 dark:text-slate-400"
-                    )}
-                  >
-                    Generate script
-                  </button>
-                  <button
-                    onClick={() => setScriptMode("upload")}
-                    className={cn(
-                      "rounded-2xl px-3 py-2 text-sm font-semibold transition",
-                      scriptMode === "upload"
-                        ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                        : "text-slate-500 dark:text-slate-400"
-                    )}
-                  >
-                    Upload / paste
-                  </button>
-                </div>
-
-                {scriptMode === "generate" ? (
-                  <div className="space-y-3">
-                    <label className="block">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        Audience
-                      </div>
-                      <input
-                        value={audience}
-                        onChange={(event) => setAudience(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </label>
-                    <label className="block">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        Primary benefit
-                      </div>
-                      <input
-                        value={primaryBenefit}
-                        onChange={(event) => setPrimaryBenefit(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </label>
-                    <label className="block">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        Offer / promo
-                      </div>
-                      <input
-                        value={offer}
-                        onChange={(event) => setOffer(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </label>
-                    <label className="block">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        CTA
-                      </div>
-                      <input
-                        value={cta}
-                        onChange={(event) => setCta(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </label>
-                    <label className="block">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        Tone
-                      </div>
-                      <input
-                        value={tone}
-                        onChange={(event) => setTone(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </label>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <textarea
-                      value={scriptText}
-                      onChange={(event) => setScriptText(event.target.value)}
-                      placeholder="Paste your approved dialogue here."
-                      className="min-h-[180px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                    <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white">
-                      Import text file
-                      <input
-                        type="file"
-                        accept=".txt,.md"
-                        className="hidden"
-                        onChange={(event) => handleScriptImport(event.target.files?.[0] || null)}
-                      />
-                    </label>
-                  </div>
-                )}
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="Product Anchor"
-              eyebrow="Step 2"
-              actions={
-                <button
-                  onClick={() => setShowProductModal(true)}
-                  className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
-                >
-                  {productsLoading ? "Loading..." : "Catalog"}
-                </button>
-              }
-            >
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-900">
-                  <button
-                    onClick={() => setProductSource("catalog")}
-                    className={cn(
-                      "rounded-2xl px-3 py-2 text-sm font-semibold transition",
-                      productSource === "catalog"
-                        ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                        : "text-slate-500 dark:text-slate-400"
-                    )}
-                  >
-                    Catalog product
-                  </button>
-                  <button
-                    onClick={() => setProductSource("upload")}
-                    className={cn(
-                      "rounded-2xl px-3 py-2 text-sm font-semibold transition",
-                      productSource === "upload"
-                        ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                        : "text-slate-500 dark:text-slate-400"
-                    )}
-                  >
-                    Upload image
-                  </button>
-                </div>
-
-                {productSource === "catalog" ? (
-                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                    {selectedProduct ? (
-                      <div className="flex gap-4">
-                        <div className="h-28 w-24 overflow-hidden rounded-2xl bg-slate-200 dark:bg-slate-800">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={selectedProduct.image_url} alt={selectedProduct.name} className="h-full w-full object-cover" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white">{selectedProduct.name}</div>
-                          <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            {selectedProduct.shopify_vendor || "Manual"} {selectedProduct.shopify_product_type ? `· ${selectedProduct.shopify_product_type}` : ""}
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-slate-500 dark:text-slate-400">Choose a product from the catalog modal.</div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <label className="block">
-                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                        Uploaded product label
-                      </div>
-                      <input
-                        value={uploadedProductName}
-                        onChange={(event) => setUploadedProductName(event.target.value)}
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                      />
-                    </label>
-                    <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white">
-                      {uploadingProduct ? "Uploading..." : "Upload product image"}
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="hidden"
-                        onChange={(event) => handleProductUpload(event.target.files?.[0] || null)}
-                      />
-                    </label>
-                    {uploadedProductUrl ? (
-                      <div className="h-56 overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+                    {selectedProductCard.imageUrl ? (
+                      <div className="h-16 w-14 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={uploadedProductUrl} alt={uploadedProductName} className="h-full w-full object-cover" />
+                        <img src={selectedProductCard.imageUrl} alt={selectedProductCard.name} className="h-full w-full object-cover" />
                       </div>
                     ) : null}
                   </div>
-                )}
-
-                <label className="block">
-                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                    Appearance notes
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                      {productSource === "catalog" ? "Catalog" : "Uploaded image"}
+                    </span>
+                    {selectedProductCard.category ? (
+                      <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                        {selectedProductCard.category}
+                      </span>
+                    ) : null}
                   </div>
-                  <textarea
-                    value={appearanceNotes}
-                    onChange={(event) => setAppearanceNotes(event.target.value)}
-                    placeholder="Add product appearance cues you want preserved: finish, materials, branding, hero details."
-                    className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                  />
-                </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                      Theme
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{theme}</div>
+                  </div>
+                  <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                      Planner
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{activePlannerLabel}</div>
+                  </div>
+                  <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                      Image model
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{settings.imageModelId}</div>
+                  </div>
+                  <div className="rounded-[22px] border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                      Video model
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{VIDEO_MODEL_OPTIONS[0].label}</div>
+                  </div>
+                </div>
+
+                {selectedScript ? (
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                      Current script
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{selectedScript.title}</div>
+                    <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400 line-clamp-5">
+                      {selectedScript.dialogue}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             </SectionCard>
 
-            <SectionCard title="Knowledge + Prompts" eyebrow="Agent Control">
+            <SectionCard title="Progress">
+              <div className="space-y-3">
+                {[
+                  ["Scripts", stageStatuses.plan],
+                  ["Base scene", stageStatuses.scene],
+                  ["Talking clips", stageStatuses.clips],
+                  ["B-roll", stageStatuses.broll],
+                ].map(([label, status]) => (
+                  <div key={label} className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div className="text-sm font-medium text-slate-900 dark:text-white">{label}</div>
+                    <StatusPill status={status as ApprovalStatus | RenderStatus} />
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Recent activity">
+              <div className="space-y-3">
+                {recentActivity.length === 0 ? (
+                  <div className="rounded-[22px] border border-dashed border-slate-300 p-5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Activity appears here as you move through the workflow.
+                  </div>
+                ) : (
+                  recentActivity.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={cn(
+                        "rounded-[22px] border p-3",
+                        entry.tone === "success" && "border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/40 dark:bg-emerald-950/20",
+                        entry.tone === "error" && "border-rose-200 bg-rose-50/80 dark:border-rose-900/40 dark:bg-rose-950/20",
+                        entry.tone === "info" && "border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/60"
+                      )}
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        {entry.stage}
+                      </div>
+                      <div className="mt-1 text-sm leading-5 text-slate-700 dark:text-slate-300">{entry.message}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="space-y-6">
+            {activeStage === "setup" ? (
+              <>
+                <SectionCard
+                  title="1. Set up the ad"
+                  actions={
+                    <button
+                      onClick={() => handleBuildPlan()}
+                      disabled={planLoading}
+                      className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    >
+                      {planLoading ? "Generating..." : "Generate scripts"}
+                    </button>
+                  }
+                >
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
+                    <div className="space-y-5">
+                      <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-900">
+                        <button
+                          onClick={() => setScriptMode("generate")}
+                          className={cn(
+                            "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                            scriptMode === "generate"
+                              ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                              : "text-slate-500 dark:text-slate-400"
+                          )}
+                        >
+                          Generate script
+                        </button>
+                        <button
+                          onClick={() => setScriptMode("upload")}
+                          className={cn(
+                            "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                            scriptMode === "upload"
+                              ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                              : "text-slate-500 dark:text-slate-400"
+                          )}
+                        >
+                          Use my script
+                        </button>
+                      </div>
+
+                      {scriptMode === "generate" ? (
+                        <>
+                          <div>
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Theme
+                            </div>
+                            <div className="mb-3 flex flex-wrap gap-2">
+                              {THEME_SUGGESTIONS.map((item) => (
+                                <button
+                                  key={item}
+                                  onClick={() => setTheme(item)}
+                                  className={cn(
+                                    "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
+                                    theme === item
+                                      ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                                      : "border-slate-300 text-slate-700 hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                                  )}
+                                >
+                                  {item}
+                                </button>
+                              ))}
+                            </div>
+                            <input
+                              value={theme}
+                              onChange={(event) => setTheme(event.target.value)}
+                              placeholder="Creator testimonial"
+                              className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            />
+                          </div>
+
+                          <label className="block">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Description
+                            </div>
+                            <textarea
+                              value={description}
+                              onChange={(event) => setDescription(event.target.value)}
+                              placeholder="Describe the angle, claim, scene, audience feel, or anything the script should include."
+                              className="min-h-[180px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            />
+                          </label>
+                        </>
+                      ) : (
+                        <div className="space-y-3">
+                          <textarea
+                            value={scriptText}
+                            onChange={(event) => setScriptText(event.target.value)}
+                            placeholder="Paste your approved dialogue here."
+                            className="min-h-[220px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          />
+                          <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white">
+                            Import text file
+                            <input
+                              type="file"
+                              accept=".txt,.md"
+                              className="hidden"
+                              onChange={(event) => handleScriptImport(event.target.files?.[0] || null)}
+                            />
+                          </label>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-900/60">
+                      <div className="mb-4 text-sm font-semibold text-slate-900 dark:text-white">Settings</div>
+                      <div className="space-y-4">
+                        <label className="block">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                            Project name
+                          </div>
+                          <input
+                            value={campaignName}
+                            onChange={(event) => setCampaignName(event.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+
+                        <div>
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                            Duration
+                          </div>
+                          <div className="mb-3 grid grid-cols-4 gap-2">
+                            {[15, 20, 25, 30].map((seconds) => (
+                              <button
+                                key={seconds}
+                                onClick={() =>
+                                  setSettings((current) => ({
+                                    ...current,
+                                    dialogueSeconds: seconds,
+                                  }))
+                                }
+                                className={cn(
+                                  "rounded-2xl border px-3 py-2 text-sm font-semibold transition",
+                                  settings.dialogueSeconds === seconds
+                                    ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                                    : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-slate-700"
+                                )}
+                              >
+                                {seconds}s
+                              </button>
+                            ))}
+                          </div>
+                          <input
+                            type="number"
+                            min={5}
+                            max={60}
+                            value={settings.dialogueSeconds}
+                            onChange={(event) =>
+                              setSettings((current) => ({ ...current, dialogueSeconds: Number(event.target.value) || 20 }))
+                            }
+                            className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                            Review mode
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-950/70">
+                            <button
+                              onClick={() => setSettings((current) => ({ ...current, safeMode: "safe" }))}
+                              className={cn(
+                                "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                                settings.safeMode === "safe"
+                                  ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                                  : "text-slate-500 dark:text-slate-400"
+                              )}
+                            >
+                              Review each step
+                            </button>
+                            <button
+                              onClick={() => setSettings((current) => ({ ...current, safeMode: "fast" }))}
+                              className={cn(
+                                "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                                settings.safeMode === "fast"
+                                  ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                                  : "text-slate-500 dark:text-slate-400"
+                              )}
+                            >
+                              Run straight through
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <label className="block">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Image model
+                            </div>
+                            <select
+                              value={settings.imageModelId}
+                              onChange={(event) => setSettings((current) => ({ ...current, imageModelId: event.target.value }))}
+                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            >
+                              {imageModelOptions.map((model) => (
+                                <option key={model.id} value={model.id}>
+                                  {model.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Video model
+                            </div>
+                            <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{VIDEO_MODEL_OPTIONS[0].label}</div>
+                            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Kling 3.0 with sound</div>
+                          </div>
+                          <label className="block">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              Scene choices
+                            </div>
+                            <input
+                              type="number"
+                              min={1}
+                              max={8}
+                              value={settings.sceneVariationCount}
+                              onChange={(event) =>
+                                setSettings((current) => ({ ...current, sceneVariationCount: Number(event.target.value) || 4 }))
+                              }
+                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            />
+                          </label>
+                          <label className="block">
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                              B-roll clips
+                            </div>
+                            <input
+                              type="number"
+                              min={1}
+                              max={8}
+                              value={settings.bRollClipCount}
+                              onChange={(event) =>
+                                setSettings((current) => ({ ...current, bRollClipCount: Number(event.target.value) || 4 }))
+                              }
+                              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </SectionCard>
+
+                <SectionCard title="2. Choose the product">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-900">
+                      <button
+                        onClick={() => setProductSource("catalog")}
+                        className={cn(
+                          "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                          productSource === "catalog"
+                            ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                            : "text-slate-500 dark:text-slate-400"
+                        )}
+                      >
+                        Choose from catalog
+                      </button>
+                      <button
+                        onClick={() => setProductSource("upload")}
+                        className={cn(
+                          "rounded-2xl px-3 py-2 text-sm font-semibold transition",
+                          productSource === "upload"
+                            ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                            : "text-slate-500 dark:text-slate-400"
+                        )}
+                      >
+                        Upload image
+                      </button>
+                    </div>
+
+                    {productSource === "catalog" ? (
+                      <div className="space-y-4">
+                        <input
+                          value={productSearch}
+                          onChange={(event) => setProductSearch(event.target.value)}
+                          placeholder="Search products"
+                          className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        />
+                        {selectedProduct ? (
+                          <div className="rounded-[24px] border border-amber-300 bg-amber-50/70 p-4 dark:border-amber-500/40 dark:bg-amber-950/20">
+                            <div className="flex items-center gap-4">
+                              <div className="h-24 w-20 overflow-hidden rounded-2xl border border-amber-200 bg-white dark:border-amber-500/30 dark:bg-slate-950">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={selectedProduct.image_url} alt={selectedProduct.name} className="h-full w-full object-cover" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm font-semibold text-slate-900 dark:text-white">{selectedProduct.name}</div>
+                                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                  {selectedProduct.shopify_vendor || "Manual"}{" "}
+                                  {selectedProduct.shopify_product_type ? `· ${selectedProduct.shopify_product_type}` : ""}
+                                </div>
+                              </div>
+                              <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-slate-950 dark:text-amber-300 dark:ring-amber-500/30">
+                                Selected
+                              </span>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                          {productsLoading ? (
+                            <div className="sm:col-span-2 xl:col-span-3 rounded-[24px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                              Loading products...
+                            </div>
+                          ) : filteredCatalogProducts.length === 0 ? (
+                            <div className="sm:col-span-2 xl:col-span-3 rounded-[24px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                              No products matched your search.
+                            </div>
+                          ) : (
+                            filteredCatalogProducts.map((product) => (
+                              <button
+                                key={product.id}
+                                onClick={() => {
+                                  setSelectedProduct(product);
+                                  setProductSource("catalog");
+                                  addActivity("product", `Selected ${product.name} from the catalog.`, "success");
+                                }}
+                                className={cn(
+                                  "overflow-hidden rounded-[24px] border bg-white text-left transition hover:-translate-y-0.5 hover:border-amber-400 dark:bg-slate-950/70",
+                                  selectedProduct?.id === product.id
+                                    ? "border-amber-400 shadow-lg shadow-amber-500/10"
+                                    : "border-slate-200 dark:border-slate-800"
+                                )}
+                              >
+                                <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-900">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
+                                </div>
+                                <div className="space-y-1 p-4">
+                                  <div className="text-sm font-semibold text-slate-900 dark:text-white">{product.name}</div>
+                                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                                    {product.shopify_vendor || "Manual"}{" "}
+                                    {product.shopify_product_type ? `· ${product.shopify_product_type}` : ""}
+                                  </div>
+                                </div>
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <label className="block">
+                          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                            Product label
+                          </div>
+                          <input
+                            value={uploadedProductName}
+                            onChange={(event) => setUploadedProductName(event.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          />
+                        </label>
+                        <label className="inline-flex cursor-pointer items-center rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white">
+                          {uploadingProduct ? "Uploading..." : "Upload product image"}
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            className="hidden"
+                            onChange={(event) => handleProductUpload(event.target.files?.[0] || null)}
+                          />
+                        </label>
+                        {uploadedProductUrl ? (
+                          <div className="h-64 overflow-hidden rounded-[24px] border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={uploadedProductUrl} alt={uploadedProductName} className="h-full w-full object-cover" />
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+
+                    <label className="block">
+                      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        Appearance notes
+                      </div>
+                      <textarea
+                        value={appearanceNotes}
+                        onChange={(event) => setAppearanceNotes(event.target.value)}
+                        placeholder="Anything that must stay exact: materials, color, branding, hero details."
+                        className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                      />
+                    </label>
+                  </div>
+                </SectionCard>
+              </>
+            ) : null}
+
+            {activeStage === "plan" ? (
+              <SectionCard
+                title="3. Review the scripts"
+                actions={
+                  <button
+                    onClick={handleGenerateScenes}
+                    disabled={!plan || sceneLoading}
+                    className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  >
+                    {sceneLoading ? "Generating..." : "Generate scene options"}
+                  </button>
+                }
+              >
+                {plan ? (
+                  <div className="space-y-5">
+                    <div className="grid gap-3 md:grid-cols-4">
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          Planner
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{activePlannerLabel}</div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          Talking clips
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{plan.summary.totalDialogueClips}</div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          B-roll clips
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{plan.summary.totalBrollClips}</div>
+                      </div>
+                      <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                          Base scenes
+                        </div>
+                        <div className="mt-2 text-sm font-semibold text-slate-900 dark:text-white">{plan.summary.sceneVariationCount}</div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        Product read
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{plan.productAnalysis}</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900 dark:text-white">Choose a script</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Click a card if you want to rebuild the whole workflow around a different script.
+                          </p>
+                        </div>
+                        <StatusPill status={approvals.script.status} />
+                      </div>
+                      <div className="grid gap-4 xl:grid-cols-3">
+                        {plan.scriptOptions.map((script) => (
+                          <ScriptOptionCard
+                            key={script.id}
+                            script={script}
+                            selected={selectedScriptId === script.id}
+                            onAdopt={() => adoptScript(script)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {settings.safeMode === "safe" ? (
+                      <ApprovalPanel
+                        title="Approve the script direction"
+                        state={approvals.script}
+                        onStatusChange={(status) =>
+                          setApprovals((current) => ({ ...current, script: { ...current.script, status } }))
+                        }
+                        onNoteChange={(note) =>
+                          setApprovals((current) => ({ ...current, script: { ...current.script, note } }))
+                        }
+                      />
+                    ) : null}
+
+                    <div className="grid gap-4 xl:grid-cols-3">
+                      {plan.avatarOptions.map((avatar) => (
+                        <div key={avatar.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                          <div className="text-sm font-semibold text-slate-900 dark:text-white">{avatar.label}</div>
+                          <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{avatar.persona}</p>
+                          <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{avatar.castingRationale}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Generate scripts first.
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
+
+            {activeStage === "scene" ? (
+              <SectionCard
+                title="4. Pick the base scene"
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleGenerateScenes}
+                      disabled={!plan || sceneLoading}
+                      className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    >
+                      {sceneLoading ? "Generating..." : "Generate scene options"}
+                    </button>
+                    <button
+                      onClick={handleGenerateDialogueClips}
+                      disabled={!selectedScene || dialogueLoading}
+                      className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                    >
+                      Go to talking clips
+                    </button>
+                  </div>
+                }
+              >
+                {plan ? (
+                  <div className="space-y-5">
+                    {selectedScene ? (
+                      <div className="rounded-[24px] border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700 dark:text-emerald-300">
+                              Selected base scene
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900 dark:text-white">{selectedScene.title}</div>
+                            <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                              {selectedAvatar ? `${selectedAvatar.label} · ` : ""}
+                              {selectedScenePlan?.environment || "Ready for talking clips"}
+                            </div>
+                          </div>
+                          <StatusPill status={approvals.scene.status} />
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {sceneRenders.length === 0 ? (
+                      <div className="grid gap-4 xl:grid-cols-4">
+                        {plan.sceneVariations.map((scene) => {
+                          const avatar = plan.avatarOptions.find((item) => item.id === scene.avatarId);
+                          return (
+                            <div key={scene.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                              <div className="text-sm font-semibold text-slate-900 dark:text-white">{scene.title}</div>
+                              <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {avatar?.label || "Avatar"} · {scene.environment}
+                              </div>
+                              <p className="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">{scene.summary}</p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        {sceneRenders.map((render) => {
+                          const scene = plan.sceneVariations.find((item) => item.id === render.planId);
+                          const avatar = plan.avatarOptions.find((item) => item.id === render.avatarId);
+                          return (
+                            <ImageRenderCard
+                              key={render.id}
+                              render={render}
+                              subtitle={avatar ? avatar.label : scene?.environment || "Scene variation"}
+                              selected={selectedSceneId === render.id}
+                              onSelect={() => {
+                                setSelectedSceneId(render.id);
+                                if (settings.safeMode === "fast") {
+                                  setApprovals((current) => ({ ...current, scene: { ...current.scene, status: "approved" } }));
+                                }
+                              }}
+                              onDownload={() => render.url && downloadUrl(render.url, `${safeName(render.title)}.png`)}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {settings.safeMode === "safe" ? (
+                      <ApprovalPanel
+                        title="Approve the base scene"
+                        state={approvals.scene}
+                        onStatusChange={(status) =>
+                          setApprovals((current) => ({ ...current, scene: { ...current.scene, status } }))
+                        }
+                        onNoteChange={(note) =>
+                          setApprovals((current) => ({ ...current, scene: { ...current.scene, note } }))
+                        }
+                        disabled={!sceneRenders.some((render) => render.url)}
+                      />
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Generate scripts first.
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
+
+            {activeStage === "clips" ? (
+              <SectionCard
+                title="5. Make the talking clips"
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleGenerateDialogueClips}
+                      disabled={!selectedScene || dialogueLoading}
+                      className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    >
+                      {dialogueLoading ? "Rendering..." : "Render talking clips"}
+                    </button>
+                    <button
+                      onClick={() => bulkDownload(selectedDialogueUrls, `${campaignName}-dialogue`)}
+                      disabled={selectedDialogueUrls.length === 0}
+                      className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                    >
+                      Download selected
+                    </button>
+                  </div>
+                }
+              >
+                {plan ? (
+                  <div className="space-y-5">
+                    <div className="grid gap-4 xl:grid-cols-4">
+                      {plan.dialogueClips.map((clip: UgcDialogueClipPlan) => (
+                        <div key={clip.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white">Clip {clip.index + 1}</div>
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                              {clip.startSecond}s-{clip.endSecond}s
+                            </span>
+                          </div>
+                          <p className="mb-3 text-sm leading-6 text-slate-700 dark:text-slate-300">{clip.spokenText}</p>
+                          <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                            {clip.objective} · {clip.camera}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {settings.safeMode === "safe" ? (
+                      <ApprovalPanel
+                        title="Approve the talking clips"
+                        state={approvals.dialogue}
+                        onStatusChange={(status) =>
+                          setApprovals((current) => ({ ...current, dialogue: { ...current.dialogue, status } }))
+                        }
+                        onNoteChange={(note) =>
+                          setApprovals((current) => ({ ...current, dialogue: { ...current.dialogue, note } }))
+                        }
+                        disabled={!dialogueVideos.some((video) => video.url)}
+                      />
+                    ) : null}
+
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      {dialogueVideos.length > 0 ? (
+                        dialogueVideos.map((video) => (
+                          <VideoRenderCard
+                            key={video.id}
+                            render={video}
+                            selected={selectedDialogueVideoIds.has(video.id)}
+                            onToggle={() =>
+                              setSelectedDialogueVideoIds((current) => {
+                                const next = new Set(current);
+                                if (next.has(video.id)) next.delete(video.id);
+                                else next.add(video.id);
+                                return next;
+                              })
+                            }
+                            onDownload={() => video.url && downloadUrl(video.url, `${safeName(video.title)}.mp4`)}
+                          />
+                        ))
+                      ) : (
+                        <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                          Select a base scene, then render the talking clips here.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Generate scripts and choose a base scene first.
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
+
+            {activeStage === "broll" ? (
+              <SectionCard
+                title="6. Build the B-roll"
+                actions={
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={handleGenerateBrollSeeds}
+                      disabled={!selectedScene || brollSeedLoading}
+                      className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    >
+                      {brollSeedLoading ? "Generating..." : "Generate B-roll images"}
+                    </button>
+                    <button
+                      onClick={handleGenerateBrollClips}
+                      disabled={!brollSeedImages.some((image) => image.url) || brollLoading}
+                      className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                    >
+                      {brollLoading ? "Rendering..." : "Render B-roll clips"}
+                    </button>
+                    <button
+                      onClick={() => bulkDownload(selectedBrollUrls, `${campaignName}-broll`)}
+                      disabled={selectedBrollUrls.length === 0}
+                      className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
+                    >
+                      Download selected
+                    </button>
+                  </div>
+                }
+              >
+                {plan ? (
+                  <div className="space-y-5">
+                    <div className="grid gap-4 xl:grid-cols-4">
+                      {plan.bRollImagePlans.map((shot: UgcBrollImagePlan) => (
+                        <div key={shot.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                          <div className="mb-2 flex items-center justify-between gap-3">
+                            <div className="text-sm font-semibold text-slate-900 dark:text-white">{shot.title}</div>
+                            <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                              {shot.withoutHuman ? "No person" : "Person optional"}
+                            </span>
+                          </div>
+                          <p className="mb-3 text-xs leading-5 text-slate-600 dark:text-slate-400">{shot.objective}</p>
+                          <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                            {shot.angle} · {shot.lens}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {settings.safeMode === "safe" ? (
+                      <ApprovalPanel
+                        title="Approve the B-roll set"
+                        state={approvals.broll}
+                        onStatusChange={(status) =>
+                          setApprovals((current) => ({ ...current, broll: { ...current.broll, status } }))
+                        }
+                        onNoteChange={(note) =>
+                          setApprovals((current) => ({ ...current, broll: { ...current.broll, note } }))
+                        }
+                        disabled={!brollVideos.some((video) => video.url)}
+                      />
+                    ) : null}
+
+                    <div>
+                      <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">B-roll image starts</div>
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        {brollSeedImages.length > 0 ? (
+                          brollSeedImages.map((render) => (
+                            <ImageRenderCard
+                              key={render.id}
+                              render={render}
+                              selected={false}
+                              subtitle="Start frame"
+                              onSelect={() => undefined}
+                              onDownload={() => render.url && downloadUrl(render.url, `${safeName(render.title)}.png`)}
+                              hideSelect
+                            />
+                          ))
+                        ) : (
+                          <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                            Generate the B-roll images first.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">B-roll clips</div>
+                      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                        {brollVideos.length > 0 ? (
+                          brollVideos.map((video) => (
+                            <VideoRenderCard
+                              key={video.id}
+                              render={video}
+                              selected={selectedBrollVideoIds.has(video.id)}
+                              onToggle={() =>
+                                setSelectedBrollVideoIds((current) => {
+                                  const next = new Set(current);
+                                  if (next.has(video.id)) next.delete(video.id);
+                                  else next.add(video.id);
+                                  return next;
+                                })
+                              }
+                              onDownload={() => video.url && downloadUrl(video.url, `${safeName(video.title)}.mp4`)}
+                            />
+                          ))
+                        ) : (
+                          <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                            Rendered B-roll clips appear here after the image starts are ready.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Generate scripts and choose a base scene first.
+                  </div>
+                )}
+              </SectionCard>
+            ) : null}
+          </div>
+        </div>
+
+        {showPromptPanel ? (
+          <OverlaySheet
+            title="Prompt settings"
+            subtitle="Optional advanced controls for the planner and the two generation paths."
+            onClose={() => setShowPromptPanel(false)}
+          >
+            <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
               <div className="space-y-4">
                 <label className="block">
                   <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                    Knowledge / constraints
+                    Extra guidance
                   </div>
                   <textarea
                     value={knowledge}
                     onChange={(event) => setKnowledge(event.target.value)}
-                    placeholder="Brand rules, prohibited claims, target aesthetic, compliance notes, or editorial guidance."
+                    placeholder="Brand rules, claims to avoid, room style, lighting, compliance notes, or edit preferences."
                     className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                   />
                 </label>
 
                 {(
                   [
-                    ["strategist", "Script Strategist"],
-                    ["sceneArchitect", "Scene Architect"],
-                    ["dialogueDirector", "Dialogue Director"],
-                    ["bRollDirector", "B-roll Director"],
-                    ["safetyCoordinator", "Safe Mode Coordinator"],
+                    ["strategist", "Script prompt"],
+                    ["sceneArchitect", "Scene prompt"],
+                    ["dialogueDirector", "Talking clip prompt"],
+                    ["bRollDirector", "B-roll prompt"],
+                    ["safetyCoordinator", "Review mode prompt"],
                   ] as const
                 ).map(([key, label]) => (
                   <label key={key} className="block">
@@ -1649,503 +2409,72 @@ export default function UgcStudioPage() {
                           [key]: event.target.value,
                         }))
                       }
-                      className="min-h-[110px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                      className="min-h-[120px] w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-amber-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                     />
                   </label>
                 ))}
               </div>
-            </SectionCard>
-          </div>
 
-          <div className="space-y-6">
-            {errorMessage ? (
-              <div className="rounded-3xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-300">
-                {errorMessage}
-              </div>
-            ) : null}
-
-            <SectionCard title="Agent Execution Board" eyebrow="Workflow">
-              <div className="grid gap-4 xl:grid-cols-2">
-                <AgentLane
-                  title="On-camera dialogue agent"
-                  accent="bg-amber-500"
-                  steps={dialogueLaneSteps.map((step) => ({ ...step }))}
-                />
-                <AgentLane
-                  title="Separate B-roll coverage agent"
-                  accent="bg-sky-500"
-                  steps={brollLaneSteps.map((step) => ({ ...step }))}
-                />
-              </div>
-            </SectionCard>
-
-            <SectionCard
-              title="Workflow Plan"
-              eyebrow="Plan"
-              actions={
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                    {plan ? planSource : "idle"}
-                  </span>
+              <div className="space-y-4">
+                <div className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-white">How this is used</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                    These prompts shape script writing, base-image planning, talking-clip prompts, and B-roll planning. Leave them alone unless you want to change how the workflow behaves.
+                  </p>
                 </div>
-              }
-            >
-              {plan ? (
-                <div className="space-y-5">
-                  <div className="grid gap-3 md:grid-cols-4">
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        Product analysis
-                      </div>
-                      <p className="mt-2 text-sm leading-6 text-slate-700 dark:text-slate-300">{plan.productAnalysis}</p>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        Dialogue clips
-                      </div>
-                      <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">{plan.summary.totalDialogueClips}</div>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        B-roll clips
-                      </div>
-                      <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">{plan.summary.totalBrollClips}</div>
-                    </div>
-                    <div className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                        Scene variations
-                      </div>
-                      <div className="mt-3 text-3xl font-semibold text-slate-950 dark:text-white">{plan.summary.sceneVariationCount}</div>
-                    </div>
-                  </div>
 
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h3 className="text-base font-semibold text-slate-900 dark:text-white">Script options</h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Choose one if you want to rebuild the downstream plan around a different dialogue variant.
-                        </p>
-                      </div>
-                      <StatusPill status={approvals.script.status} />
-                    </div>
-                    <div className="grid gap-4 xl:grid-cols-3">
-                      {plan.scriptOptions.map((script) => (
-                        <ScriptOptionCard
-                          key={script.id}
-                          script={script}
-                          selected={selectedScriptId === script.id}
-                          onAdopt={() => adoptScript(script)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-
-                  {settings.safeMode === "safe" ? (
-                    <ApprovalPanel
-                      title="Plan approval gate"
-                      state={approvals.script}
-                      onStatusChange={(status) =>
-                        setApprovals((current) => ({ ...current, script: { ...current.script, status } }))
-                      }
-                      onNoteChange={(note) =>
-                        setApprovals((current) => ({ ...current, script: { ...current.script, note } }))
-                      }
-                    />
-                  ) : null}
-
-                  <div className="grid gap-4 xl:grid-cols-2">
-                    <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Avatar candidates</div>
-                      <div className="space-y-3">
-                        {plan.avatarOptions.map((avatar) => (
-                          <div key={avatar.id} className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/70">
-                            <div className="text-sm font-semibold text-slate-900 dark:text-white">{avatar.label}</div>
-                            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">{avatar.persona}</p>
-                            <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{avatar.castingRationale}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="rounded-[28px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                      <div className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Architecture notes</div>
-                      <div className="space-y-3">
-                        {plan.architecture.notes.map((note) => (
-                          <div key={note} className="rounded-2xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
-                            {note}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <div className="rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                  Build the workflow plan to generate script options, avatar casting, scene prompts, dialogue batches, and B-roll coverage plans.
-                </div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Base Scene Generation"
-              eyebrow="Step 3"
-              actions={
-                <button
-                  onClick={handleGenerateScenes}
-                  disabled={!plan || sceneLoading}
-                  className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                >
-                  {sceneLoading ? "Generating..." : "Generate scene variations"}
-                </button>
-              }
-            >
-              {plan ? (
-                <div className="space-y-5">
-                  <div className="grid gap-4 xl:grid-cols-4">
-                    {plan.sceneVariations.map((scene) => (
-                      <div key={scene.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                        <div className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">{scene.title}</div>
-                        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                          {scene.environment}
-                        </div>
-                        <p className="mb-3 text-xs leading-5 text-slate-600 dark:text-slate-400">{scene.summary}</p>
-                        <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">{scene.prompt}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {settings.safeMode === "safe" ? (
-                    <ApprovalPanel
-                      title="Scene approval gate"
-                      state={approvals.scene}
-                      onStatusChange={(status) =>
-                        setApprovals((current) => ({ ...current, scene: { ...current.scene, status } }))
-                      }
-                      onNoteChange={(note) =>
-                        setApprovals((current) => ({ ...current, scene: { ...current.scene, note } }))
-                      }
-                      disabled={!sceneRenders.some((render) => render.url)}
-                    />
-                  ) : null}
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {sceneRenders.map((render) => {
-                      const scene = plan.sceneVariations.find((item) => item.id === render.planId);
-                      const avatar = plan.avatarOptions.find((item) => item.id === render.avatarId);
-                      return (
-                        <ImageRenderCard
-                          key={render.id}
-                          render={render}
-                          subtitle={avatar ? avatar.label : scene?.environment || "Scene variation"}
-                          selected={selectedSceneId === render.id}
-                          onSelect={() => {
-                            setSelectedSceneId(render.id);
-                            if (settings.safeMode === "fast") {
-                              setApprovals((current) => ({ ...current, scene: { ...current.scene, status: "approved" } }));
-                            }
-                          }}
-                          onDownload={() => render.url && downloadUrl(render.url, `${safeName(render.title)}.png`)}
-                        />
-                      );
-                    })}
-                    {sceneRenders.length === 0 ? (
-                      <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                        Rendered base scenes will appear here for selection.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-slate-500 dark:text-slate-400">Plan the workflow first.</div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Dialogue Clip Batch"
-              eyebrow="Step 4"
-              actions={
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleGenerateDialogueClips}
-                    disabled={!selectedScene || dialogueLoading}
-                    className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                  >
-                    {dialogueLoading ? "Rendering..." : "Render dialogue clips"}
-                  </button>
-                  <button
-                    onClick={() => bulkDownload(selectedDialogueUrls, `${campaignName}-dialogue`)}
-                    disabled={selectedDialogueUrls.length === 0}
-                    className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
-                  >
-                    Download selected
-                  </button>
-                </div>
-              }
-            >
-              {plan ? (
-                <div className="space-y-5">
-                  <div className="grid gap-4 xl:grid-cols-4">
-                    {plan.dialogueClips.map((clip: UgcDialogueClipPlan) => (
-                      <div key={clip.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white">Clip {clip.index + 1}</div>
-                          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-                            {clip.startSecond}s-{clip.endSecond}s
-                          </span>
-                        </div>
-                        <p className="mb-3 text-sm leading-6 text-slate-700 dark:text-slate-300">{clip.spokenText}</p>
-                        <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {clip.objective} · {clip.movement} · {clip.camera}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {settings.safeMode === "safe" ? (
-                    <ApprovalPanel
-                      title="Dialogue clip review gate"
-                      state={approvals.dialogue}
-                      onStatusChange={(status) =>
-                        setApprovals((current) => ({ ...current, dialogue: { ...current.dialogue, status } }))
-                      }
-                      onNoteChange={(note) =>
-                        setApprovals((current) => ({ ...current, dialogue: { ...current.dialogue, note } }))
-                      }
-                      disabled={!dialogueVideos.some((video) => video.url)}
-                    />
-                  ) : null}
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {dialogueVideos.map((video) => (
-                      <VideoRenderCard
-                        key={video.id}
-                        render={video}
-                        selected={selectedDialogueVideoIds.has(video.id)}
-                        onToggle={() =>
-                          setSelectedDialogueVideoIds((current) => {
-                            const next = new Set(current);
-                            if (next.has(video.id)) next.delete(video.id);
-                            else next.add(video.id);
-                            return next;
-                          })
-                        }
-                        onDownload={() => video.url && downloadUrl(video.url, `${safeName(video.title)}.mp4`)}
-                      />
-                    ))}
-                    {dialogueVideos.length === 0 ? (
-                      <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                        Rendered dialogue clips will appear here. Select the ones you want to download as the first-stage final outputs.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-slate-500 dark:text-slate-400">Plan the workflow and select a base scene first.</div>
-              )}
-            </SectionCard>
-
-            <SectionCard
-              title="Separate B-roll Agent"
-              eyebrow="Step 4B"
-              actions={
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={handleGenerateBrollSeeds}
-                    disabled={!selectedScene || brollSeedLoading}
-                    className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                  >
-                    {brollSeedLoading ? "Generating seeds..." : "Generate B-roll seeds"}
-                  </button>
-                  <button
-                    onClick={handleGenerateBrollClips}
-                    disabled={!brollSeedImages.some((image) => image.url) || brollLoading}
-                    className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
-                  >
-                    {brollLoading ? "Rendering B-roll..." : "Render B-roll clips"}
-                  </button>
-                  <button
-                    onClick={() => bulkDownload(selectedBrollUrls, `${campaignName}-broll`)}
-                    disabled={selectedBrollUrls.length === 0}
-                    className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-amber-400 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-amber-400 dark:hover:text-white"
-                  >
-                    Download selected
-                  </button>
-                </div>
-              }
-            >
-              {plan ? (
-                <div className="space-y-5">
-                  <div className="grid gap-4 xl:grid-cols-4">
-                    {plan.bRollImagePlans.map((shot: UgcBrollImagePlan) => (
-                      <div key={shot.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                        <div className="mb-2 flex items-center justify-between gap-3">
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white">{shot.title}</div>
-                          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-                            {shot.withoutHuman ? "No talent" : "Talent optional"}
-                          </span>
-                        </div>
-                        <p className="mb-3 text-xs leading-5 text-slate-600 dark:text-slate-400">{shot.objective}</p>
-                        <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">
-                          {shot.angle} · {shot.lens} · {shot.lighting}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-
-                  {settings.safeMode === "safe" ? (
-                    <ApprovalPanel
-                      title="B-roll review gate"
-                      state={approvals.broll}
-                      onStatusChange={(status) =>
-                        setApprovals((current) => ({ ...current, broll: { ...current.broll, status } }))
-                      }
-                      onNoteChange={(note) =>
-                        setApprovals((current) => ({ ...current, broll: { ...current.broll, note } }))
-                      }
-                      disabled={!brollVideos.some((video) => video.url)}
-                    />
-                  ) : null}
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {brollSeedImages.map((render) => (
-                      <ImageRenderCard
-                        key={render.id}
-                        render={render}
-                        selected={false}
-                        subtitle="B-roll starting frame"
-                        onSelect={() => undefined}
-                        onDownload={() => render.url && downloadUrl(render.url, `${safeName(render.title)}.png`)}
-                        hideSelect
-                      />
-                    ))}
-                    {brollSeedImages.length === 0 ? (
-                      <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                        B-roll seed images appear here first. The separate B-roll agent uses them as start frames for motion generation.
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    {brollVideos.map((video) => (
-                      <VideoRenderCard
-                        key={video.id}
-                        render={video}
-                        selected={selectedBrollVideoIds.has(video.id)}
-                        onToggle={() =>
-                          setSelectedBrollVideoIds((current) => {
-                            const next = new Set(current);
-                            if (next.has(video.id)) next.delete(video.id);
-                            else next.add(video.id);
-                            return next;
-                          })
-                        }
-                        onDownload={() => video.url && downloadUrl(video.url, `${safeName(video.title)}.mp4`)}
-                      />
-                    ))}
-                    {brollVideos.length === 0 ? (
-                      <div className="md:col-span-2 xl:col-span-4 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                        Rendered B-roll clips appear here once the seed images have been generated and approved.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              ) : (
-                <div className="text-sm text-slate-500 dark:text-slate-400">Plan the workflow and select a base scene first.</div>
-              )}
-            </SectionCard>
-
-            <SectionCard title="Agent Prompt Architecture" eyebrow="Inspect">
-              <div className="grid gap-4 xl:grid-cols-2">
-                {promptPackView.architecture.map((agent) => (
-                  <div key={agent.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                    <div className="mb-2 text-sm font-semibold text-slate-900 dark:text-white">{agent.name}</div>
-                    <p className="mb-3 text-xs leading-5 text-slate-500 dark:text-slate-400">{agent.responsibility}</p>
-                    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Inputs
-                    </div>
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {agent.inputs.map((item) => (
-                        <span key={item} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
-                      Outputs
-                    </div>
-                    <div className="mb-3 flex flex-wrap gap-2">
-                      {agent.outputs.map((item) => (
-                        <span key={item} className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
-                          {item}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3 text-xs leading-5 text-slate-600 dark:border-slate-800 dark:bg-slate-950/70 dark:text-slate-400">
-                      {agent.systemPrompt}
-                    </div>
-                  </div>
-                ))}
-                {!plan ? (
-                  <div className="xl:col-span-2 rounded-[28px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    The page exposes every agent prompt before execution. Build the plan to inspect the active agent contract.
-                  </div>
-                ) : null}
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Activity Log" eyebrow="Runtime">
-              <div className="space-y-3">
-                {activity.length === 0 ? (
-                  <div className="rounded-[24px] border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                    Runtime activity will stream here as the workflow progresses.
-                  </div>
-                ) : (
-                  activity.map((entry) => (
-                    <div
-                      key={entry.id}
-                      className={cn(
-                        "rounded-[24px] border p-4",
-                        entry.tone === "success" && "border-emerald-200 bg-emerald-50/80 dark:border-emerald-900/40 dark:bg-emerald-950/20",
-                        entry.tone === "error" && "border-rose-200 bg-rose-50/80 dark:border-rose-900/40 dark:bg-rose-950/20",
-                        entry.tone === "info" && "border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-900/60"
-                      )}
-                    >
-                      <div className="mb-1 flex items-center justify-between gap-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-                          {entry.stage}
-                        </div>
-                        <div className="text-xs text-slate-400">
-                          {new Date(entry.timestamp).toLocaleTimeString([], {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
-                        </div>
-                      </div>
-                      <div className="text-sm leading-6 text-slate-700 dark:text-slate-300">{entry.message}</div>
+                {promptPackView.architecture.length > 0 ? (
+                  promptPackView.architecture.map((agent) => (
+                    <div key={agent.id} className="rounded-[24px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-white">{agent.name}</div>
+                      <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{agent.responsibility}</p>
                     </div>
                   ))
+                ) : (
+                  <div className="rounded-[24px] border border-dashed border-slate-300 p-5 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                    Build the scripts once if you want to inspect the full workflow structure here.
+                  </div>
                 )}
               </div>
-            </SectionCard>
-          </div>
-        </div>
-      </div>
+            </div>
+          </OverlaySheet>
+        ) : null}
 
-      {showProductModal ? (
-        <ProductSelectorModal
-          products={products}
-          search={productSearch}
-          setSearch={setProductSearch}
-          onClose={() => setShowProductModal(false)}
-          onSelect={(product) => {
-            setSelectedProduct(product);
-            setProductSource("catalog");
-            setShowProductModal(false);
-            addActivity("product", `Selected ${product.name} from the catalog.`, "success");
-          }}
-        />
-      ) : null}
+        {showPresetPanel ? (
+          <OverlaySheet
+            title="Presets"
+            subtitle="Quick starting points for runtime, review mode, and generation counts."
+            onClose={() => setShowPresetPanel(false)}
+          >
+            <div className="grid gap-4 md:grid-cols-3">
+              {PRESET_OPTIONS.map((preset) => (
+                <div key={preset.id} className="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="text-lg font-semibold text-slate-900 dark:text-white">{preset.name}</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">{preset.description}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                      {preset.settings.dialogueSeconds}s
+                    </span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                      {preset.settings.sceneVariationCount} scenes
+                    </span>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-950 dark:text-slate-300 dark:ring-slate-800">
+                      {preset.settings.bRollClipCount} B-roll
+                    </span>
+                  </div>
+                  <div className="mt-4 text-xs text-slate-500 dark:text-slate-400">Theme suggestion: {preset.theme}</div>
+                  <button
+                    onClick={() => applyPreset(preset.id)}
+                    className="mt-5 rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  >
+                    Apply preset
+                  </button>
+                </div>
+              ))}
+            </div>
+          </OverlaySheet>
+        ) : null}
+      </div>
     </div>
   );
 }

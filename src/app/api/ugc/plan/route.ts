@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 import type {
@@ -29,6 +30,12 @@ function clamp(value: number, min: number, max: number) {
 
 function cleanText(value: string | undefined | null) {
   return (value || "").replace(/\s+/g, " ").trim();
+}
+
+function finishSentence(value: string | undefined | null) {
+  const trimmed = cleanText(value);
+  if (!trimmed) return "";
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
 function splitSentences(text: string) {
@@ -149,34 +156,35 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
 }
 
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
-  const audience = cleanText(input.audience) || "mobile-first shoppers";
-  const benefit = cleanText(input.primaryBenefit) || "solves the problem faster and more cleanly";
-  const offerSentence = cleanText(input.offer) ? `Right now, ${cleanText(input.offer)}.` : "";
-  const ctaSentence = cleanText(input.cta) || "Tap in and try it for yourself.";
-  const tone = cleanText(input.tone) || "confident, native creator energy";
-  const knowledgeHint = knowledge ? ` ${knowledge.replace(/\s+/g, " ").trim()}` : "";
+  const theme = cleanText(input.theme) || "creator testimonial";
+  const description =
+    finishSentence(input.description) ||
+    `Show why ${productName} feels worth reaching for in a real-world creator setting.`;
+  const ctaSentence = "Tap below to try it.";
+  const knowledgeHint = knowledge ? ` Brand context: ${finishSentence(knowledge)}` : "";
+  const categoryLabel = category || "product";
 
   const variants = [
     {
-      title: "Problem / Solution",
-      rationale: "Fast direct-response structure that opens with friction and resolves it with a specific product claim.",
-      hook: `If you're ${audience}, this fixes the part everyone complains about.`,
+      title: "Direct Hook",
+      rationale: `Fast ${theme} version that gets to the point immediately and sets up a clear first scene.`,
+      hook: "If you want the quick version, this is the one to use.",
       dialogue:
-        `If you're ${audience}, this is the ${category || "product"} I would start with. I grabbed ${productName} because ${benefit}. It looks premium, feels easy to use, and it makes the routine feel way less annoying. ${offerSentence} ${ctaSentence}${knowledgeHint}`.trim(),
+        `If you want the quick version, ${productName} is the ${categoryLabel} I keep reaching for. ${description} You can show it clearly on camera, explain the result fast, and make it feel believable instead of overproduced. ${ctaSentence}${knowledgeHint}`.trim(),
     },
     {
-      title: "Creator Testimonial",
-      rationale: "A more credible first-person recommendation built for creator-style trust and retention.",
-      hook: `I did not expect ${productName} to be this good.`,
+      title: "Creator Story",
+      rationale: `Personal recommendation angle built for trust, retention, and a natural selfie-style delivery within the ${theme} theme.`,
+      hook: "I did not expect to keep using this as much as I do.",
       dialogue:
-        `I did not expect ${productName} to become part of my daily routine, but here we are. The biggest reason is simple: ${benefit}. It gives me the polished result without making the process feel high-maintenance. ${offerSentence} ${ctaSentence}${knowledgeHint}`.trim(),
+        `I did not expect ${productName} to become part of my routine this quickly, but it did. ${description} It feels easy to talk about because the result is visible, the use case is real, and it fits naturally into a creator-style video. ${ctaSentence}${knowledgeHint}`.trim(),
     },
     {
-      title: "Demo Lead",
-      rationale: "Balances proof and visual direction so the workflow naturally produces usable product and b-roll shots.",
-      hook: `Watch how fast this changes the outcome.`,
+      title: "Show And Tell",
+      rationale: `More visual version designed to support both on-camera dialogue and stronger supporting shots for a ${theme} ad.`,
+      hook: "Watch how this looks in a real shot.",
       dialogue:
-        `Watch how fast ${productName} changes the outcome. You can see the product, the texture, and the result immediately, which is exactly why I keep reaching for it. For ${audience}, it feels practical and elevated at the same time because it ${benefit}. ${offerSentence} ${ctaSentence}${knowledgeHint}`.trim(),
+        `Watch how ${productName} looks when you actually use it in frame. ${description} That is what makes the ad easy to believe, easy to demo, and easy to cut with supporting B-roll. ${ctaSentence}${knowledgeHint}`.trim(),
     },
   ];
 
@@ -185,7 +193,7 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
     return {
       id: makeId("script", index),
       title: variant.title,
-      rationale: `${variant.rationale} Tone target: ${tone}.`,
+      rationale: variant.rationale,
       hook: variant.hook,
       cta: ctaSentence,
       dialogue: variant.dialogue,
@@ -195,13 +203,13 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   });
 }
 
-function buildAvatarOptions(productName: string, audience: string, category: string): UgcAvatarOption[] {
-  const audienceLabel = cleanText(audience) || "performance shoppers";
+function buildAvatarOptions(productName: string, theme: string, category: string): UgcAvatarOption[] {
+  const themeLabel = cleanText(theme) || "creator testimonial";
   return [
     {
       id: "avatar-1",
       label: "Credible Creator",
-      persona: `A relatable creator who feels native to ${audienceLabel} and speaks with practical confidence.`,
+      persona: `A relatable creator who feels right for a ${themeLabel} ad and speaks with practical confidence straight to camera.`,
       wardrobe: "Clean monochrome top, simple jewelry, soft editorial grooming, premium-but-real styling.",
       castingRationale: `Best default option for ${productName} because it balances trust, polish, and conversion intent.`,
       voiceStyle: "Warm, direct, slightly breathy creator delivery.",
@@ -272,7 +280,7 @@ function buildSceneVariations(
       avatarId: avatar.id,
       camera,
       lighting,
-      prompt: `Generate a 9:16, ${settings.imageResolution} UGC base scene for ${productName}. Use ${avatar.label}: ${avatar.persona} Wearing ${avatar.wardrobe}. Environment: ${baseEnvironment}. Camera: ${camera}. Lighting: ${lighting}. The scene must visibly feature the product and preserve ${productAppearance}. Compose for vertical talking-head performance creative with enough space for hand gestures and product presentation. Keep the background commercially clean, believable, and consistent enough to support multiple 5-second dialogue clips.`,
+      prompt: `Place this exact referenced ${category || "product"} for ${productName} into a 9:16 ${settings.imageResolution} UGC base scene. Preserve the real product exactly: ${productAppearance}. Include ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. The person should appear to be filming themselves or holding the recording device, looking directly into the camera, ready to talk to the viewer. Environment: ${baseEnvironment}. Camera framing: ${camera}. Lighting: ${lighting}. Keep the product clearly readable in frame, do not change its design, and make the scene stable enough to use as the starting image for multiple talking clips.`,
     };
   });
 }
@@ -317,7 +325,7 @@ function buildDialogueClips(
       objective,
       movement,
       camera,
-      prompt: `Use the selected base scene as the starting image. Create a ${settings.clipDurationSeconds}-second ${settings.videoAspectRatio} UGC clip for ${productName}. The talent must say exactly: "${segment.text}" Keep continuity with the approved room, wardrobe, and avatar. Movement: ${movement} Camera: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. Keep mouth-sync credible, gestures natural, and commercial pacing clean enough to stitch with adjacent clips.`,
+      prompt: `Use the selected base scene as the starting image for a ${settings.clipDurationSeconds}-second ${settings.videoAspectRatio} UGC video for ${productName}. The person in the image naturally speaks, with subtle and natural movements. They say this exact script: "${segment.text}". Keep synced spoken audio, accurate mouth movement, and continuity with the same avatar, wardrobe, room, product placement, and lighting. Movement: ${movement} Camera behavior: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. The result should feel like believable creator footage and cut cleanly with the clips before and after it.`,
     };
   });
 }
@@ -384,11 +392,11 @@ function buildBrollImagePlans(
       lens: shot.lens,
       lighting: shot.lighting,
       withoutHuman: shot.withoutHuman,
-      prompt: `Create a ${settings.imageAspectRatio}, ${settings.imageResolution} starting frame for a B-roll video about ${productName}. Preserve exact product appearance: ${productAppearance}. Shot intent: ${shot.objective}. Angle: ${shot.angle}. Lens: ${shot.lens}. Lighting: ${shot.lighting}. ${
+      prompt: `Create a ${settings.imageAspectRatio}, ${settings.imageResolution} starting frame for a B-roll clip about ${productName}. Match the approved room and preserve the exact product appearance: ${productAppearance}. Shot intent: ${shot.objective}. Angle: ${shot.angle}. Lens: ${shot.lens}. Lighting: ${shot.lighting}. ${
         shot.withoutHuman
-          ? "Remove the human talent unless hands are essential."
-          : "Keep the talent secondary and the product primary."
-      } This image will be used as the starting frame for a short commercial B-roll clip, so design the frame with clear motion potential and edit-ready composition. Reference the script claim: "${script.hook}"`,
+          ? "Remove the person unless hands are essential, and keep continuity with the same scene."
+          : "If a person appears, keep them secondary and the product primary."
+      } This image is a starting point for motion, not a final still, so give it clear movement potential and edit-ready composition. Reference the script claim: "${script.hook}"`,
     };
   });
 }
@@ -455,7 +463,7 @@ function buildArchitecture(promptPack: UgcAgentPromptPack, safeMode: UgcPlanRequ
         id: "agent-strategist",
         name: "Script Strategist",
         responsibility: "Creates selectable UGC dialogue options and chooses the strongest runtime-safe structure.",
-        inputs: ["Product context", "Audience", "Benefit", "Offer", "Knowledge notes"],
+        inputs: ["Product context", "Duration", "Theme", "User description", "Knowledge notes"],
         outputs: ["Script options", "Hook/CTA framing", "Beat map"],
         systemPrompt: promptPack.strategist,
       },
@@ -472,7 +480,7 @@ function buildArchitecture(promptPack: UgcAgentPromptPack, safeMode: UgcPlanRequ
         name: "Dialogue Director",
         responsibility: "Converts the approved script into ordered 5-second talking-head clip prompts.",
         inputs: ["Approved script", "Selected base scene", "Clip duration", "Safe-mode overrides"],
-        outputs: ["Sequential clip prompts", "Gesture directions", "Camera directions"],
+        outputs: ["Sequential clip prompts", "Speech directions", "Gesture directions", "Camera directions"],
         systemPrompt: promptPack.dialogueDirector,
       },
       {
@@ -494,7 +502,7 @@ function buildArchitecture(promptPack: UgcAgentPromptPack, safeMode: UgcPlanRequ
     ],
     notes: [
       "Planning runs first and emits a stable contract for the page: scripts, avatars, base scenes, dialogue clips, and B-roll coverage.",
-      "Dialogue rendering is image-to-video only, using the approved base scene as the continuity anchor for every 5-second batch.",
+      "Dialogue rendering is image-to-video only, using the approved base scene as the continuity anchor for every 5-second batch with spoken audio enabled.",
       "B-roll is deliberately a separate agent path so coverage prompts can diverge in angle, distance, lighting, and empty-scene variants without polluting talking-head continuity.",
       safeMode === "safe"
         ? "Safe mode inserts blocking approvals between plan, scene selection, dialogue generation, and B-roll generation."
@@ -518,7 +526,7 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
             title: "Provided Script",
             rationale: "Uses the exact user-supplied dialogue as the source of truth for downstream planning.",
             hook: splitSentences(input.script.text)[0] || input.script.text,
-            cta: cleanText(input.script.cta) || "Tap in and try it now.",
+            cta: "Tap below to try it.",
             dialogue: cleanText(input.script.text),
             estimatedSeconds: estimateDurationSeconds(input.script.text, input.script.totalSeconds),
             beats: buildScriptBeats(
@@ -530,7 +538,7 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
       : buildGeneratedScripts(input.script, productName, category, input.knowledge);
 
   const selectedScript = scriptOptions[0];
-  const avatarOptions = buildAvatarOptions(productName, input.script.audience, category);
+  const avatarOptions = buildAvatarOptions(productName, input.script.theme || input.script.description, category);
   const sceneVariations = buildSceneVariations(
     selectedScript,
     avatarOptions,
@@ -637,6 +645,57 @@ RULES
   }
 }
 
+async function tryAnthropicPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
+  if (!process.env.ANTHROPIC_API_KEY) return null;
+
+  const prompt = `You are orchestrating an AI UGC video advertisement workflow.
+
+Improve the baseline workflow plan below. Keep the same top-level JSON shape and keep array lengths unchanged unless an array is empty. Preserve IDs where they already exist. Return only JSON.
+
+INPUTS
+- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
+- Product: ${JSON.stringify(input.product)}
+- Script request: ${JSON.stringify(input.script)}
+- Settings: ${JSON.stringify(input.settings)}
+- Knowledge: ${input.knowledge || "None"}
+- Override instructions: ${input.overrideInstructions || "None"}
+
+AGENT PROMPTS
+${JSON.stringify(input.promptPack, null, 2)}
+
+BASELINE PLAN
+${JSON.stringify(baseline, null, 2)}
+
+RULES
+1. Dialogue clips must preserve the exact spoken text in order.
+2. Dialogue clip prompts should explicitly direct the person in the image to say the exact script naturally with synced audio.
+3. Every scene and B-roll image prompt must stay 9:16-first, commercially realistic, and preserve the referenced product.
+4. Scene prompts should keep a believable on-camera person looking toward the viewer as if filming themselves.
+5. B-roll planning is separate from dialogue planning; do not collapse them.
+6. If safe mode is enabled, approval gates must stay required.
+7. Do not add markdown fences. Return only valid JSON.`;
+
+  try {
+    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const response = await anthropic.messages.create({
+      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+      max_tokens: 16000,
+      system:
+        "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
+      messages: [{ role: "user", content: prompt }],
+    });
+
+    const textBlock = response.content.find((block) => block.type === "text");
+    if (!textBlock || textBlock.type !== "text") return null;
+
+    const parsed = extractJsonObject(textBlock.text);
+    return hasPlanShape(parsed) ? parsed : null;
+  } catch (error) {
+    console.error("UGC Anthropic plan error:", error);
+    return null;
+  }
+}
+
 async function tryOpenAiPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.OPENAI_API_KEY) return null;
 
@@ -690,11 +749,8 @@ export async function POST(req: Request) {
         mode: body.script?.mode || "generate",
         text: cleanText(body.script?.text),
         totalSeconds: clamp(Number(body.script?.totalSeconds) || 20, 5, 60),
-        tone: cleanText(body.script?.tone),
-        audience: cleanText(body.script?.audience),
-        primaryBenefit: cleanText(body.script?.primaryBenefit),
-        offer: cleanText(body.script?.offer),
-        cta: cleanText(body.script?.cta),
+        theme: cleanText(body.script?.theme) || "creator testimonial",
+        description: cleanText(body.script?.description),
       },
       settings: {
         safeMode: body.settings?.safeMode === "fast" ? "fast" : "safe",
@@ -708,7 +764,7 @@ export async function POST(req: Request) {
         imageResolution: "2K",
         videoAspectRatio: "9:16",
         videoDurationSeconds: clamp(Number(body.settings?.videoDurationSeconds) || 5, 3, 10),
-        videoSound: Boolean(body.settings?.videoSound),
+        videoSound: body.settings?.videoSound === undefined ? true : Boolean(body.settings?.videoSound),
       },
       promptPack: {
         strategist: cleanText(body.promptPack?.strategist),
@@ -721,10 +777,11 @@ export async function POST(req: Request) {
     };
 
     const baseline = buildFallbackPlan(input);
-    const geminiPlan = await tryGeminiPlan(input, baseline);
+    const anthropicPlan = await tryAnthropicPlan(input, baseline);
+    const geminiPlan = anthropicPlan ? null : await tryGeminiPlan(input, baseline);
     const openAiPlan = geminiPlan ? null : await tryOpenAiPlan(input, baseline);
-    const refined = geminiPlan || openAiPlan;
-    const source = geminiPlan ? "gemini" : openAiPlan ? "openai" : "heuristic";
+    const refined = anthropicPlan || geminiPlan || openAiPlan;
+    const source = anthropicPlan ? "anthropic" : geminiPlan ? "gemini" : openAiPlan ? "openai" : "heuristic";
 
     return NextResponse.json({
       plan: refined || baseline,
