@@ -1,4 +1,5 @@
 export const runtime = "nodejs";
+export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
@@ -24,7 +25,7 @@ import {
 
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
-const REMOTE_PLANNER_TIMEOUT_MS = 9000;
+const REMOTE_PLANNER_TIMEOUT_MS = 25000;
 const FAST_TALKING_WORDS_PER_SECOND = 2.85;
 const MIN_DIALOGUE_CLIP_SECONDS = 4;
 const MAX_DIALOGUE_CLIP_SECONDS = 8;
@@ -674,10 +675,10 @@ INPUTS
 - Override instructions: ${input.overrideInstructions || "None"}
 
 AGENT PROMPTS
-${JSON.stringify(input.promptPack, null, 2)}
+${JSON.stringify(input.promptPack)}
 
 BASELINE PLAN
-${JSON.stringify(baseline, null, 2)}
+${JSON.stringify(baseline)}
 
 RULES
 1. Dialogue clips must preserve the exact spoken text in order.
@@ -738,7 +739,7 @@ RULES
     const response = await anthropic.messages.create(
       {
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-        max_tokens: 16000,
+        max_tokens: 8192,
         system:
           "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
         messages: [{ role: "user", content: prompt }],
