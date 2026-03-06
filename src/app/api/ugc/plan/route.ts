@@ -5,24 +5,26 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
-import type {
-  UgcAgentPromptPack,
-  UgcApprovalGate,
-  UgcArchitectureAgent,
-  UgcAvatarOption,
-  UgcBrollClipPlan,
-  UgcBrollImagePlan,
-  UgcDialogueClipPlan,
-  UgcPlanRequest,
-  UgcSceneVariation,
-  UgcScriptBeat,
-  UgcScriptInput,
-  UgcScriptOption,
-  UgcWorkflowPlan,
+import {
+  DEFAULT_UGC_PROMPT_PACK,
+  type UgcAgentPromptPack,
+  type UgcApprovalGate,
+  type UgcArchitectureAgent,
+  type UgcAvatarOption,
+  type UgcBrollClipPlan,
+  type UgcBrollImagePlan,
+  type UgcDialogueClipPlan,
+  type UgcPlanRequest,
+  type UgcSceneVariation,
+  type UgcScriptBeat,
+  type UgcScriptInput,
+  type UgcScriptOption,
+  type UgcWorkflowPlan,
 } from "@/lib/ugc-types";
 
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
+const REMOTE_PLANNER_TIMEOUT_MS = 9000;
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
@@ -457,56 +459,51 @@ function buildArchitecture(promptPack: UgcAgentPromptPack, safeMode: UgcPlanRequ
   agents: UgcArchitectureAgent[];
   notes: string[];
 } {
+  const leadAgentPrompt = [promptPack.strategist, promptPack.sceneArchitect, promptPack.dialogueDirector]
+    .filter(Boolean)
+    .join("\n\n");
+
   return {
     agents: [
       {
-        id: "agent-strategist",
-        name: "Script Strategist",
-        responsibility: "Creates selectable UGC dialogue options and chooses the strongest runtime-safe structure.",
-        inputs: ["Product context", "Duration", "Theme", "User description", "Knowledge notes"],
-        outputs: ["Script options", "Hook/CTA framing", "Beat map"],
-        systemPrompt: promptPack.strategist,
+        id: "agent-lead",
+        name: "Lead Ad Agent",
+        responsibility:
+          "Owns the main ad path from script options to avatar direction, base scene planning, and ordered talking-clip prompts.",
+        inputs: ["Product", "Duration", "Theme", "Description", "Knowledge notes", "Approved overrides"],
+        outputs: ["Script options", "Avatar shortlist", "Base scene prompts", "Talking clip prompts"],
+        systemPrompt: leadAgentPrompt,
       },
       {
-        id: "agent-scene",
-        name: "Scene Architect",
-        responsibility: "Casts avatar candidates and prepares base-scene prompts that match the approved script.",
-        inputs: ["Approved script", "Product appearance", "Visual constraints", "Knowledge notes"],
-        outputs: ["Avatar options", "Base scene prompts", "Environment continuity notes"],
-        systemPrompt: promptPack.sceneArchitect,
-      },
-      {
-        id: "agent-dialogue",
-        name: "Dialogue Director",
-        responsibility: "Converts the approved script into ordered 5-second talking-head clip prompts.",
-        inputs: ["Approved script", "Selected base scene", "Clip duration", "Safe-mode overrides"],
-        outputs: ["Sequential clip prompts", "Speech directions", "Gesture directions", "Camera directions"],
-        systemPrompt: promptPack.dialogueDirector,
-      },
-      {
-        id: "agent-broll",
-        name: "B-roll Director",
-        responsibility: "Produces alternate-angle seed images and B-roll video prompts that cut around the dialogue.",
-        inputs: ["Selected base scene", "Script claims", "Editorial needs", "Approval overrides"],
-        outputs: ["B-roll image prompts", "B-roll clip prompts"],
+        id: "agent-coverage",
+        name: "Coverage Agent",
+        responsibility:
+          "Branches off after the base scene is chosen to generate alternate-angle B-roll start frames and supporting clip prompts.",
+        inputs: ["Approved script", "Approved base scene", "Product appearance", "Edit needs", "User overrides"],
+        outputs: ["B-roll image prompts", "B-roll clip prompts", "Coverage notes"],
         systemPrompt: promptPack.bRollDirector,
       },
-      {
-        id: "agent-safe",
-        name: "Safe Mode Coordinator",
-        responsibility: "Enforces approval gates and treats the latest user correction as the top priority override.",
-        inputs: ["Stage status", "User approval", "Disapproval rationale", "Next-step override"],
-        outputs: ["Approval checklist", "Execution holds", "Override instructions"],
-        systemPrompt: promptPack.safetyCoordinator,
-      },
+      ...(safeMode === "safe"
+        ? [
+            {
+              id: "agent-review",
+              name: "Review Agent",
+              responsibility:
+                "Pauses the run at approval gates and treats the latest user correction as the top-priority instruction.",
+              inputs: ["Stage status", "User approval", "Disapproval note", "Next-step override"],
+              outputs: ["Approval holds", "Next-step overrides", "Revision instructions"],
+              systemPrompt: promptPack.safetyCoordinator,
+            } satisfies UgcArchitectureAgent,
+          ]
+        : []),
     ],
     notes: [
-      "Planning runs first and emits a stable contract for the page: scripts, avatars, base scenes, dialogue clips, and B-roll coverage.",
+      "The lead ad agent handles script writing, casting, scene continuity, and the talking-head clip plan.",
+      "The coverage agent stays separate so alternate angles and empty-scene cutaways can diverge without breaking the talking-head continuity.",
       "Dialogue rendering is image-to-video only, using the approved base scene as the continuity anchor for every 5-second batch with spoken audio enabled.",
-      "B-roll is deliberately a separate agent path so coverage prompts can diverge in angle, distance, lighting, and empty-scene variants without polluting talking-head continuity.",
       safeMode === "safe"
-        ? "Safe mode inserts blocking approvals between plan, scene selection, dialogue generation, and B-roll generation."
-        : "Fast mode removes blocking approvals and executes the pipeline sequentially.",
+        ? "Safe mode inserts blocking approvals between planning, scene choice, talking clips, and coverage."
+        : "Fast mode removes blocking approvals and executes the workflow sequentially.",
     ],
   };
 }
@@ -583,6 +580,23 @@ function extractJsonObject(text: string) {
     return JSON.parse(match[0]);
   } catch {
     return null;
+  }
+}
+
+async function withPlannerTimeout<T>(label: string, task: () => Promise<T | null>, timeoutMs = REMOTE_PLANNER_TIMEOUT_MS) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      task(),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          console.warn(`${label} timed out after ${timeoutMs}ms`);
+          resolve(null);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -676,14 +690,23 @@ RULES
 7. Do not add markdown fences. Return only valid JSON.`;
 
   try {
-    const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-    const response = await anthropic.messages.create({
-      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-      max_tokens: 16000,
-      system:
-        "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
-      messages: [{ role: "user", content: prompt }],
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      timeout: REMOTE_PLANNER_TIMEOUT_MS,
+      maxRetries: 0,
     });
+    const response = await anthropic.messages.create(
+      {
+        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
+        max_tokens: 16000,
+        system:
+          "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
+        messages: [{ role: "user", content: prompt }],
+      },
+      {
+        timeout: REMOTE_PLANNER_TIMEOUT_MS,
+      }
+    );
 
     const textBlock = response.content.find((block) => block.type === "text");
     if (!textBlock || textBlock.type !== "text") return null;
@@ -700,22 +723,31 @@ async function tryOpenAiPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.OPENAI_API_KEY) return null;
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
-        },
-        {
-          role: "user",
-          content: `REQUEST\n${JSON.stringify(input, null, 2)}\n\nBASELINE\n${JSON.stringify(baseline, null, 2)}`,
-        },
-      ],
-      response_format: { type: "json_object" },
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      timeout: REMOTE_PLANNER_TIMEOUT_MS,
+      maxRetries: 0,
     });
+    const completion = await openai.chat.completions.create(
+      {
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a production planner for AI UGC video ads. Improve the provided workflow plan while keeping the same JSON shape, preserving IDs, preserving ordered dialogue, and returning only JSON.",
+          },
+          {
+            role: "user",
+            content: `REQUEST\n${JSON.stringify(input, null, 2)}\n\nBASELINE\n${JSON.stringify(baseline, null, 2)}`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      },
+      {
+        timeout: REMOTE_PLANNER_TIMEOUT_MS,
+      }
+    );
     const text = completion.choices[0]?.message?.content || "";
     const parsed = extractJsonObject(text);
     return hasPlanShape(parsed) ? parsed : null;
@@ -767,21 +799,35 @@ export async function POST(req: Request) {
         videoSound: body.settings?.videoSound === undefined ? true : Boolean(body.settings?.videoSound),
       },
       promptPack: {
-        strategist: cleanText(body.promptPack?.strategist),
-        sceneArchitect: cleanText(body.promptPack?.sceneArchitect),
-        dialogueDirector: cleanText(body.promptPack?.dialogueDirector),
-        bRollDirector: cleanText(body.promptPack?.bRollDirector),
-        safetyCoordinator: cleanText(body.promptPack?.safetyCoordinator),
+        strategist: cleanText(body.promptPack?.strategist) || DEFAULT_UGC_PROMPT_PACK.strategist,
+        sceneArchitect: cleanText(body.promptPack?.sceneArchitect) || DEFAULT_UGC_PROMPT_PACK.sceneArchitect,
+        dialogueDirector: cleanText(body.promptPack?.dialogueDirector) || DEFAULT_UGC_PROMPT_PACK.dialogueDirector,
+        bRollDirector: cleanText(body.promptPack?.bRollDirector) || DEFAULT_UGC_PROMPT_PACK.bRollDirector,
+        safetyCoordinator:
+          cleanText(body.promptPack?.safetyCoordinator) || DEFAULT_UGC_PROMPT_PACK.safetyCoordinator,
       },
       overrideInstructions: cleanText(body.overrideInstructions),
     };
 
     const baseline = buildFallbackPlan(input);
-    const anthropicPlan = await tryAnthropicPlan(input, baseline);
-    const geminiPlan = anthropicPlan ? null : await tryGeminiPlan(input, baseline);
-    const openAiPlan = geminiPlan ? null : await tryOpenAiPlan(input, baseline);
-    const refined = anthropicPlan || geminiPlan || openAiPlan;
-    const source = anthropicPlan ? "anthropic" : geminiPlan ? "gemini" : openAiPlan ? "openai" : "heuristic";
+    const plannerSource = process.env.ANTHROPIC_API_KEY
+      ? "anthropic"
+      : process.env.OPENAI_API_KEY
+        ? "openai"
+        : process.env.GEMINI_API_KEY
+          ? "gemini"
+          : "heuristic";
+
+    const refined =
+      plannerSource === "anthropic"
+        ? await withPlannerTimeout("UGC Anthropic planner", () => tryAnthropicPlan(input, baseline))
+        : plannerSource === "openai"
+          ? await withPlannerTimeout("UGC OpenAI planner", () => tryOpenAiPlan(input, baseline))
+          : plannerSource === "gemini"
+            ? await withPlannerTimeout("UGC Gemini planner", () => tryGeminiPlan(input, baseline))
+            : null;
+
+    const source = refined ? plannerSource : "heuristic";
 
     return NextResponse.json({
       plan: refined || baseline,
