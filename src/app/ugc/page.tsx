@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
+import { IBM_Plex_Sans, Manrope } from "next/font/google";
 import { MODEL_LIST } from "@/lib/models";
 import {
   DEFAULT_UGC_PROMPT_PACK,
@@ -128,9 +128,9 @@ const ugcBodyFont = IBM_Plex_Sans({
   variable: "--font-ugc-body",
 });
 
-const ugcDisplayFont = Space_Grotesk({
+const ugcDisplayFont = Manrope({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["600", "700", "800"],
   variable: "--font-ugc-display",
 });
 
@@ -268,7 +268,7 @@ function SectionCard({
   return (
     <section
       className={cn(
-        "rounded-[16px] border border-slate-200/90 bg-white/95 p-5 shadow-[0_24px_48px_-36px_rgba(15,23,42,0.45)] dark:border-slate-800 dark:bg-slate-950/90",
+        "rounded-[12px] border border-slate-200 bg-white p-5 shadow-[0_24px_54px_-42px_rgba(15,23,42,0.24)] dark:border-slate-800 dark:bg-slate-950/92",
         className
       )}
     >
@@ -303,7 +303,7 @@ function OverlaySheet({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+      <div className="flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-[0_40px_120px_-56px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <div>
             <h3 className="font-[var(--font-ugc-display)] text-lg font-semibold tracking-[-0.02em] text-slate-900 dark:text-white">
@@ -341,10 +341,10 @@ function StepButton({
     <button
       onClick={onClick}
       className={cn(
-        "flex min-w-[150px] flex-1 items-start justify-between rounded-[22px] border px-4 py-3 text-left transition",
+        "flex min-w-[150px] flex-1 items-start justify-between rounded-[12px] border px-4 py-3.5 text-left transition",
         active
-          ? "border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-950"
-          : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700"
+          ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_48px_-34px_rgba(15,23,42,0.65)] dark:border-white dark:bg-white dark:text-slate-950"
+          : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700 dark:hover:bg-slate-950"
       )}
     >
       <div>
@@ -385,48 +385,48 @@ function ProductSelectorModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-[28px] border border-slate-800 bg-slate-950 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-[0_40px_120px_-56px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-300">Catalog</div>
-            <h3 className="text-lg font-semibold text-white">Pick a base product</h3>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Catalog</div>
+            <h3 className="font-[var(--font-ugc-display)] text-lg font-semibold text-slate-950 dark:text-white">Pick a base product</h3>
           </div>
           <button
             onClick={onClose}
-            className="rounded-full border border-slate-700 px-3 py-1.5 text-sm text-slate-300 transition hover:border-slate-500 hover:text-white"
+            className="rounded-[10px] border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
           >
             Close
           </button>
         </div>
-        <div className="border-b border-slate-800 px-6 py-4">
+        <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search products, vendors, or types"
-            className="w-full rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-white outline-none transition focus:border-amber-400"
+            className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
           />
         </div>
-        <div className="grid flex-1 grid-cols-2 gap-4 overflow-y-auto p-6 md:grid-cols-4">
+        <div className="grid flex-1 grid-cols-2 gap-4 overflow-y-auto p-6 md:grid-cols-3 xl:grid-cols-5">
           {filtered.map((product) => (
             <button
               key={product.id}
               onClick={() => onSelect(product)}
-              className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900 text-left transition hover:-translate-y-0.5 hover:border-amber-400/70"
+              className="overflow-hidden rounded-[14px] border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-sky-500 hover:shadow-[0_26px_50px_-36px_rgba(14,165,233,0.38)] dark:border-slate-800 dark:bg-slate-900"
             >
-              <div className="aspect-[4/5] bg-slate-800">
+              <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-800">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
               </div>
               <div className="space-y-1 p-4">
-                <div className="text-sm font-semibold text-white">{product.name}</div>
-                <div className="text-xs text-slate-400">
+                <div className="text-sm font-semibold text-slate-950 dark:text-white">{product.name}</div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
                   {product.shopify_vendor || "Manual"} {product.shopify_product_type ? `· ${product.shopify_product_type}` : ""}
                 </div>
               </div>
             </button>
           ))}
           {filtered.length === 0 ? (
-            <div className="col-span-full rounded-3xl border border-dashed border-slate-800 p-10 text-center text-sm text-slate-400">
+            <div className="col-span-full rounded-[14px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
               No products matched your search.
             </div>
           ) : null}
@@ -446,9 +446,9 @@ function AgentLane({
   steps: Array<{ label: string; description: string; status: RenderStatus | ApprovalStatus }>;
 }) {
   return (
-    <div className="rounded-[16px] border border-slate-200 bg-white p-4 shadow-[0_18px_34px_-30px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/85">
+    <div className="rounded-[12px] border border-slate-200 bg-white p-4 shadow-[0_20px_44px_-34px_rgba(15,23,42,0.26)] dark:border-slate-800 dark:bg-slate-950/88">
       <div className="mb-4 flex items-center gap-3">
-        <span className={cn("h-2.5 w-2.5 rounded-sm", accent)} />
+        <span className={cn("h-2.5 w-2.5 rounded-[3px]", accent)} />
         <h3 className="font-[var(--font-ugc-display)] text-sm font-semibold uppercase tracking-[0.16em] text-slate-800 dark:text-slate-200">
           {title}
         </h3>
@@ -457,7 +457,7 @@ function AgentLane({
         {steps.map((step) => (
           <div
             key={step.label}
-            className="rounded-[12px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70"
+            className="rounded-[10px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70"
           >
             <div className="mb-1 flex items-center justify-between gap-3">
               <div className="text-sm font-medium text-slate-900 dark:text-white">{step.label}</div>
@@ -529,7 +529,7 @@ function ScriptOptionCard({
   return (
     <div
       className={cn(
-        "rounded-[16px] border bg-white p-4 transition shadow-[0_18px_30px_-30px_rgba(15,23,42,0.35)]",
+        "rounded-[12px] border bg-white p-4 transition shadow-[0_22px_48px_-40px_rgba(15,23,42,0.24)]",
         selected
           ? "border-sky-500 bg-sky-50/70 dark:border-sky-400 dark:bg-sky-950/20"
           : "border-slate-200 dark:border-slate-800 dark:bg-slate-950/70"
@@ -587,7 +587,7 @@ function ImageRenderCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[16px] border bg-white transition shadow-[0_22px_34px_-30px_rgba(15,23,42,0.35)] dark:bg-slate-950/70",
+        "overflow-hidden rounded-[12px] border bg-white transition shadow-[0_24px_54px_-40px_rgba(15,23,42,0.24)] dark:bg-slate-950/70",
         selected ? "border-sky-500 shadow-[0_24px_40px_-28px_rgba(14,116,144,0.28)]" : "border-slate-200 dark:border-slate-800"
       )}
     >
@@ -647,7 +647,7 @@ function VideoRenderCard({
   onDownload: () => void;
 }) {
   return (
-    <div className="overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-[0_22px_34px_-30px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-slate-950/70">
+    <div className="overflow-hidden rounded-[12px] border border-slate-200 bg-white shadow-[0_24px_54px_-40px_rgba(15,23,42,0.24)] dark:border-slate-800 dark:bg-slate-950/70">
       <div className="aspect-[9/16] bg-slate-100 dark:bg-slate-900">
         {render.url ? (
           <video src={render.url} controls className="h-full w-full object-cover" />
@@ -718,7 +718,7 @@ function WorkspaceTab({
     <button
       onClick={onClick}
       className={cn(
-        "flex min-w-[148px] flex-1 items-center justify-between gap-3 rounded-[12px] border px-4 py-3 text-left transition",
+        "flex min-w-[148px] flex-1 items-center justify-between gap-3 rounded-[12px] border px-4 py-3.5 text-left transition",
         active
           ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_44px_-28px_rgba(15,23,42,0.7)] dark:border-white dark:bg-white dark:text-slate-950"
           : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700"
@@ -755,7 +755,7 @@ function AgentRunCard({
   onOpen: () => void;
 }) {
   return (
-    <div className="relative overflow-hidden rounded-[16px] border border-slate-200 bg-white p-4 shadow-[0_22px_40px_-32px_rgba(15,23,42,0.38)] dark:border-slate-800 dark:bg-slate-950/88">
+    <div className="relative overflow-hidden rounded-[12px] border border-slate-200 bg-white p-4 shadow-[0_24px_58px_-42px_rgba(15,23,42,0.24)] dark:border-slate-800 dark:bg-slate-950/88">
       <div className={cn("absolute inset-x-0 top-0 h-1.5", accentClass)} />
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -1607,102 +1607,86 @@ export default function UgcStudioPage() {
   return (
     <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "relative min-h-screen overflow-hidden bg-[#edf2f5] font-[var(--font-ugc-body)] text-slate-950 dark:bg-slate-950 dark:text-white")}>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.08),transparent_22%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(148,163,184,0.12),transparent_24%)]" />
-      <div className="mx-auto flex w-full max-w-[1820px] flex-col gap-6 px-4 py-6 sm:px-6 xl:px-8">
-        <section className="overflow-hidden rounded-[24px] border border-slate-900 bg-[#0b1220] text-white shadow-[0_36px_90px_-46px_rgba(2,6,23,0.9)] dark:border-slate-800">
-          <div className="grid gap-6 px-6 py-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-300">UGC Director</div>
-              <h1 className="mt-3 font-[var(--font-ugc-display)] text-[clamp(2rem,3vw,3.4rem)] font-semibold leading-[0.95] tracking-[-0.05em]">
-                Talking ad system
-              </h1>
-              <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-                Build the brief, lock the selfie-style base scene, then let the talking path and coverage path run from the same visual anchor.
-              </p>
-
-              <div className="mt-6 grid gap-3 md:grid-cols-5">
-                {stageItems.map((stage) => (
+      <div className="mx-auto flex w-full max-w-[2100px] flex-col gap-5 px-4 py-5 sm:px-6 xl:px-10 2xl:px-12">
+        <section className="overflow-hidden rounded-[16px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] shadow-[0_32px_90px_-58px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(15,23,42,0.84))]">
+          <div className="grid gap-6 px-6 py-6 2xl:grid-cols-[minmax(0,1fr)_400px]">
+            <div className="space-y-6">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div className="max-w-4xl">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">UGC Video Studio</div>
+                  <h1 className="mt-3 font-[var(--font-ugc-display)] text-[clamp(2rem,3vw,3.35rem)] font-semibold leading-[0.95] tracking-[-0.05em] text-slate-950 dark:text-white">
+                    Talking video workflow
+                  </h1>
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                    Set the product, generate or upload the script, approve the base scene, and let the talking path and coverage path run from the same approved visual.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 xl:justify-end">
                   <button
-                    key={stage.id}
-                    onClick={() => setActiveStage(stage.id)}
-                    className={cn(
-                      "rounded-[14px] border px-4 py-4 text-left transition",
-                      activeStage === stage.id
-                        ? "border-slate-200 bg-white text-slate-950"
-                        : "border-white/12 bg-white/6 text-white hover:border-white/25 hover:bg-white/10"
-                    )}
+                    onClick={() => handleBuildPlan()}
+                    disabled={planLoading}
+                    className="rounded-[10px] bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className={cn("text-[10px] font-semibold uppercase tracking-[0.24em]", activeStage === stage.id ? "text-slate-500" : "text-slate-400")}>
-                          {stage.number}
-                        </div>
-                        <div className={cn("mt-2 font-[var(--font-ugc-display)] text-base font-semibold tracking-[-0.03em]", activeStage === stage.id ? "text-slate-950" : "text-white")}>
-                          {stage.label}
-                        </div>
-                      </div>
-                      <StatusPill status={stage.status} />
-                    </div>
-                    <div className={cn("mt-3 text-xs leading-5", activeStage === stage.id ? "text-slate-600" : "text-slate-300")}>
-                      {stage.detail}
-                    </div>
+                    {planLoading ? "Generating scripts..." : "Generate scripts"}
                   </button>
+                  <button
+                    onClick={() => setShowPresetPanel(true)}
+                    className="rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                  >
+                    Presets
+                  </button>
+                  <button
+                    onClick={() => setShowPromptPanel(true)}
+                    className="rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                  >
+                    System prompts
+                  </button>
+                  <button
+                    onClick={exportWorkflowJson}
+                    disabled={!plan}
+                    className="rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                  >
+                    Export run
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-5">
+                {stageItems.map((stage) => (
+                  <StepButton
+                    key={stage.id}
+                    active={activeStage === stage.id}
+                    label={`${stage.number} ${stage.label}`}
+                    hint={stage.detail}
+                    status={stage.status}
+                    onClick={() => setActiveStage(stage.id)}
+                  />
                 ))}
               </div>
             </div>
 
-            <div className="grid gap-3">
-              <div className="rounded-[18px] border border-white/10 bg-white/6 p-4">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-[14px] border border-white/10 bg-black/10 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Product</div>
-                    <div className="mt-2 text-sm font-semibold text-white">{selectedProductCard.name || "Not selected"}</div>
-                    <div className="mt-1 text-xs text-slate-300">{theme || "No theme"} · {settings.dialogueSeconds}s</div>
-                  </div>
-                  <div className="rounded-[14px] border border-white/10 bg-black/10 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Planner</div>
-                    <div className="mt-2 text-sm font-semibold text-white">{activePlannerLabel}</div>
-                    <div className="mt-1 text-xs text-slate-300">{plannerStatusNote}</div>
-                  </div>
-                  <div className="rounded-[14px] border border-white/10 bg-black/10 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Talking pace</div>
-                    <div className="mt-2 text-sm font-semibold text-white">{clipDurationLabel}</div>
-                    <div className="mt-1 text-xs text-slate-300">Clip length follows the actual spoken line.</div>
-                  </div>
-                  <div className="rounded-[14px] border border-white/10 bg-black/10 p-4">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Next action</div>
-                    <div className="mt-2 text-sm font-semibold text-white">{nextActionLabel}</div>
-                    <div className="mt-1 text-xs text-slate-300">{settings.safeMode === "safe" ? "Review mode is active." : "Hands-off mode is active."}</div>
-                  </div>
+            <div className="rounded-[12px] border border-slate-200 bg-white/80 p-4 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.25)] dark:border-slate-800 dark:bg-slate-950/75">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Product</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedProductCard.name || "Not selected"}</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{theme || "No theme"} · {settings.dialogueSeconds}s</div>
                 </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => handleBuildPlan()}
-                  disabled={planLoading}
-                  className="rounded-[12px] bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {planLoading ? "Generating scripts..." : "Generate scripts"}
-                </button>
-                <button
-                  onClick={() => setShowPresetPanel(true)}
-                  className="rounded-[12px] border border-white/18 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/35 hover:bg-white/6"
-                >
-                  Presets
-                </button>
-                <button
-                  onClick={() => setShowPromptPanel(true)}
-                  className="rounded-[12px] border border-white/18 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/35 hover:bg-white/6"
-                >
-                  System prompts
-                </button>
-                <button
-                  onClick={exportWorkflowJson}
-                  disabled={!plan}
-                  className="rounded-[12px] border border-white/18 px-4 py-2.5 text-sm font-semibold text-white transition hover:border-white/35 hover:bg-white/6 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Export run
-                </button>
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Planner</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{activePlannerLabel}</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{plannerStatusNote}</div>
+                </div>
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Talking pace</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{clipDurationLabel}</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Clip length follows the actual spoken line.</div>
+                </div>
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Next action</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{nextActionLabel}</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{settings.safeMode === "safe" ? "Review mode is active." : "Hands-off mode is active."}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -1714,129 +1698,115 @@ export default function UgcStudioPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
-          <aside className="space-y-5 xl:sticky xl:top-20 xl:self-start">
-            <SectionCard title="Run recipe" eyebrow="At a glance">
+        <div className="grid gap-5 xl:grid-cols-[1.05fr_1.1fr_0.86fr]">
+          <SectionCard title="Run recipe" eyebrow="At a glance">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {[
+                ["Duration", `${settings.dialogueSeconds}s`],
+                ["Mode", settings.safeMode === "safe" ? "Review" : "Fast"],
+                ["Scenes", String(settings.sceneVariationCount)],
+                ["Coverage", String(settings.bRollClipCount)],
+                ["Images", imageModelOptions.find((model) => model.id === settings.imageModelId)?.label || settings.imageModelId],
+                ["Planner", activePlannerLabel],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-[10px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{label}</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{value}</div>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+
+          <SectionCard title="Brief snapshot" eyebrow="Current run">
+            <div className="space-y-4">
+              <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Product</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedProductCard.name || "Choose a product"}</div>
+                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{productSource === "catalog" ? "Catalog" : "Uploaded image"} · {catalogCountLabel}</div>
+                  </div>
+                  {selectedProductCard.imageUrl ? (
+                    <div className="h-16 w-14 overflow-hidden rounded-[8px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={selectedProductCard.imageUrl} alt={selectedProductCard.name} className="h-full w-full object-cover" />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 {[
-                  ["Duration", `${settings.dialogueSeconds}s`],
-                  ["Mode", settings.safeMode === "safe" ? "Review" : "Fast"],
-                  ["Scenes", String(settings.sceneVariationCount)],
-                  ["Coverage", String(settings.bRollClipCount)],
-                  ["Images", imageModelOptions.find((model) => model.id === settings.imageModelId)?.label || settings.imageModelId],
-                  ["Planner", activePlannerLabel],
+                  ["Scripts", plan ? plan.scriptOptions.length : 0],
+                  ["Scenes", `${readySceneCount}/${settings.sceneVariationCount}`],
+                  ["Talking", readyDialogueCount],
+                  ["Coverage", readyBrollCount],
                 ].map(([label, value]) => (
-                  <div key={String(label)} className="rounded-[14px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div key={String(label)} className="rounded-[10px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
                     <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{label}</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{value}</div>
+                    <div className="mt-2 font-[var(--font-ugc-display)] text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-white">{value}</div>
                   </div>
                 ))}
               </div>
-            </SectionCard>
 
-            <SectionCard title="Brief snapshot" eyebrow="Current run">
-              <div className="space-y-4">
-                <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Product</div>
-                      <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedProductCard.name || "Choose a product"}</div>
-                      <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{productSource === "catalog" ? "Catalog" : "Uploaded image"} · {catalogCountLabel}</div>
-                    </div>
-                    {selectedProductCard.imageUrl ? (
-                      <div className="h-16 w-14 overflow-hidden rounded-[10px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={selectedProductCard.imageUrl} alt={selectedProductCard.name} className="h-full w-full object-cover" />
-                      </div>
-                    ) : null}
+              {selectedScript ? (
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Approved script</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedScript.title}</div>
+                  <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400 line-clamp-5">{selectedScript.dialogue}</p>
+                </div>
+              ) : null}
+
+              {selectedScene ? (
+                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Locked scene</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedScene.title}</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedScenePlan?.environment || "Ready for talking clips"}</div>
+                  <div className="mt-3 flex items-center justify-between gap-3">
+                    <span className="text-xs text-slate-500 dark:text-slate-400">Coverage agent</span>
+                    <StatusPill status={coverageAgentStatus} />
                   </div>
                 </div>
+              ) : null}
+            </div>
+          </SectionCard>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    ["Scripts", plan ? plan.scriptOptions.length : 0],
-                    ["Scenes", `${readySceneCount}/${settings.sceneVariationCount}`],
-                    ["Talking", readyDialogueCount],
-                    ["Coverage", readyBrollCount],
-                  ].map(([label, value]) => (
-                    <div key={String(label)} className="rounded-[14px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
-                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{label}</div>
-                      <div className="mt-2 font-[var(--font-ugc-display)] text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-white">{value}</div>
-                    </div>
-                  ))}
-                </div>
+          <SectionCard title="Exports" eyebrow="Deliverables">
+            <div className="space-y-3">
+              <button
+                onClick={() => bulkDownload(selectedDialogueUrls, `${runFilePrefix}-dialogue`)}
+                disabled={selectedDialogueUrls.length === 0}
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+              >
+                Download talking clips
+              </button>
+              <button
+                onClick={() => bulkDownload(selectedBrollUrls, `${runFilePrefix}-broll`)}
+                disabled={selectedBrollUrls.length === 0}
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+              >
+                Download coverage clips
+              </button>
+              <button
+                onClick={exportWorkflowJson}
+                disabled={!plan}
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+              >
+                Export run JSON
+              </button>
+              <button
+                onClick={exportPromptPack}
+                disabled={!plan}
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+              >
+                Export prompt pack
+              </button>
+            </div>
+          </SectionCard>
+        </div>
 
-                {selectedScript ? (
-                  <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Approved script</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedScript.title}</div>
-                    <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400 line-clamp-5">{selectedScript.dialogue}</p>
-                  </div>
-                ) : null}
-
-                {selectedScene ? (
-                  <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Locked scene</div>
-                    <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedScene.title}</div>
-                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{selectedScenePlan?.environment || "Ready for talking clips"}</div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Coverage agent</span>
-                      <StatusPill status={coverageAgentStatus} />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </SectionCard>
-
-            <SectionCard title="Exports" eyebrow="Deliverables">
-              <div className="space-y-3">
-                <button
-                  onClick={() => bulkDownload(selectedDialogueUrls, `${runFilePrefix}-dialogue`)}
-                  disabled={selectedDialogueUrls.length === 0}
-                  className="w-full rounded-[12px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
-                >
-                  Download talking clips
-                </button>
-                <button
-                  onClick={() => bulkDownload(selectedBrollUrls, `${runFilePrefix}-broll`)}
-                  disabled={selectedBrollUrls.length === 0}
-                  className="w-full rounded-[12px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
-                >
-                  Download coverage clips
-                </button>
-                <button
-                  onClick={exportWorkflowJson}
-                  disabled={!plan}
-                  className="w-full rounded-[12px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
-                >
-                  Export run JSON
-                </button>
-                <button
-                  onClick={exportPromptPack}
-                  disabled={!plan}
-                  className="w-full rounded-[12px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
-                >
-                  Export prompt pack
-                </button>
-              </div>
-            </SectionCard>
-          </aside>
-
-          <div className="space-y-6">
-            <SectionCard title="Workspace" eyebrow="Production board">
-              <div className="grid gap-3 xl:grid-cols-5">
-                {stageItems.map((stage) => (
-                  <WorkspaceTab
-                    key={stage.id}
-                    active={activeStage === stage.id}
-                    label={`${stage.number} ${stage.label}`}
-                    hint={stage.detail}
-                    status={stage.status}
-                    onClick={() => setActiveStage(stage.id)}
-                  />
-                ))}
-              </div>
-            </SectionCard>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1.12fr)_380px]">
+          <div className="space-y-5">
 
             {activeStage === "setup" ? (
               <SectionCard
@@ -1852,8 +1822,8 @@ export default function UgcStudioPage() {
                   </button>
                 }
               >
-                <div className="grid gap-5 xl:grid-cols-[1.05fr_1.15fr_0.8fr]">
-                  <div className="space-y-4 rounded-[16px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1.08fr)_minmax(300px,0.82fr)]">
+                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Product reference
@@ -1970,7 +1940,7 @@ export default function UgcStudioPage() {
                     </label>
                   </div>
 
-                  <div className="space-y-4 rounded-[16px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Script direction
@@ -2065,7 +2035,7 @@ export default function UgcStudioPage() {
                     )}
                   </div>
 
-                  <div className="space-y-4 rounded-[16px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/80 p-4 xl:col-span-2 2xl:col-span-1 dark:border-slate-800 dark:bg-slate-900/60">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Initial config
