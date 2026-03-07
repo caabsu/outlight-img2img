@@ -1371,10 +1371,14 @@ export default function UgcStudioPage() {
     const clipPlansBySeed = new Map<string, UgcBrollClipPlan>();
     plan.bRollClipPlans.forEach((clip) => clipPlansBySeed.set(clip.imagePlanId, clip));
 
+    // Build a map from video render ID → seed, so we can find the source image for each clip
+    const seedByVideoId = new Map<string, typeof seedsToRender[number]>();
     const initial = seedsToRender.map((seed) => {
       const clip = clipPlansBySeed.get(seed.planId);
+      const videoId = clip?.id || seed.id;
+      seedByVideoId.set(videoId, seed);
       return {
-        id: clip?.id || seed.id,
+        id: videoId,
         planId: clip?.id || seed.id,
         title: clip?.title || seed.title,
         prompt: applyOverride(clip?.prompt || seed.prompt, approvals.broll.note),
@@ -1390,7 +1394,7 @@ export default function UgcStudioPage() {
 
     try {
       await runWithConcurrency(initial, initial.length, async (render) => {
-        const seed = seedsToRender.find((item) => item.planId === render.planId || item.id === render.planId);
+        const seed = seedByVideoId.get(render.id);
         if (!seed?.url) return;
         try {
           const response = await fetch("/api/video/generate", {
@@ -1496,7 +1500,12 @@ export default function UgcStudioPage() {
     if (!plan) return;
     const video = brollVideos.find((v) => v.id === videoId);
     if (!video) return;
-    const seed = brollSeedImages.find((s) => s.planId === video.planId || s.id === video.planId);
+    // Find the seed image: the video's planId is a clip ID (e.g. "broll-clip-1"),
+    // so look up the clip plan to get imagePlanId, then match to the seed
+    const clipPlan = plan.bRollClipPlans.find((c) => c.id === video.planId);
+    const seed = clipPlan
+      ? brollSeedImages.find((s) => s.planId === clipPlan.imagePlanId || s.id === clipPlan.imagePlanId)
+      : brollSeedImages.find((s) => s.id === video.planId);
     if (!seed?.url) return;
 
     const feedbackPrompt = feedback.trim()
