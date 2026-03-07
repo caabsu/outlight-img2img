@@ -994,7 +994,7 @@ export default function UgcStudioPage() {
     addActivity("script", `Imported script from ${file.name}.`, "success");
   };
 
-  const handleBuildPlan = async (options?: { overrideInstructions?: string; scriptOverride?: string }) => {
+  const handleBuildPlan = async (options?: { overrideInstructions?: string; scriptOverride?: string; skipNavigation?: boolean }) => {
     const productName = selectedProductCard.name.trim();
     if (!productName) {
       setErrorMessage("Select a product first.");
@@ -1059,8 +1059,10 @@ export default function UgcStudioPage() {
           status: settings.safeMode === "safe" ? "pending" : "approved",
         },
       }));
-      setActiveStage("plan");
-      addActivity("plan", `${nextPlan.scriptOptions.length} scripts ready. Choose one to continue.`, "success");
+      if (!options?.skipNavigation) {
+        setActiveStage("plan");
+      }
+      addActivity("plan", `${nextPlan.scriptOptions.length} scripts ready.`, "success");
     } catch (error: any) {
       setErrorMessage(error?.message || "Failed to generate scripts");
       addActivity("plan", error?.message || "Failed to generate scripts", "error");
@@ -1389,13 +1391,15 @@ export default function UgcStudioPage() {
       ...current,
       script: { ...current.script, status: "approved" },
     }));
+    // Navigate to Scene stage immediately so user sees progress
+    setActiveStage("scene");
 
     if (script.id !== plan?.selectedScriptId) {
-      // Different script selected - rebuild plan then auto-generate scenes
+      // Different script - rebuild plan, then auto-generate scenes
       setScriptMode("upload");
       setScriptText(script.dialogue);
       setAutoGenerateScenes(true);
-      await handleBuildPlan({ scriptOverride: script.dialogue });
+      await handleBuildPlan({ scriptOverride: script.dialogue, skipNavigation: true });
     } else {
       // Same script - directly generate scenes
       setAutoGenerateScenes(true);
@@ -2006,7 +2010,39 @@ export default function UgcStudioPage() {
           {/* ═══ SCENE ═══ */}
           {activeStage === "scene" ? (
             <SectionCard title="Choose your scene" subtitle="Select the scene that will be used as the base for all your video clips.">
-              {plan ? (
+              {/* Thinking / progress indicator */}
+              {(planLoading || (sceneLoading && sceneRenders.every((r) => !r.url))) ? (
+                <div className="space-y-5">
+                  <div className="flex flex-col items-center justify-center rounded-2xl border border-slate-800 bg-slate-900/40 py-16">
+                    <div className="mb-4 h-8 w-8 animate-spin rounded-full border-[3px] border-slate-700 border-t-white" />
+                    <div className="text-sm font-semibold text-white">
+                      {planLoading ? "Building scene plan..." : "Generating scenes..."}
+                    </div>
+                    <p className="mt-2 max-w-sm text-center text-xs leading-5 text-slate-400">
+                      {planLoading
+                        ? "Adapting the scene prompts, dialogue clips, and B-roll plan to your selected script. This takes a moment."
+                        : `Rendering ${settings.sceneVariationCount} scene options. Each one will appear as it finishes.`}
+                    </p>
+                  </div>
+                  {/* Show progress steps */}
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900/40 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <StatusDot status={planLoading ? "running" : "done"} />
+                      <span className={cn("text-xs font-medium", planLoading ? "text-white" : "text-slate-400")}>Prepare plan</span>
+                    </div>
+                    <svg className="h-3 w-3 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                    <div className="flex items-center gap-2">
+                      <StatusDot status={sceneLoading ? "running" : planLoading ? "pending" : "pending"} />
+                      <span className={cn("text-xs font-medium", sceneLoading ? "text-white" : "text-slate-500")}>Generate scenes</span>
+                    </div>
+                    <svg className="h-3 w-3 text-slate-700" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" /></svg>
+                    <div className="flex items-center gap-2">
+                      <StatusDot status="pending" />
+                      <span className="text-xs font-medium text-slate-500">Pick your scene</span>
+                    </div>
+                  </div>
+                </div>
+              ) : plan ? (
                 <div className="space-y-4">
                   {selectedScene ? (
                     <div className="flex items-center justify-between gap-4 rounded-xl border border-emerald-900/40 bg-emerald-950/20 px-4 py-3">
@@ -2039,12 +2075,6 @@ export default function UgcStudioPage() {
                           />
                         );
                       })}
-                    </div>
-                  ) : sceneLoading ? (
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      {plan.sceneVariations.map((scene) => (
-                        <div key={scene.id} className="aspect-[9/16] animate-pulse rounded-2xl border border-slate-800 bg-slate-900/60" />
-                      ))}
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-dashed border-slate-800 p-10 text-center text-sm text-slate-500">
