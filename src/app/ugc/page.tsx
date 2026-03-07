@@ -1605,19 +1605,19 @@ export default function UgcStudioPage() {
   ];
 
   return (
-    <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "relative min-h-screen overflow-hidden bg-[#ece9e2] font-[var(--font-ugc-body)] text-slate-950 dark:bg-slate-950 dark:text-white")}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.06),transparent_32%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.03),transparent_24%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.08),transparent_32%),radial-gradient(circle_at_top_right,rgba(148,163,184,0.06),transparent_24%)]" />
+    <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "dark relative min-h-screen overflow-hidden bg-slate-950 font-[var(--font-ugc-body)] text-white")}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.08),transparent_32%),radial-gradient(circle_at_top_right,rgba(148,163,184,0.06),transparent_24%)]" />
       <div className="mx-auto flex w-full max-w-[2100px] flex-col gap-5 px-4 py-5 sm:px-6 xl:px-10 2xl:px-12">
-        <section className="overflow-hidden rounded-[16px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(245,244,240,0.96))] shadow-[0_32px_90px_-58px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(15,23,42,0.84))]">
+        <section className="overflow-hidden rounded-[16px] border border-slate-800 bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(15,23,42,0.84))] shadow-[0_32px_90px_-58px_rgba(2,6,23,0.65)]">
           <div className="grid gap-6 px-6 py-6 2xl:grid-cols-[minmax(0,1fr)_400px]">
             <div className="space-y-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                 <div className="max-w-4xl">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500 dark:text-slate-400">UGC Video Studio</div>
-                  <h1 className="mt-3 font-[var(--font-ugc-display)] text-[clamp(2rem,3vw,3.35rem)] font-semibold leading-[0.95] tracking-[-0.05em] text-slate-950 dark:text-white">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-400">UGC Video Studio</div>
+                  <h1 className="mt-3 font-[var(--font-ugc-display)] text-[clamp(2rem,3vw,3.35rem)] font-semibold leading-[0.95] tracking-[-0.05em] text-white">
                     Talking video workflow
                   </h1>
-                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
                     Set the product, generate or upload the script, approve the base scene, and let the talking path and coverage path run from the same approved visual.
                   </p>
                 </div>
@@ -1625,26 +1625,26 @@ export default function UgcStudioPage() {
                   <button
                     onClick={() => handleBuildPlan()}
                     disabled={planLoading}
-                    className="rounded-[10px] bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                    className="rounded-[10px] bg-white px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {planLoading ? "Generating scripts..." : "Generate scripts"}
                   </button>
                   <button
                     onClick={() => setShowPresetPanel(true)}
-                    className="rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                    className="rounded-[10px] border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/5"
                   >
                     Presets
                   </button>
                   <button
                     onClick={() => setShowPromptPanel(true)}
-                    className="rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                    className="rounded-[10px] border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/5"
                   >
                     System prompts
                   </button>
                   <button
                     onClick={exportWorkflowJson}
                     disabled={!plan}
-                    className="rounded-[10px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
+                    className="rounded-[10px] border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-white/30 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Export run
                   </button>
@@ -1665,27 +1665,27 @@ export default function UgcStudioPage() {
               </div>
             </div>
 
-            <div className="rounded-[12px] border border-slate-200 bg-[#faf9f6] p-4 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950/75">
+            <div className="rounded-[12px] border border-white/10 bg-white/5 p-4 shadow-[0_24px_60px_-44px_rgba(2,6,23,0.4)]">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Product</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{selectedProductCard.name || "Not selected"}</div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{theme || "No theme"} · {settings.dialogueSeconds}s</div>
+                <div className="rounded-[10px] border border-white/10 bg-black/10 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Product</div>
+                  <div className="mt-2 text-sm font-semibold text-white">{selectedProductCard.name || "Not selected"}</div>
+                  <div className="mt-1 text-xs text-slate-300">{theme || "No theme"} · {settings.dialogueSeconds}s</div>
                 </div>
-                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Planner</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{activePlannerLabel}</div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{plannerStatusNote}</div>
+                <div className="rounded-[10px] border border-white/10 bg-black/10 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Planner</div>
+                  <div className="mt-2 text-sm font-semibold text-white">{activePlannerLabel}</div>
+                  <div className="mt-1 text-xs text-slate-300">{plannerStatusNote}</div>
                 </div>
-                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Talking pace</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{clipDurationLabel}</div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">Clip length follows the actual spoken line.</div>
+                <div className="rounded-[10px] border border-white/10 bg-black/10 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Talking pace</div>
+                  <div className="mt-2 text-sm font-semibold text-white">{clipDurationLabel}</div>
+                  <div className="mt-1 text-xs text-slate-300">Clip length follows the actual spoken line.</div>
                 </div>
-                <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Next action</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{nextActionLabel}</div>
-                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{settings.safeMode === "safe" ? "Review mode is active." : "Hands-off mode is active."}</div>
+                <div className="rounded-[10px] border border-white/10 bg-black/10 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Next action</div>
+                  <div className="mt-2 text-sm font-semibold text-white">{nextActionLabel}</div>
+                  <div className="mt-1 text-xs text-slate-300">{settings.safeMode === "safe" ? "Review mode is active." : "Hands-off mode is active."}</div>
                 </div>
               </div>
             </div>
@@ -1698,7 +1698,6 @@ export default function UgcStudioPage() {
           </div>
         ) : null}
 
-        <div className="space-y-5 [&_.text-slate-400]:text-slate-600 [&_.text-slate-500]:text-slate-700 [&_.text-slate-600]:text-slate-800 [&_.bg-slate-50]:bg-[#f3f1ec] [&_.bg-\[\#f7f6f3\]]:bg-[#f3f1ec] [&_.bg-\[\#faf9f6\]]:bg-white">
         <div className="grid gap-5 xl:grid-cols-[1.05fr_1.1fr_0.86fr]">
           <SectionCard title="Run recipe" eyebrow="At a glance">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1805,7 +1804,6 @@ export default function UgcStudioPage() {
             </div>
           </SectionCard>
         </div>
-
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1.12fr)_380px]">
           <div className="space-y-5">
 
@@ -2764,7 +2762,6 @@ export default function UgcStudioPage() {
               </div>
             </SectionCard>
           </aside>
-        </div>
         </div>
 
         {showProductSelector ? (
