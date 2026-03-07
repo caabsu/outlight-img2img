@@ -268,18 +268,18 @@ function SectionCard({
   return (
     <section
       className={cn(
-        "rounded-[12px] border border-slate-200 bg-white p-5 shadow-[0_24px_54px_-42px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950/92",
+        "rounded-[12px] border border-slate-800 bg-slate-950/92 p-5 shadow-[0_24px_54px_-42px_rgba(2,6,23,0.45)]",
         className
       )}
     >
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           {eyebrow ? (
-            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
+            <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
               {eyebrow}
             </div>
           ) : null}
-          <h2 className="font-[var(--font-ugc-display)] text-lg font-semibold tracking-[-0.02em] text-slate-950 dark:text-white">
+          <h2 className="font-[var(--font-ugc-display)] text-lg font-semibold tracking-[-0.02em] text-white">
             {title}
           </h2>
         </div>
@@ -343,13 +343,13 @@ function StepButton({
       className={cn(
         "flex min-w-[150px] flex-1 items-start justify-between rounded-[12px] border px-4 py-3.5 text-left transition",
         active
-          ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_48px_-34px_rgba(15,23,42,0.65)] dark:border-white dark:bg-white dark:text-slate-950"
-          : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-[#f6f6f3] dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700 dark:hover:bg-slate-950"
+          ? "border-slate-600 bg-slate-900 text-white shadow-[0_22px_48px_-34px_rgba(2,6,23,0.72)]"
+          : "border-slate-800 bg-slate-950/70 text-white hover:border-slate-700 hover:bg-slate-950"
       )}
     >
       <div>
         <div className="text-sm font-semibold">{label}</div>
-        <div className={cn("mt-1 text-xs", active ? "text-slate-300 dark:text-slate-700" : "text-slate-500 dark:text-slate-400")}>
+        <div className={cn("mt-1 text-xs", active ? "text-slate-300" : "text-slate-400")}>
           {hint}
         </div>
       </div>
@@ -1698,8 +1698,9 @@ export default function UgcStudioPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[1.05fr_1.1fr_0.86fr]">
-          <SectionCard title="Run recipe" eyebrow="At a glance">
+        <div className="ugc-dark-workspace space-y-5">
+          <div className="grid gap-5 xl:grid-cols-[1.05fr_1.1fr_0.86fr]">
+            <SectionCard title="Run recipe" eyebrow="At a glance">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {[
                 ["Duration", `${settings.dialogueSeconds}s`],
@@ -1715,9 +1716,9 @@ export default function UgcStudioPage() {
                 </div>
               ))}
             </div>
-          </SectionCard>
+            </SectionCard>
 
-          <SectionCard title="Brief snapshot" eyebrow="Current run">
+            <SectionCard title="Brief snapshot" eyebrow="Current run">
             <div className="space-y-4">
               <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
                 <div className="flex items-start justify-between gap-3">
@@ -1769,9 +1770,9 @@ export default function UgcStudioPage() {
                 </div>
               ) : null}
             </div>
-          </SectionCard>
+            </SectionCard>
 
-          <SectionCard title="Exports" eyebrow="Deliverables">
+            <SectionCard title="Exports" eyebrow="Deliverables">
             <div className="space-y-3">
               <button
                 onClick={() => bulkDownload(selectedDialogueUrls, `${runFilePrefix}-dialogue`)}
@@ -1802,10 +1803,10 @@ export default function UgcStudioPage() {
                 Export prompt pack
               </button>
             </div>
-          </SectionCard>
-        </div>
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1.12fr)_380px]">
-          <div className="space-y-5">
+            </SectionCard>
+          </div>
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1.12fr)_380px]">
+            <div className="space-y-5">
 
             {activeStage === "setup" ? (
               <SectionCard
@@ -2661,7 +2662,7 @@ export default function UgcStudioPage() {
             ) : null}
           </div>
 
-          <aside className="space-y-5 xl:sticky xl:top-20 xl:self-start">
+            <aside className="space-y-5 xl:sticky xl:top-20 xl:self-start">
             <SectionCard title="AI runs" eyebrow="Agent view">
               <div className="space-y-4">
                 <AgentLane
@@ -2761,7 +2762,8 @@ export default function UgcStudioPage() {
                 )}
               </div>
             </SectionCard>
-          </aside>
+            </aside>
+          </div>
         </div>
 
         {showProductSelector ? (
@@ -2885,6 +2887,46 @@ export default function UgcStudioPage() {
             </div>
           </OverlaySheet>
         ) : null}
+
+        <style jsx global>{`
+          .ugc-dark-workspace .bg-white {
+            background-color: rgba(2, 6, 23, 0.92) !important;
+          }
+
+          .ugc-dark-workspace .bg-slate-50 {
+            background-color: rgba(15, 23, 42, 0.72) !important;
+          }
+
+          .ugc-dark-workspace [class*="bg-[#f7f6f3]"] {
+            background-color: rgba(2, 6, 23, 0.92) !important;
+          }
+
+          .ugc-dark-workspace .border-slate-200 {
+            border-color: rgb(30 41 59 / 1) !important;
+          }
+
+          .ugc-dark-workspace .border-slate-300 {
+            border-color: rgb(51 65 85 / 1) !important;
+          }
+
+          .ugc-dark-workspace .text-slate-950,
+          .ugc-dark-workspace .text-slate-900 {
+            color: rgb(248 250 252 / 1) !important;
+          }
+
+          .ugc-dark-workspace .text-slate-800 {
+            color: rgb(226 232 240 / 1) !important;
+          }
+
+          .ugc-dark-workspace .text-slate-700 {
+            color: rgb(203 213 225 / 1) !important;
+          }
+
+          .ugc-dark-workspace .text-slate-600,
+          .ugc-dark-workspace .text-slate-500 {
+            color: rgb(148 163 184 / 1) !important;
+          }
+        `}</style>
       </div>
     </div>
   );
