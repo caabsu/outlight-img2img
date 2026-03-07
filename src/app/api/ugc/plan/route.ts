@@ -313,90 +313,150 @@ function inferSettingForScript(guidance: string, category: string) {
   return { place: "at home", room: "living room" };
 }
 
+function buildGuidanceLine(guidance: string, productName: string): string {
+  // Turn the user's guidance into a natural spoken line that drives the script angle
+  const g = guidance.toLowerCase().trim();
+  if (!g) return "";
+
+  // If it already reads like a sentence, use it almost directly
+  if (g.length > 30 && /\s/.test(g)) {
+    // Wrap the guidance concept into a spoken framing
+    return `The thing about ${productName} is — ${guidance.endsWith(".") ? guidance : guidance + "."} `;
+  }
+
+  // Short guidance — treat it as the angle/concept keyword
+  return `I wanted to talk about ${productName} from the ${guidance} angle. `;
+}
+
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
   const guidance = cleanText(input.description) || "";
   const categoryLabel = category || "product";
   const setting = inferSettingForScript(guidance, category);
   const lines = buildProductLines(knowledge, productName, category);
   const targetSeconds = input.totalSeconds || 20;
-  // ~2.5 words/sec for natural conversational speech
-  const targetWords = Math.round(targetSeconds * 2.5);
-  const isShort = targetSeconds <= 15;
+  const guidanceLine = buildGuidanceLine(guidance, productName);
+  const hasGuidance = guidance.length > 0;
 
-  // Build scripts that actually fit the duration
-  // Short (≤15s): tight, punchy, one main point
-  // Medium (16–25s): one setup + one proof point + close
-  // Long (>25s): fuller story with room to breathe
+  // When the user gives guidance, it IS the concept. The script must revolve around it.
+  // When there's no guidance, fall back to generic product-category scripts.
 
-  const variants = isShort
+  const variants = targetSeconds <= 15
     ? [
         {
-          title: "Caught in the moment",
-          rationale: `Quick, mid-action take ${setting.place}. Gets in and out fast.`,
-          hook: `Wait — okay, look at this.`,
-          cta: `Just try it.`,
-          dialogue: `Wait — okay, look at this. I am ${setting.place} and I just used ${productName}. ${lines.detail} Just try it.`.trim(),
+          title: hasGuidance ? guidance.slice(0, 40) : "Quick take",
+          rationale: hasGuidance
+            ? `Built around the direction: "${guidance}". Short and punchy.`
+            : `Quick, mid-action take ${setting.place}.`,
+          hook: hasGuidance
+            ? `Okay so — ${guidance.split(/[.!?]/)[0] || guidance}.`
+            : `Wait — okay, look at this.`,
+          cta: `That is all.`,
+          dialogue: hasGuidance
+            ? `Okay so — ${guidance.split(/[.!?]/)[0] || guidance}. I am ${setting.place} with ${productName} right now. ${lines.detail} That is all.`.trim()
+            : `Wait — okay, look at this. I am ${setting.place} and I just used ${productName}. ${lines.detail} That is all.`.trim(),
         },
         {
-          title: "Storytime",
-          rationale: `Short rant about ${categoryLabel} that pivots to ${productName}.`,
-          hook: `Most ${categoryLabel} is mid.`,
-          cta: `This one is not.`,
-          dialogue: `Most ${categoryLabel} is mid. I have tried a bunch. Then I found ${productName}. ${lines.detail} This one is not.`.trim(),
+          title: hasGuidance ? "Different angle" : "Straight up",
+          rationale: hasGuidance
+            ? `Same direction ("${guidance}") but a different entry point.`
+            : `Short rant about ${categoryLabel} that pivots to ${productName}.`,
+          hook: hasGuidance
+            ? `Here is why I bring up ${productName}.`
+            : `Most ${categoryLabel} is mid.`,
+          cta: `Just saying.`,
+          dialogue: hasGuidance
+            ? `Here is why I bring up ${productName}. ${guidanceLine}${lines.detail} Just saying.`.trim()
+            : `Most ${categoryLabel} is mid. I have tried a bunch. Then I found ${productName}. ${lines.detail} Just saying.`.trim(),
         },
         {
-          title: "No hype, just facts",
-          rationale: `Matter-of-fact, zero selling. Just someone sharing what works.`,
+          title: hasGuidance ? "Matter of fact" : "No hype",
+          rationale: hasGuidance
+            ? `Understated take on "${guidance}".`
+            : `Matter-of-fact, zero selling.`,
           hook: `Real quick.`,
           cta: `That is it.`,
-          dialogue: `Real quick. I am ${setting.place}, been using ${productName}. ${lines.detail} That is it.`.trim(),
+          dialogue: hasGuidance
+            ? `Real quick. ${guidanceLine}I am ${setting.place}, been using ${productName}. ${lines.detail} That is it.`.trim()
+            : `Real quick. I am ${setting.place}, been using ${productName}. ${lines.detail} That is it.`.trim(),
         },
       ]
     : targetSeconds <= 25
       ? [
           {
-            title: "Caught in the moment",
-            rationale: `Starts mid-action ${setting.place} — feels like the person was already using the product and decided to film.`,
-            hook: `Wait, okay, I need to show you this real quick.`,
+            title: hasGuidance ? guidance.slice(0, 40) : "Caught in the moment",
+            rationale: hasGuidance
+              ? `Built around: "${guidance}". Starts mid-action ${setting.place}.`
+              : `Starts mid-action ${setting.place} — feels unplanned.`,
+            hook: hasGuidance
+              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}.`
+              : `Wait, okay, I need to show you this real quick.`,
             cta: `Seriously, just try it.`,
-            dialogue: `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName}. ${lines.detail} ${lines.reaction} Seriously, just try it.`.trim(),
+            dialogue: hasGuidance
+              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}. I am ${setting.place} right now with ${productName}. ${lines.detail} ${lines.reaction} Seriously, just try it.`.trim()
+              : `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName}. ${lines.detail} ${lines.reaction} Seriously, just try it.`.trim(),
           },
           {
-            title: "Storytime",
-            rationale: `Starts with a frustration about ${categoryLabel}, then pivots to ${productName} as the thing that worked.`,
-            hook: `Can we talk about how most ${categoryLabel} is just mid?`,
-            cta: `Do what you want with that information.`,
-            dialogue: `Can we talk about how most ${categoryLabel} is just mid? I have tried so many. But then I started using ${productName}. I am ${setting.place} right now. ${lines.detail} ${lines.reaction} Do what you want with that information.`.trim(),
+            title: hasGuidance ? "Different angle" : "Storytime",
+            rationale: hasGuidance
+              ? `Same concept ("${guidance}") but opens with category frustration.`
+              : `Starts with frustration about ${categoryLabel}, then pivots to ${productName}.`,
+            hook: hasGuidance
+              ? `${guidance.split(/[.!?]/)[0] || guidance} — let me explain.`
+              : `Can we talk about how most ${categoryLabel} is just mid?`,
+            cta: `Do what you want with that.`,
+            dialogue: hasGuidance
+              ? `${guidance.split(/[.!?]/)[0] || guidance} — let me explain. I have tried a lot of ${categoryLabel} and most of it blends together. ${productName} is different. I am ${setting.place} right now. ${lines.detail} ${lines.reaction} Do what you want with that.`.trim()
+              : `Can we talk about how most ${categoryLabel} is just mid? I have tried so many. But then I started using ${productName}. I am ${setting.place} right now. ${lines.detail} ${lines.reaction} Do what you want with that.`.trim(),
           },
           {
-            title: "No hype, just facts",
-            rationale: `Low-energy, matter-of-fact delivery ${setting.place}. No excitement, no selling.`,
+            title: hasGuidance ? "Understated" : "No hype, just facts",
+            rationale: hasGuidance
+              ? `Low-energy take on "${guidance}". No excitement, just honest.`
+              : `Matter-of-fact delivery ${setting.place}. No excitement, no selling.`,
             hook: `I do not usually talk about products but here we are.`,
             cta: `Take it or leave it.`,
-            dialogue: `I do not usually talk about products but here we are. I am ${setting.place}, been using ${productName} for a while. ${lines.detail} I am not going to hype it up. ${lines.reaction} Take it or leave it.`.trim(),
+            dialogue: hasGuidance
+              ? `I do not usually talk about products but here we are. ${guidanceLine}I am ${setting.place}, been using ${productName} for a while. ${lines.detail} I am not going to hype it up. ${lines.reaction} Take it or leave it.`.trim()
+              : `I do not usually talk about products but here we are. I am ${setting.place}, been using ${productName} for a while. ${lines.detail} I am not going to hype it up. ${lines.reaction} Take it or leave it.`.trim(),
           },
         ]
       : [
           {
-            title: "Caught in the moment",
-            rationale: `Starts mid-action ${setting.place} — feels unplanned and real.`,
-            hook: `Wait, okay, I need to show you this real quick.`,
+            title: hasGuidance ? guidance.slice(0, 40) : "Caught in the moment",
+            rationale: hasGuidance
+              ? `Full take on: "${guidance}". Starts mid-action ${setting.place}.`
+              : `Starts mid-action ${setting.place} — feels unplanned and real.`,
+            hook: hasGuidance
+              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}.`
+              : `Wait, okay, I need to show you this real quick.`,
             cta: `Seriously, just try it.`,
-            dialogue: `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName} and I need to talk about it. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${lines.specifics} Anyway. Seriously, just try it.`.trim(),
+            dialogue: hasGuidance
+              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}. I am ${setting.place} right now and I have been using ${productName} and I need to get into it. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${lines.specifics} Anyway. Seriously, just try it.`.trim()
+              : `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName} and I need to talk about it. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${lines.specifics} Anyway. Seriously, just try it.`.trim(),
           },
           {
-            title: "Storytime",
-            rationale: `Conversational rant that starts with a frustration about ${categoryLabel}, then pivots to ${productName}.`,
-            hook: `Can we talk about how most ${categoryLabel} is just mid?`,
+            title: hasGuidance ? "Different angle" : "Storytime",
+            rationale: hasGuidance
+              ? `Same concept ("${guidance}") with a category-frustration opening.`
+              : `Conversational rant that starts with frustration about ${categoryLabel}, then pivots to ${productName}.`,
+            hook: hasGuidance
+              ? `${guidance.split(/[.!?]/)[0] || guidance} — okay let me explain why this matters.`
+              : `Can we talk about how most ${categoryLabel} is just mid?`,
             cta: `Do what you want with that information.`,
-            dialogue: `Can we talk about how most ${categoryLabel} is just mid? Like, I have tried so many and they all kind of blend together. But then I started using ${productName}. I am ${setting.place} right now, let me just show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
+            dialogue: hasGuidance
+              ? `${guidance.split(/[.!?]/)[0] || guidance} — okay let me explain why this matters. I have tried so many ${categoryLabel} and they all kind of blend together. But ${productName} is different. I am ${setting.place} right now, let me show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim()
+              : `Can we talk about how most ${categoryLabel} is just mid? Like, I have tried so many and they all kind of blend together. But then I started using ${productName}. I am ${setting.place} right now, let me just show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
           },
           {
-            title: "No hype, just facts",
-            rationale: `Low-energy, matter-of-fact delivery ${setting.place}. No excitement, no selling — just someone sharing what they use.`,
+            title: hasGuidance ? "Understated" : "No hype, just facts",
+            rationale: hasGuidance
+              ? `Low-energy, honest take on "${guidance}".`
+              : `Matter-of-fact delivery ${setting.place}. No excitement, no selling.`,
             hook: `I do not usually talk about products but here we are.`,
             cta: `That is all. Take it or leave it.`,
-            dialogue: `I do not usually talk about products but here we are. I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim(),
+            dialogue: hasGuidance
+              ? `I do not usually talk about products but here we are. ${guidanceLine}I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim()
+              : `I do not usually talk about products but here we are. I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim(),
           },
         ];
 
@@ -950,7 +1010,7 @@ function hasPlanShape(plan: any): plan is UgcWorkflowPlan {
 async function tryGeminiPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.GEMINI_API_KEY) return null;
 
-  const prompt = `You are orchestrating an AI UGC video advertisement workflow.
+  const prompt = `You are orchestrating an AI short-form video workflow.
 
 Improve the baseline workflow plan below. Keep the same top-level JSON shape and keep array lengths unchanged unless an array is empty. Preserve IDs where they already exist. Return only JSON.
 
@@ -960,7 +1020,10 @@ INPUTS
 - Script request: ${JSON.stringify(input.script)}
 - Settings: ${JSON.stringify(input.settings)}
 - Knowledge: ${input.knowledge || "None"}
+- Creative direction: ${input.script.description || "None provided — use your best judgment based on the product and category."}
 - Override instructions: ${input.overrideInstructions || "None"}
+
+CRITICAL: The "Creative direction" field above is the user's primary guidance for the script angle, concept, and style. Every script MUST reflect this direction. If the user says "before and after" then the scripts should be structured around showing a before and after. If they say "morning routine" then the scripts should be set in a morning routine. The scripts must serve this direction — do not ignore it.
 
 AGENT PROMPTS
 ${JSON.stringify(input.promptPack)}
@@ -969,11 +1032,12 @@ BASELINE PLAN
 ${JSON.stringify(baseline)}
 
 RULES
-1. Dialogue clips must preserve the exact spoken text in order.
-2. Every scene and B-roll image prompt must stay 9:16-first and commercially realistic.
-3. B-roll planning is separate from dialogue planning; do not collapse them.
-4. If safe mode is enabled, approval gates must stay required.
-5. Do not add markdown fences. Return only valid JSON.`;
+1. Scripts must directly reflect the creative direction provided by the user.
+2. Dialogue clips must preserve the exact spoken text in order.
+3. Every scene and B-roll image prompt must stay 9:16-first and realistic.
+4. B-roll planning is separate from dialogue planning; do not collapse them.
+5. If safe mode is enabled, approval gates must stay required.
+6. Do not add markdown fences. Return only valid JSON.`;
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -991,7 +1055,7 @@ RULES
 async function tryAnthropicPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
-  const prompt = `You are planning the creative layer for an AI UGC video advertisement workflow.
+  const prompt = `You are planning the creative layer for a short-form video workflow.
 
 Return only JSON. Do not add markdown fences. Use the exact ids and array counts provided below.
 
@@ -1001,7 +1065,10 @@ INPUTS
 - Script request: ${JSON.stringify(input.script)}
 - Settings: ${JSON.stringify(input.settings)}
 - Knowledge: ${input.knowledge || "None"}
+- Creative direction: ${input.script.description || "None provided — use your best judgment based on the product and category."}
 - Override instructions: ${input.overrideInstructions || "None"}
+
+CRITICAL: The "Creative direction" above is the user's primary guidance. It defines the angle, concept, and style of the scripts. Every script you write MUST directly reflect this direction. If they say "problem solution" write problem-solution scripts. If they say "morning routine" set it in a morning. Do NOT ignore it.
 
 AGENT INTENT
 - Strategist: ${cleanText(input.promptPack.strategist) || DEFAULT_UGC_PROMPT_PACK.strategist}
@@ -1048,11 +1115,11 @@ RETURN THIS EXACT JSON SHAPE
 }
 
 RULES
-1. Keep the dialogue natural, authentic, and easy to say on camera.
-2. Treat the user description as directional input for angle, concept, and emphasis. Do not mirror it word-for-word in the dialogue unless the user uploaded exact script text.
-3. Match the runtime target by making each script concise but complete.
+1. Scripts MUST reflect the creative direction. This is the most important rule.
+2. Keep the dialogue natural, authentic, and easy to say on camera.
+3. Match the runtime target (${input.script.totalSeconds || 20} seconds ≈ ${Math.round((input.script.totalSeconds || 20) * 2.5)} words) by making each script concise but complete.
 4. SelectedScriptId must match one of the provided script ids.
-5. Scene directions must preserve the referenced product and feel believable for a selfie-style talking ad.
+5. Scene directions must preserve the referenced product and feel believable for a selfie-style setup.
 6. B-roll directions must be designed as start frames for motion, not polished final stills.
 7. Do not include prompts, beats, dialogue clip batches, approval gates, architecture, or summary fields.
 8. Return only valid JSON.`;
