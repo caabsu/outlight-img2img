@@ -318,37 +318,87 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   const categoryLabel = category || "product";
   const setting = inferSettingForScript(guidance, category);
   const lines = buildProductLines(knowledge, productName, category);
+  const targetSeconds = input.totalSeconds || 20;
+  // ~2.5 words/sec for natural conversational speech
+  const targetWords = Math.round(targetSeconds * 2.5);
+  const isShort = targetSeconds <= 15;
 
-  // Three genuinely different script structures — not variations of the same formula
-  const variants = [
-    {
-      // PATTERN: Mid-thought — starts like the camera caught them in the middle of something
-      title: "Caught in the moment",
-      rationale: `Starts mid-action ${setting.place} — feels like the person was already using the product and decided to film. No setup, no intro.`,
-      hook: `Wait, okay, I need to show you this real quick.`,
-      cta: `Seriously, just try it.`,
-      dialogue:
-        `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName} and — ${lines.detail} I know that sounds like I am being dramatic but ${lines.reaction} ${lines.specifics} Anyway, I will leave it at that. Seriously, just try it.`.trim(),
-    },
-    {
-      // PATTERN: Rant / storytime — the person has feelings about this category and this product breaks the pattern
-      title: "Storytime",
-      rationale: `Conversational rant that starts with a frustration about the category, then pivots to ${productName} as the thing that finally worked.`,
-      hook: `Can we talk about how most ${categoryLabel} is just... mid?`,
-      cta: `Do what you want with that information.`,
-      dialogue:
-        `Can we talk about how most ${categoryLabel} is just mid? Like, I have tried so many and they all kind of blend together. But then I started using ${productName} and — okay, I am ${setting.place} right now, let me just show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
-    },
-    {
-      // PATTERN: Quiet flex — understated, matter-of-fact, no hype
-      title: "No hype, just facts",
-      rationale: `Low-energy, matter-of-fact delivery ${setting.place}. No excitement, no selling — just someone sharing what they actually use.`,
-      hook: `I do not do product recommendations but I will make an exception.`,
-      cta: `That is all. Take it or leave it.`,
-      dialogue:
-        `I do not do product recommendations but I will make an exception. I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim(),
-    },
-  ];
+  // Build scripts that actually fit the duration
+  // Short (≤15s): tight, punchy, one main point
+  // Medium (16–25s): one setup + one proof point + close
+  // Long (>25s): fuller story with room to breathe
+
+  const variants = isShort
+    ? [
+        {
+          title: "Caught in the moment",
+          rationale: `Quick, mid-action take ${setting.place}. Gets in and out fast.`,
+          hook: `Wait — okay, look at this.`,
+          cta: `Just try it.`,
+          dialogue: `Wait — okay, look at this. I am ${setting.place} and I just used ${productName}. ${lines.detail} Just try it.`.trim(),
+        },
+        {
+          title: "Storytime",
+          rationale: `Short rant about ${categoryLabel} that pivots to ${productName}.`,
+          hook: `Most ${categoryLabel} is mid.`,
+          cta: `This one is not.`,
+          dialogue: `Most ${categoryLabel} is mid. I have tried a bunch. Then I found ${productName}. ${lines.detail} This one is not.`.trim(),
+        },
+        {
+          title: "No hype, just facts",
+          rationale: `Matter-of-fact, zero selling. Just someone sharing what works.`,
+          hook: `Real quick.`,
+          cta: `That is it.`,
+          dialogue: `Real quick. I am ${setting.place}, been using ${productName}. ${lines.detail} That is it.`.trim(),
+        },
+      ]
+    : targetSeconds <= 25
+      ? [
+          {
+            title: "Caught in the moment",
+            rationale: `Starts mid-action ${setting.place} — feels like the person was already using the product and decided to film.`,
+            hook: `Wait, okay, I need to show you this real quick.`,
+            cta: `Seriously, just try it.`,
+            dialogue: `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName}. ${lines.detail} ${lines.reaction} Seriously, just try it.`.trim(),
+          },
+          {
+            title: "Storytime",
+            rationale: `Starts with a frustration about ${categoryLabel}, then pivots to ${productName} as the thing that worked.`,
+            hook: `Can we talk about how most ${categoryLabel} is just mid?`,
+            cta: `Do what you want with that information.`,
+            dialogue: `Can we talk about how most ${categoryLabel} is just mid? I have tried so many. But then I started using ${productName}. I am ${setting.place} right now. ${lines.detail} ${lines.reaction} Do what you want with that information.`.trim(),
+          },
+          {
+            title: "No hype, just facts",
+            rationale: `Low-energy, matter-of-fact delivery ${setting.place}. No excitement, no selling.`,
+            hook: `I do not usually talk about products but here we are.`,
+            cta: `Take it or leave it.`,
+            dialogue: `I do not usually talk about products but here we are. I am ${setting.place}, been using ${productName} for a while. ${lines.detail} I am not going to hype it up. ${lines.reaction} Take it or leave it.`.trim(),
+          },
+        ]
+      : [
+          {
+            title: "Caught in the moment",
+            rationale: `Starts mid-action ${setting.place} — feels unplanned and real.`,
+            hook: `Wait, okay, I need to show you this real quick.`,
+            cta: `Seriously, just try it.`,
+            dialogue: `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName} and I need to talk about it. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${lines.specifics} Anyway. Seriously, just try it.`.trim(),
+          },
+          {
+            title: "Storytime",
+            rationale: `Conversational rant that starts with a frustration about ${categoryLabel}, then pivots to ${productName}.`,
+            hook: `Can we talk about how most ${categoryLabel} is just mid?`,
+            cta: `Do what you want with that information.`,
+            dialogue: `Can we talk about how most ${categoryLabel} is just mid? Like, I have tried so many and they all kind of blend together. But then I started using ${productName}. I am ${setting.place} right now, let me just show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
+          },
+          {
+            title: "No hype, just facts",
+            rationale: `Low-energy, matter-of-fact delivery ${setting.place}. No excitement, no selling — just someone sharing what they use.`,
+            hook: `I do not usually talk about products but here we are.`,
+            cta: `That is all. Take it or leave it.`,
+            dialogue: `I do not usually talk about products but here we are. I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim(),
+          },
+        ];
 
   return variants.map((variant, index) => {
     const estimatedSeconds = estimateDurationSeconds(variant.dialogue, input.totalSeconds);
@@ -366,31 +416,30 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
 }
 
 function buildAvatarOptions(productName: string, guidance: string, category: string): UgcAvatarOption[] {
-  const guidanceLabel = cleanText(guidance) || "creator-style";
   return [
     {
       id: "avatar-1",
-      label: "Credible Creator",
-      persona: `A relatable creator who feels right for a ${guidanceLabel} ad and speaks with practical confidence straight to camera.`,
-      wardrobe: "Clean monochrome top, simple jewelry, soft editorial grooming, premium-but-real styling.",
-      castingRationale: `Best default option for ${productName} because it balances trust, polish, and conversion intent.`,
-      voiceStyle: "Warm, direct, slightly breathy creator delivery.",
+      label: "Relatable Everyday",
+      persona: `A normal, relatable person who uses ${productName} in their real life and talks about it naturally.`,
+      wardrobe: "Clean casual top, minimal accessories, natural grooming — looks like they grabbed their phone to film.",
+      castingRationale: `Feels trustworthy and authentic for ${productName}. Not polished, just real.`,
+      voiceStyle: "Warm, natural, conversational — like talking to a friend.",
     },
     {
       id: "avatar-2",
-      label: "Expert Operator",
-      persona: `A sharper authority figure who makes ${category || "the product"} feel validated and high-performing.`,
-      wardrobe: "Structured knit, tailored layers, neat hair, understated premium accessories.",
-      castingRationale: "Useful when the brand needs more technical credibility, premium positioning, or B2B-adjacent authority.",
-      voiceStyle: "Clear, assured, concise delivery with founder energy.",
+      label: "Knowledgeable User",
+      persona: `Someone who clearly knows ${category || "the product"} well and shares their honest experience with authority.`,
+      wardrobe: "Structured but approachable — neat layers, clean hair, understated.",
+      castingRationale: "Good when the product needs credibility or the audience is more discerning.",
+      voiceStyle: "Clear, confident, measured — not performative.",
     },
     {
       id: "avatar-3",
-      label: "Lifestyle Aspirational",
-      persona: "A polished lifestyle face who can sell the result as much as the product itself.",
-      wardrobe: "Soft luxury textures, directional outer layer, tasteful makeup, camera-ready skin finish.",
-      castingRationale: "Strong when the ad needs to feel trend-forward, premium, or high-LTV social first.",
-      voiceStyle: "Bright, persuasive, on-trend creator rhythm.",
+      label: "Aspirational",
+      persona: "Someone whose lifestyle makes you want what they have — the product fits naturally into it.",
+      wardrobe: "Put-together, tasteful, camera-ready but not overdone.",
+      castingRationale: "Strong when the product benefits from aspirational positioning or visual appeal.",
+      voiceStyle: "Bright, easygoing, naturally engaging.",
     },
   ];
 }
@@ -432,12 +481,12 @@ function buildSceneVariations(
     const summary =
       cleanText(override?.summary) ||
       index === 0
-        ? "Most conversion-safe version with clean product visibility and a direct creator setup."
+        ? "Clean, natural framing with clear product visibility. Feels like a real person in their real space."
         : index === 1
-          ? "Slightly more premium framing with more deliberate camera language."
+          ? "Slightly more polished framing with deliberate camera angle."
           : index === 2
-            ? "Warmer, more lived-in take for higher social-native credibility."
-            : "Alternate performance-safe variation that preserves continuity for clip batching.";
+            ? "Warmer, more lived-in feel — casual and authentic."
+            : "Alternate angle that keeps the same room and person but shifts the composition.";
     const environment = cleanText(override?.environment) || baseEnvironment;
 
     return {
@@ -448,7 +497,7 @@ function buildSceneVariations(
       avatarId: avatar.id,
       camera,
       lighting,
-      prompt: `9:16 ${settings.imageResolution} vertical UGC selfie-style photo of a real person about to film a creator video about ${productName}. The product (${productAppearance}) must be clearly visible and true to its real appearance. The person is ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. SELFIE FRAMING: The shot looks like the person set their phone on a shelf, desk, or tripod at arm's length. The camera is at eye level or slightly above. The person faces the camera directly, relaxed and natural, as if about to start talking to their audience. No one is holding a phone or camera — hands are free or holding the product. ENVIRONMENT: ${environment}. This must match the script context: "${finishSentence(script.dialogue.slice(0, 200))}". Camera: ${camera}. Lighting: ${lighting} — natural to this specific room, not studio lighting. The overall feel should be an authentic creator selfie, not a produced photoshoot.`,
+      prompt: `9:16 ${settings.imageResolution} vertical selfie-style photo of a real person with ${productName}. The product (${productAppearance}) must be clearly visible and true to its real appearance. The person is ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. SELFIE FRAMING: The shot looks like the person set their phone on a shelf, desk, or tripod at arm's length. The camera is at eye level or slightly above. The person faces the camera directly, relaxed and natural, as if about to start talking. No one is holding a phone or camera — hands are free or holding the product. ENVIRONMENT: ${environment}. This must match the script context: "${finishSentence(script.dialogue.slice(0, 200))}". Camera: ${camera}. Lighting: ${lighting} — natural to this specific room, not studio lighting. The overall feel should be authentic and natural, not a produced photoshoot.`,
     };
   });
 }
@@ -469,10 +518,10 @@ function buildDialogueClips(
     "Lean slightly into frame, then settle into a natural chest-level hold of the product.",
     "Use one precise hand gesture and rotate the product toward camera.",
     "Shift weight once and point to a key product detail mid-line.",
-    "Finish with a small nod and a product-forward CTA hold.",
+    "Finish with a small nod, relaxed and done.",
   ];
   const cameras = [
-    "steady handheld creator framing with a tiny natural sway",
+    "steady handheld framing with a tiny natural sway",
     "locked eye-level framing with a subtle digital push",
     "tight medium vertical framing that favors face plus product",
     "slightly off-center framing so the product can occupy the lower third",
@@ -498,7 +547,7 @@ function buildDialogueClips(
       objective,
       movement,
       camera,
-      prompt: `Use the selected base scene as the starting image for a ${segment.durationSeconds}-second ${settings.videoAspectRatio} UGC video for ${productName}. The person in the image naturally speaks at a relatively fast but believable creator pace, with subtle and natural movements. They say this exact script: "${segment.text}". Keep synced spoken audio, accurate mouth movement, and continuity with the same avatar, wardrobe, room, product placement, and lighting. This clip should feel efficiently delivered, not slow or padded, and should cover the full line cleanly within ${segment.durationSeconds} seconds. Movement: ${movement} Camera behavior: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. The result should feel like believable creator footage and cut cleanly with the clips before and after it.`,
+      prompt: `Use the selected base scene as the starting image for a ${segment.durationSeconds}-second ${settings.videoAspectRatio} video of a person talking about ${productName}. The person speaks naturally at a conversational pace with subtle, authentic movements. They say this exact script: "${segment.text}". Keep synced spoken audio, accurate mouth movement, and continuity with the same person, wardrobe, room, product placement, and lighting. This clip should feel natural and efficient, not slow or padded, covering the full line within ${segment.durationSeconds} seconds. Movement: ${movement} Camera behavior: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. The result should feel like real, authentic footage and cut cleanly with the clips before and after it.`,
     };
   });
 }
@@ -521,7 +570,7 @@ function buildBrollImagePlans(
     },
     {
       title: "Hand Interaction Detail",
-      objective: "Show believable creator handling so the product feels tactile and real.",
+      objective: "Show natural handling so the product feels tactile and real.",
       angle: "close-up hand-held interaction",
       lens: "85mm detail crop",
       lighting: "soft side light with clean highlights",
@@ -547,7 +596,7 @@ function buildBrollImagePlans(
       title: "Lifestyle Cutaway",
       objective: "Show the product in use in a wider contextual setup that supports the spoken proof.",
       angle: "wider lived-in environment cutaway",
-      lens: "28mm creator-style wide lens",
+      lens: "28mm wide angle lens",
       lighting: "ambient natural light with gentle practicals",
       withoutHuman: false,
     },
@@ -689,7 +738,7 @@ function buildArchitecture(promptPack: UgcAgentPromptPack, safeMode: UgcPlanRequ
 
 function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
   const productName = cleanText(input.product.name) || "the product";
-  const category = cleanText(input.product.category) || "creator-friendly product";
+  const category = cleanText(input.product.category) || "product";
   const productAppearance =
     cleanText(input.product.appearanceNotes) ||
     `${productName} should stay visually consistent with its real product form, premium materials, and original brand cues.`;
@@ -733,7 +782,7 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
   const bRollClipPlans = buildBrollClipPlans(bRollImagePlans, input.settings);
 
   return {
-    productAnalysis: `${productName} is being positioned as a ${category}. The workflow should preserve its real appearance, make it readable in vertical creator framing, and stage it in a way that supports both direct-to-camera dialogue and clean editorial B-roll. ${productAppearance}`,
+    productAnalysis: `${productName} is a ${category}. The workflow should preserve its real appearance, keep it readable in vertical framing, and stage it naturally for both direct-to-camera talking and supporting B-roll shots. ${productAppearance}`,
     selectedScriptId: selectedScript.id,
     scriptOptions,
     avatarOptions,
@@ -774,7 +823,7 @@ function buildPlanFromAnthropicCreative(
   creative: UgcAnthropicCreativePlan
 ): UgcWorkflowPlan {
   const productName = cleanText(input.product.name) || "the product";
-  const category = cleanText(input.product.category) || "creator-friendly product";
+  const category = cleanText(input.product.category) || "product";
   const productAppearance =
     cleanText(input.product.appearanceNotes) ||
     `${productName} should stay visually consistent with its real product form, premium materials, and original brand cues.`;
@@ -999,7 +1048,7 @@ RETURN THIS EXACT JSON SHAPE
 }
 
 RULES
-1. Keep the dialogue natural, creator-friendly, and easy to say on camera.
+1. Keep the dialogue natural, authentic, and easy to say on camera.
 2. Treat the user description as directional input for angle, concept, and emphasis. Do not mirror it word-for-word in the dialogue unless the user uploaded exact script text.
 3. Match the runtime target by making each script concise but complete.
 4. SelectedScriptId must match one of the provided script ids.
