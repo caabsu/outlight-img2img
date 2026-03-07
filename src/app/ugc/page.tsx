@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import { IBM_Plex_Sans, Manrope } from "next/font/google";
 import { MODEL_LIST } from "@/lib/models";
 import {
@@ -31,6 +31,7 @@ type PlanSource = "heuristic" | "anthropic" | "gemini" | "openai";
 type RenderStatus = "idle" | "running" | "done" | "error";
 type ApprovalStatus = "pending" | "approved" | "rejected" | "skipped";
 type UgcStageView = "setup" | "plan" | "scene" | "clips" | "broll";
+type ProductPickerView = "compact" | "list";
 
 type ActivityEntry = {
   id: string;
@@ -121,6 +122,7 @@ const THEME_SUGGESTIONS = [
   "Office walkthrough",
   "Lifestyle routine",
 ] as const;
+const PRODUCT_PICKER_BATCH_SIZE = 72;
 
 const ugcBodyFont = IBM_Plex_Sans({
   subsets: ["latin"],
@@ -360,20 +362,25 @@ function StepButton({
 
 function ProductSelectorModal({
   products,
+  loading,
   search,
   setSearch,
   onClose,
   onSelect,
 }: {
   products: Product[];
+  loading: boolean;
   search: string;
   setSearch: (value: string) => void;
   onClose: () => void;
   onSelect: (product: Product) => void;
 }) {
+  const [view, setView] = useState<ProductPickerView>("compact");
+  const [visibleCount, setVisibleCount] = useState(PRODUCT_PICKER_BATCH_SIZE);
+  const deferredSearch = useDeferredValue(search);
   const filtered = useMemo(() => {
-    if (!search.trim()) return products;
-    const q = search.toLowerCase();
+    if (!deferredSearch.trim()) return products;
+    const q = deferredSearch.toLowerCase();
     return products.filter(
       (product) =>
         product.name.toLowerCase().includes(q) ||
@@ -381,55 +388,164 @@ function ProductSelectorModal({
         product.shopify_vendor?.toLowerCase().includes(q) ||
         product.shopify_product_type?.toLowerCase().includes(q)
     );
-  }, [products, search]);
+  }, [deferredSearch, products]);
+  const visibleProducts = useMemo(() => filtered.slice(0, visibleCount), [filtered, visibleCount]);
+  const hasMore = visibleProducts.length < filtered.length;
+
+  useEffect(() => {
+    setVisibleCount(PRODUCT_PICKER_BATCH_SIZE);
+  }, [deferredSearch, products.length]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-[0_40px_120px_-56px_rgba(15,23,42,0.55)] dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Catalog</div>
-            <h3 className="font-[var(--font-ugc-display)] text-lg font-semibold text-slate-950 dark:text-white">Pick a base product</h3>
+      <div className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-[18px] border border-slate-800 bg-slate-950 shadow-[0_42px_140px_-56px_rgba(2,6,23,0.8)]">
+        <div className="flex items-center justify-between border-b border-slate-800 px-6 py-5">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Catalog</div>
+            <h3 className="font-[var(--font-ugc-display)] text-xl font-semibold text-white">Pick a base product</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Search directly, or browse a compact list without loading the full catalog into view at once.
+            </p>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-[10px] border border-slate-300 px-3 py-1.5 text-sm text-slate-700 transition hover:border-slate-500 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500"
-          >
-            Close
-          </button>
-        </div>
-        <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search products, vendors, or types"
-            className="w-full rounded-[12px] border border-slate-200 bg-[#f7f6f3] px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
-          />
-        </div>
-        <div className="grid flex-1 grid-cols-2 gap-4 overflow-y-auto p-6 md:grid-cols-3 xl:grid-cols-5">
-          {filtered.map((product) => (
-            <button
-              key={product.id}
-              onClick={() => onSelect(product)}
-              className="overflow-hidden rounded-[14px] border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-[0_26px_50px_-36px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-900"
-            >
-              <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-800">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-              </div>
-              <div className="space-y-1 p-4">
-                <div className="text-sm font-semibold text-slate-950 dark:text-white">{product.name}</div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {product.shopify_vendor || "Manual"} {product.shopify_product_type ? `· ${product.shopify_product_type}` : ""}
-                </div>
-              </div>
-            </button>
-          ))}
-          {filtered.length === 0 ? (
-            <div className="col-span-full rounded-[14px] border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-              No products matched your search.
+          <div className="ml-4 flex items-center gap-2">
+            <div className="grid grid-cols-2 rounded-[10px] border border-slate-800 bg-slate-900/80 p-1">
+              <button
+                onClick={() => setView("compact")}
+                className={cn(
+                  "rounded-[8px] px-3 py-2 text-xs font-semibold transition",
+                  view === "compact" ? "bg-white text-slate-950" : "text-slate-400 hover:text-white"
+                )}
+              >
+                Compact
+              </button>
+              <button
+                onClick={() => setView("list")}
+                className={cn(
+                  "rounded-[8px] px-3 py-2 text-xs font-semibold transition",
+                  view === "list" ? "bg-white text-slate-950" : "text-slate-400 hover:text-white"
+                )}
+              >
+                List
+              </button>
             </div>
-          ) : null}
+            <button
+              onClick={onClose}
+              className="rounded-[10px] border border-slate-700 px-3 py-1.5 text-sm text-slate-200 transition hover:border-slate-500 hover:text-white"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div className="border-b border-slate-800 bg-slate-950/95 px-6 py-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="relative w-full max-w-xl">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search products, vendors, or types"
+                className="w-full rounded-[12px] border border-slate-800 bg-slate-900 px-10 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-slate-600"
+              />
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span className="rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+                {loading ? "Loading catalog..." : `${filtered.length} matches`}
+              </span>
+              <span className="rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5">
+                {search.trim()
+                  ? `Showing ${Math.min(visibleProducts.length, filtered.length)} filtered results`
+                  : `Showing ${Math.min(visibleProducts.length, filtered.length)} of ${products.length}`}
+              </span>
+              {search.trim() ? (
+                <button
+                  onClick={() => setSearch("")}
+                  className="rounded-full border border-slate-700 px-3 py-1.5 text-slate-300 transition hover:border-slate-500 hover:text-white"
+                >
+                  Clear search
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto bg-slate-950 px-6 py-5">
+          {loading ? (
+            <div className={cn("grid gap-3", view === "compact" ? "md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1")}>
+              {Array.from({ length: 12 }).map((_, index) => (
+                <div key={index} className="grid grid-cols-[88px_minmax(0,1fr)] gap-4 rounded-[14px] border border-slate-800 bg-slate-900/80 p-3">
+                  <div className="h-20 w-[88px] animate-pulse rounded-[10px] bg-slate-800" />
+                  <div className="space-y-2 py-1">
+                    <div className="h-4 w-2/3 animate-pulse rounded bg-slate-800" />
+                    <div className="h-3 w-1/2 animate-pulse rounded bg-slate-800" />
+                    <div className="h-3 w-5/6 animate-pulse rounded bg-slate-800" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex h-full min-h-[320px] flex-col items-center justify-center rounded-[16px] border border-dashed border-slate-800 bg-slate-900/40 p-10 text-center">
+              <div className="text-base font-semibold text-white">No products matched</div>
+              <p className="mt-2 max-w-md text-sm leading-6 text-slate-400">
+                Try a different name, vendor, or product type. Clear the search to browse the full catalog again.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className={cn("grid gap-3", view === "compact" ? "md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1")}>
+                {visibleProducts.map((product) => (
+                  <button
+                    key={product.id}
+                    onClick={() => onSelect(product)}
+                    className={cn(
+                      "group text-left transition",
+                      view === "compact"
+                        ? "grid grid-cols-[88px_minmax(0,1fr)_auto] items-center gap-4 rounded-[14px] border border-slate-800 bg-slate-900/80 p-3 hover:border-slate-600 hover:bg-slate-900"
+                        : "grid grid-cols-[96px_minmax(0,1fr)_auto] items-center gap-4 rounded-[14px] border border-slate-800 bg-slate-900/80 p-4 hover:border-slate-600 hover:bg-slate-900"
+                    )}
+                  >
+                    <div className={cn("overflow-hidden rounded-[10px] border border-slate-800 bg-slate-950", view === "compact" ? "h-20 w-[88px]" : "h-24 w-24")}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" loading="lazy" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-white">{product.name}</div>
+                      <div className="mt-1 truncate text-xs text-slate-400">
+                        {product.shopify_vendor || "Manual"} {product.shopify_product_type ? `· ${product.shopify_product_type}` : ""}
+                      </div>
+                      <div className="mt-2 truncate text-[11px] uppercase tracking-[0.16em] text-slate-500">{product.slug}</div>
+                    </div>
+                    <div className="rounded-[10px] border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition group-hover:border-slate-500 group-hover:text-white">
+                      Use
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {hasMore ? (
+                <div className="flex justify-center pt-2">
+                  <button
+                    onClick={() => setVisibleCount((current) => current + PRODUCT_PICKER_BATCH_SIZE)}
+                    className="rounded-[12px] border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500 hover:text-white"
+                  >
+                    Load {Math.min(PRODUCT_PICKER_BATCH_SIZE, filtered.length - visibleProducts.length)} more
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1883,7 +1999,10 @@ export default function UgcStudioPage() {
 
                         <div className="flex flex-wrap items-center gap-2">
                           <button
-                            onClick={() => setShowProductSelector(true)}
+                            onClick={() => {
+                              setProductSearch("");
+                              setShowProductSelector(true);
+                            }}
                             className="rounded-[12px] bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
                           >
                             {selectedProduct ? "Change product" : "Choose from catalog"}
@@ -2769,6 +2888,7 @@ export default function UgcStudioPage() {
         {showProductSelector ? (
           <ProductSelectorModal
             products={products}
+            loading={productsLoading}
             search={productSearch}
             setSearch={setProductSearch}
             onClose={() => setShowProductSelector(false)}
