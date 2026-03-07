@@ -268,7 +268,7 @@ function SectionCard({
   return (
     <section
       className={cn(
-        "rounded-[12px] border border-slate-200 bg-white p-5 shadow-[0_24px_54px_-42px_rgba(15,23,42,0.24)] dark:border-slate-800 dark:bg-slate-950/92",
+        "rounded-[12px] border border-slate-200 bg-[#fcfcfa] p-5 shadow-[0_24px_54px_-42px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950/92",
         className
       )}
     >
@@ -344,7 +344,7 @@ function StepButton({
         "flex min-w-[150px] flex-1 items-start justify-between rounded-[12px] border px-4 py-3.5 text-left transition",
         active
           ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_48px_-34px_rgba(15,23,42,0.65)] dark:border-white dark:bg-white dark:text-slate-950"
-          : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700 dark:hover:bg-slate-950"
+          : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-[#f6f6f3] dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700 dark:hover:bg-slate-950"
       )}
     >
       <div>
@@ -403,7 +403,7 @@ function ProductSelectorModal({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search products, vendors, or types"
-            className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+            className="w-full rounded-[12px] border border-slate-200 bg-[#f7f6f3] px-4 py-3 text-sm text-slate-950 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
           />
         </div>
         <div className="grid flex-1 grid-cols-2 gap-4 overflow-y-auto p-6 md:grid-cols-3 xl:grid-cols-5">
@@ -411,7 +411,7 @@ function ProductSelectorModal({
             <button
               key={product.id}
               onClick={() => onSelect(product)}
-              className="overflow-hidden rounded-[14px] border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-sky-500 hover:shadow-[0_26px_50px_-36px_rgba(14,165,233,0.38)] dark:border-slate-800 dark:bg-slate-900"
+              className="overflow-hidden rounded-[14px] border border-slate-200 bg-white text-left transition hover:-translate-y-0.5 hover:border-slate-500 hover:shadow-[0_26px_50px_-36px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-900"
             >
               <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-800">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -485,7 +485,7 @@ function ApprovalPanel({
   disabled?: boolean;
 }) {
   return (
-    <div className="rounded-[14px] border border-slate-200 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+    <div className="rounded-[14px] border border-slate-200 bg-[#f7f6f3] p-4 dark:border-slate-800 dark:bg-slate-900/70">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-sm font-semibold text-slate-900 dark:text-white">{title}</div>
         <StatusPill status={state.status} />
@@ -495,7 +495,7 @@ function ApprovalPanel({
         onChange={(event) => onNoteChange(event.target.value)}
         placeholder="If you want changes, describe them here. This note will guide the next run."
         disabled={disabled}
-        className="min-h-[88px] w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+        className="min-h-[88px] w-full rounded-[10px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
       />
       <div className="mt-3 flex flex-wrap gap-2">
         <button
@@ -531,7 +531,7 @@ function ScriptOptionCard({
       className={cn(
         "rounded-[12px] border bg-white p-4 transition shadow-[0_22px_48px_-40px_rgba(15,23,42,0.24)]",
         selected
-          ? "border-sky-500 bg-sky-50/70 dark:border-sky-400 dark:bg-sky-950/20"
+          ? "border-slate-950 bg-[#f7f6f3] shadow-[0_24px_50px_-42px_rgba(15,23,42,0.2)] dark:border-slate-100 dark:bg-slate-900"
           : "border-slate-200 dark:border-slate-800 dark:bg-slate-950/70"
       )}
     >
@@ -556,7 +556,7 @@ function ScriptOptionCard({
         </span>
         <button
           onClick={onAdopt}
-          className="ml-auto rounded-[10px] border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+          className="ml-auto rounded-[10px] border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-900 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
         >
           Adopt & rebuild
         </button>
@@ -587,8 +587,8 @@ function ImageRenderCard({
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-[12px] border bg-white transition shadow-[0_24px_54px_-40px_rgba(15,23,42,0.24)] dark:bg-slate-950/70",
-        selected ? "border-sky-500 shadow-[0_24px_40px_-28px_rgba(14,116,144,0.28)]" : "border-slate-200 dark:border-slate-800"
+        "overflow-hidden rounded-[12px] border bg-white transition shadow-[0_24px_54px_-40px_rgba(15,23,42,0.18)] dark:bg-slate-950/70",
+        selected ? "border-slate-950 shadow-[0_24px_40px_-28px_rgba(15,23,42,0.18)]" : "border-slate-200 dark:border-slate-800"
       )}
     >
       <div className="aspect-[9/16] bg-slate-100 dark:bg-slate-900">
@@ -623,7 +623,7 @@ function ImageRenderCard({
             onClick={onDownload}
             disabled={!render.url}
             className={cn(
-              "rounded-[10px] border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white",
+              "rounded-[10px] border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white",
               hideSelect && "w-full"
             )}
           >
@@ -673,7 +673,7 @@ function VideoRenderCard({
           <button
             onClick={onDownload}
             disabled={!render.url}
-            className="rounded-[10px] border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+            className="rounded-[10px] border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
           >
             Download
           </button>
@@ -721,7 +721,7 @@ function WorkspaceTab({
         "flex min-w-[148px] flex-1 items-center justify-between gap-3 rounded-[12px] border px-4 py-3.5 text-left transition",
         active
           ? "border-slate-950 bg-slate-950 text-white shadow-[0_22px_44px_-28px_rgba(15,23,42,0.7)] dark:border-white dark:bg-white dark:text-slate-950"
-          : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-white dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700"
+          : "border-slate-200 bg-white text-slate-900 hover:border-slate-400 hover:bg-[#f6f6f3] dark:border-slate-800 dark:bg-slate-950/70 dark:text-white dark:hover:border-slate-700"
       )}
     >
       <div>
@@ -779,7 +779,7 @@ function AgentRunCard({
       </div>
       <button
         onClick={onOpen}
-        className="mt-4 rounded-[10px] border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+        className="mt-4 rounded-[10px] border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
       >
         {actionLabel}
       </button>
@@ -1605,10 +1605,10 @@ export default function UgcStudioPage() {
   ];
 
   return (
-    <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "relative min-h-screen overflow-hidden bg-[#edf2f5] font-[var(--font-ugc-body)] text-slate-950 dark:bg-slate-950 dark:text-white")}>
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.18),transparent_32%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.08),transparent_22%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(59,130,246,0.12),transparent_32%),radial-gradient(circle_at_top_right,rgba(148,163,184,0.12),transparent_24%)]" />
+    <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "relative min-h-screen overflow-hidden bg-[#f3f2ee] font-[var(--font-ugc-body)] text-slate-950 dark:bg-slate-950 dark:text-white")}>
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.06),transparent_32%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.03),transparent_24%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.08),transparent_32%),radial-gradient(circle_at_top_right,rgba(148,163,184,0.06),transparent_24%)]" />
       <div className="mx-auto flex w-full max-w-[2100px] flex-col gap-5 px-4 py-5 sm:px-6 xl:px-10 2xl:px-12">
-        <section className="overflow-hidden rounded-[16px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(248,250,252,0.92))] shadow-[0_32px_90px_-58px_rgba(15,23,42,0.35)] dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(15,23,42,0.84))]">
+        <section className="overflow-hidden rounded-[16px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(245,244,240,0.96))] shadow-[0_32px_90px_-58px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(15,23,42,0.84))]">
           <div className="grid gap-6 px-6 py-6 2xl:grid-cols-[minmax(0,1fr)_400px]">
             <div className="space-y-6">
               <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -1665,7 +1665,7 @@ export default function UgcStudioPage() {
               </div>
             </div>
 
-            <div className="rounded-[12px] border border-slate-200 bg-white/80 p-4 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.25)] dark:border-slate-800 dark:bg-slate-950/75">
+            <div className="rounded-[12px] border border-slate-200 bg-[#faf9f6] p-4 shadow-[0_24px_60px_-44px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950/75">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-[10px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Product</div>
@@ -1776,28 +1776,28 @@ export default function UgcStudioPage() {
               <button
                 onClick={() => bulkDownload(selectedDialogueUrls, `${runFilePrefix}-dialogue`)}
                 disabled={selectedDialogueUrls.length === 0}
-                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
               >
                 Download talking clips
               </button>
               <button
                 onClick={() => bulkDownload(selectedBrollUrls, `${runFilePrefix}-broll`)}
                 disabled={selectedBrollUrls.length === 0}
-                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
               >
                 Download coverage clips
               </button>
               <button
                 onClick={exportWorkflowJson}
                 disabled={!plan}
-                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
               >
                 Export run JSON
               </button>
               <button
                 onClick={exportPromptPack}
                 disabled={!plan}
-                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                className="w-full rounded-[10px] border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-800 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
               >
                 Export prompt pack
               </button>
@@ -1823,7 +1823,7 @@ export default function UgcStudioPage() {
                 }
               >
                 <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-[minmax(0,1.02fr)_minmax(0,1.08fr)_minmax(300px,0.82fr)]">
-                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Product reference
@@ -1894,7 +1894,7 @@ export default function UgcStudioPage() {
                               addActivity("product", ok ? "Catalog refreshed." : "Catalog refresh failed.", ok ? "success" : "error");
                             }}
                             disabled={productsLoading}
-                            className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                            className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                           >
                             {productsLoading ? "Loading..." : "Refresh"}
                           </button>
@@ -1908,10 +1908,10 @@ export default function UgcStudioPage() {
                           <input
                             value={uploadedProductName}
                             onChange={(event) => setUploadedProductName(event.target.value)}
-                            className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                           />
                         </label>
-                        <label className="inline-flex cursor-pointer items-center rounded-[12px] border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white">
+                        <label className="inline-flex cursor-pointer items-center rounded-[12px] border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">
                           {uploadingProduct ? "Uploading..." : "Upload product image"}
                           <input
                             type="file"
@@ -1935,12 +1935,12 @@ export default function UgcStudioPage() {
                         value={appearanceNotes}
                         onChange={(event) => setAppearanceNotes(event.target.value)}
                         placeholder="Materials, finish, branding, proportions, or other details that must stay exact."
-                        className="min-h-[108px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        className="min-h-[108px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                       />
                     </label>
                   </div>
 
-                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/60">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Script direction
@@ -1986,7 +1986,7 @@ export default function UgcStudioPage() {
                               "rounded-[10px] border px-3 py-1.5 text-xs font-semibold transition",
                               theme === item
                                 ? "border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                                : "border-slate-300 text-slate-700 hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                                : "border-slate-300 text-slate-700 hover:border-slate-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                             )}
                           >
                             {item}
@@ -1997,7 +1997,7 @@ export default function UgcStudioPage() {
                         value={theme}
                         onChange={(event) => setTheme(event.target.value)}
                         placeholder="Creator testimonial"
-                        className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                       />
                     </label>
 
@@ -2008,7 +2008,7 @@ export default function UgcStudioPage() {
                           value={description}
                           onChange={(event) => setDescription(event.target.value)}
                           placeholder="Describe the angle, concepts, claims to emphasize, room ideas, audience feel, or hook style you want the scripts to explore."
-                          className="min-h-[220px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          className="min-h-[220px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                         />
                         <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
                           This is used as direction for the script angles and concepts. It is not meant to be copied word-for-word into the dialogue.
@@ -2020,9 +2020,9 @@ export default function UgcStudioPage() {
                           value={scriptText}
                           onChange={(event) => setScriptText(event.target.value)}
                           placeholder="Paste your approved script here."
-                          className="min-h-[220px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          className="min-h-[220px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                         />
-                        <label className="inline-flex cursor-pointer items-center rounded-[12px] border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white">
+                        <label className="inline-flex cursor-pointer items-center rounded-[12px] border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white">
                           Import text file
                           <input
                             type="file"
@@ -2035,7 +2035,7 @@ export default function UgcStudioPage() {
                     )}
                   </div>
 
-                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-slate-50/80 p-4 xl:col-span-2 2xl:col-span-1 dark:border-slate-800 dark:bg-slate-900/60">
+                  <div className="space-y-4 rounded-[12px] border border-slate-200 bg-white p-4 xl:col-span-2 2xl:col-span-1 dark:border-slate-800 dark:bg-slate-900/60">
                     <div>
                       <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
                         Initial config
@@ -2104,7 +2104,7 @@ export default function UgcStudioPage() {
                           onChange={(event) =>
                             setSettings((current) => ({ ...current, sceneVariationCount: Number(event.target.value) || 4 }))
                           }
-                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                         />
                       </label>
                       <label className="block">
@@ -2117,7 +2117,7 @@ export default function UgcStudioPage() {
                           onChange={(event) =>
                             setSettings((current) => ({ ...current, bRollClipCount: Number(event.target.value) || 4 }))
                           }
-                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                         />
                       </label>
                       <label className="block">
@@ -2125,7 +2125,7 @@ export default function UgcStudioPage() {
                         <select
                           value={settings.imageModelId}
                           onChange={(event) => setSettings((current) => ({ ...current, imageModelId: event.target.value }))}
-                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                         >
                           {imageModelOptions.map((model) => (
                             <option key={model.id} value={model.id}>
@@ -2195,7 +2195,7 @@ export default function UgcStudioPage() {
                               <button
                                 onClick={handleRegenerateScripts}
                                 disabled={planLoading}
-                                className="rounded-[10px] border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                                className="rounded-[10px] border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                               >
                                 Discard all and retry
                               </button>
@@ -2280,7 +2280,7 @@ export default function UgcStudioPage() {
                       <button
                         onClick={handleGenerateDialogueClips}
                         disabled={!selectedScene || dialogueLoading}
-                        className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                        className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                       >
                         Render talking clips
                       </button>
@@ -2433,7 +2433,7 @@ export default function UgcStudioPage() {
                     <button
                       onClick={() => bulkDownload(selectedDialogueUrls, `${runFilePrefix}-dialogue`)}
                       disabled={selectedDialogueUrls.length === 0}
-                      className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                      className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                     >
                       Download selected
                     </button>
@@ -2531,14 +2531,14 @@ export default function UgcStudioPage() {
                     <button
                       onClick={handleGenerateBrollClips}
                       disabled={!brollSeedImages.some((image) => image.url) || brollLoading}
-                      className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                      className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                     >
                       {brollLoading ? "Rendering..." : "Render coverage clips"}
                     </button>
                     <button
                       onClick={() => bulkDownload(selectedBrollUrls, `${runFilePrefix}-broll`)}
                       disabled={selectedBrollUrls.length === 0}
-                      className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                      className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 dark:hover:text-white"
                     >
                       Download selected
                     </button>
@@ -2688,7 +2688,7 @@ export default function UgcStudioPage() {
                 />
                 <AgentLane
                   title="Coverage agent"
-                  accent="bg-sky-500"
+                  accent="bg-slate-500"
                   steps={[
                     {
                       label: "Wait for scene lock",
@@ -2796,7 +2796,7 @@ export default function UgcStudioPage() {
                     value={knowledge}
                     onChange={(event) => setKnowledge(event.target.value)}
                     placeholder="Brand rules, claims to avoid, room style, lighting, compliance notes, or edit preferences."
-                    className="min-h-[120px] w-full rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                    className="min-h-[120px] w-full rounded-[14px] border border-slate-200 bg-[#f7f6f3] px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                   />
                 </label>
 
@@ -2821,7 +2821,7 @@ export default function UgcStudioPage() {
                           [key]: event.target.value,
                         }))
                       }
-                      className="min-h-[120px] w-full rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                      className="min-h-[120px] w-full rounded-[14px] border border-slate-200 bg-[#f7f6f3] px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                     />
                   </label>
                 ))}
