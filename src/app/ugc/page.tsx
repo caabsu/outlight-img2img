@@ -268,7 +268,7 @@ function SectionCard({
   return (
     <section
       className={cn(
-        "rounded-[12px] border border-slate-200 bg-[#fcfcfa] p-5 shadow-[0_24px_54px_-42px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950/92",
+        "rounded-[12px] border border-slate-200 bg-white p-5 shadow-[0_24px_54px_-42px_rgba(15,23,42,0.16)] dark:border-slate-800 dark:bg-slate-950/92",
         className
       )}
     >
@@ -1605,7 +1605,7 @@ export default function UgcStudioPage() {
   ];
 
   return (
-    <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "relative min-h-screen overflow-hidden bg-[#f3f2ee] font-[var(--font-ugc-body)] text-slate-950 dark:bg-slate-950 dark:text-white")}>
+    <div className={cn(ugcBodyFont.variable, ugcDisplayFont.variable, "relative min-h-screen overflow-hidden bg-[#ece9e2] font-[var(--font-ugc-body)] text-slate-950 dark:bg-slate-950 dark:text-white")}>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(15,23,42,0.06),transparent_32%),radial-gradient(circle_at_top_right,rgba(15,23,42,0.03),transparent_24%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(148,163,184,0.08),transparent_32%),radial-gradient(circle_at_top_right,rgba(148,163,184,0.06),transparent_24%)]" />
       <div className="mx-auto flex w-full max-w-[2100px] flex-col gap-5 px-4 py-5 sm:px-6 xl:px-10 2xl:px-12">
         <section className="overflow-hidden rounded-[16px] border border-slate-200 bg-[linear-gradient(180deg,rgba(255,255,255,0.96),rgba(245,244,240,0.96))] shadow-[0_32px_90px_-58px_rgba(15,23,42,0.22)] dark:border-slate-800 dark:bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(15,23,42,0.84))]">
@@ -1698,6 +1698,7 @@ export default function UgcStudioPage() {
           </div>
         ) : null}
 
+        <div className="space-y-5 [&_.text-slate-400]:text-slate-600 [&_.text-slate-500]:text-slate-700 [&_.text-slate-600]:text-slate-800 [&_.bg-slate-50]:bg-[#f3f1ec] [&_.bg-\[\#f7f6f3\]]:bg-[#f3f1ec] [&_.bg-\[\#faf9f6\]]:bg-white">
         <div className="grid gap-5 xl:grid-cols-[1.05fr_1.1fr_0.86fr]">
           <SectionCard title="Run recipe" eyebrow="At a glance">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -2763,6 +2764,7 @@ export default function UgcStudioPage() {
               </div>
             </SectionCard>
           </aside>
+        </div>
         </div>
 
         {showProductSelector ? (
