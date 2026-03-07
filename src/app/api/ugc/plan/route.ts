@@ -26,8 +26,10 @@ import {
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
 const REMOTE_PLANNER_TIMEOUT_MS = 55000;
-const FAST_TALKING_WORDS_PER_SECOND = 2.85;
-const MIN_DIALOGUE_CLIP_SECONDS = 4;
+// Natural conversational pace — 3.2 wps matches casual fast-talking (TikTok/Reels pace).
+// Too slow (2.5) = awkward pauses; too fast (4.0) = rushed/unintelligible.
+const WORDS_PER_SECOND = 3.2;
+const MIN_DIALOGUE_CLIP_SECONDS = 3;
 const MAX_DIALOGUE_CLIP_SECONDS = 8;
 
 type UgcAnthropicCreativeScript = {
@@ -236,7 +238,7 @@ function buildScriptBeats(dialogue: string, requestedSeconds: number): UgcScript
 function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDurationSeconds: number) {
   const sentences = splitSentences(dialogue);
   const preferredSeconds = clamp(clipDurationSeconds, MIN_DIALOGUE_CLIP_SECONDS, 7);
-  const targetWordsPerClip = Math.max(11, Math.round(FAST_TALKING_WORDS_PER_SECOND * preferredSeconds));
+  const targetWordsPerClip = Math.max(11, Math.round(WORDS_PER_SECOND * preferredSeconds));
   const maxWordsPerClip = Math.max(targetWordsPerClip + 5, 18);
 
   if (sentences.length === 0) {
@@ -290,16 +292,20 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
     previous.wordCount += tail.wordCount;
   }
 
-  return clips.map((clip, index) => ({
-    id: clip.id || makeId("clip-segment", index),
-    text: clip.text,
-    wordCount: clip.wordCount,
-    durationSeconds: clamp(
-      Math.round(clip.wordCount / FAST_TALKING_WORDS_PER_SECOND),
-      MIN_DIALOGUE_CLIP_SECONDS,
-      MAX_DIALOGUE_CLIP_SECONDS
-    ),
-  }));
+  return clips.map((clip, index) => {
+    // Calculate tight duration — add 0.5s buffer for natural breathing room, not more
+    const rawSeconds = clip.wordCount / WORDS_PER_SECOND + 0.5;
+    return {
+      id: clip.id || makeId("clip-segment", index),
+      text: clip.text,
+      wordCount: clip.wordCount,
+      durationSeconds: clamp(
+        Math.round(rawSeconds),
+        MIN_DIALOGUE_CLIP_SECONDS,
+        MAX_DIALOGUE_CLIP_SECONDS
+      ),
+    };
+  });
 }
 
 function inferSettingForScript(guidance: string, category: string) {

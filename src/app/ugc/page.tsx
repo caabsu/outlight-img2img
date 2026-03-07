@@ -579,6 +579,25 @@ function ScriptCard({
   );
 }
 
+function PromptViewer({ prompt }: { prompt: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-[10px] font-semibold text-slate-500 transition hover:text-slate-300"
+      >
+        {open ? "Hide prompt" : "View prompt"}
+      </button>
+      {open && (
+        <div className="mt-1.5 max-h-32 overflow-y-auto rounded-lg bg-slate-950 p-2 text-[10px] leading-4 text-slate-400 select-all">
+          {prompt}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImageRenderCard({
   render,
   selected,
@@ -628,6 +647,7 @@ function ImageRenderCard({
           </div>
           <StatusDot status={render.status} />
         </div>
+        <PromptViewer prompt={render.prompt} />
         <div className="flex gap-2">
           {!hideSelect ? (
             <button
@@ -664,12 +684,18 @@ function VideoRenderCard({
   selected,
   onToggle,
   onDownload,
+  onRegenerate,
 }: {
   render: VideoRender;
   selected: boolean;
   onToggle: () => void;
   onDownload: () => void;
+  onRegenerate: (feedback: string) => void;
 }) {
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const isReady = render.url && render.status !== "running";
+
   return (
     <div className={cn(
       "overflow-hidden rounded-2xl border transition",
@@ -694,6 +720,7 @@ function VideoRenderCard({
           <div className="text-sm font-semibold text-white">{render.title}</div>
           <StatusDot status={render.status} />
         </div>
+        <PromptViewer prompt={render.prompt} />
         <div className="flex gap-2">
           <button
             onClick={onToggle}
@@ -715,6 +742,47 @@ function VideoRenderCard({
             Save
           </button>
         </div>
+        {isReady && (
+          <div>
+            {!showFeedback ? (
+              <button
+                onClick={() => setShowFeedback(true)}
+                className="w-full rounded-xl border border-slate-800 py-2 text-xs font-semibold text-slate-400 transition hover:border-slate-600 hover:text-white"
+              >
+                Discard &amp; regenerate
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <textarea
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  placeholder="What went wrong? What should be different?"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs leading-5 text-white outline-none transition placeholder:text-slate-500 focus:border-slate-500"
+                  rows={3}
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      onRegenerate(feedback);
+                      setFeedback("");
+                      setShowFeedback(false);
+                    }}
+                    className="flex-1 rounded-lg bg-white py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-slate-200"
+                  >
+                    Regenerate
+                  </button>
+                  <button
+                    onClick={() => { setShowFeedback(false); setFeedback(""); }}
+                    className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-400 transition hover:text-white"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1094,7 +1162,7 @@ export default function UgcStudioPage() {
     addActivity("scene", `Generating ${variations.length} scene options...`);
 
     try {
-      await runWithConcurrency(variations, 2, async (variation, index) => {
+      await runWithConcurrency(variations, variations.length, async (variation, index) => {
         try {
           const response = await fetch("/api/generate", {
             method: "POST",
@@ -1167,7 +1235,7 @@ export default function UgcStudioPage() {
     addActivity("clips", `Rendering ${clips.length} talking clips...`);
 
     try {
-      await runWithConcurrency(clips, 2, async (clip) => {
+      await runWithConcurrency(clips, clips.length, async (clip) => {
         try {
           const response = await fetch("/api/video/generate", {
             method: "POST",
@@ -1245,7 +1313,7 @@ export default function UgcStudioPage() {
     addActivity("broll", `Generating ${shots.length} B-roll images...`);
 
     try {
-      await runWithConcurrency(shots, 2, async (shot) => {
+      await runWithConcurrency(shots, shots.length, async (shot) => {
         try {
           const response = await fetch("/api/generate", {
             method: "POST",
@@ -1321,7 +1389,7 @@ export default function UgcStudioPage() {
     addActivity("broll", `Rendering ${initial.length} B-roll clips...`);
 
     try {
-      await runWithConcurrency(initial, 2, async (render) => {
+      await runWithConcurrency(initial, initial.length, async (render) => {
         const seed = seedsToRender.find((item) => item.planId === render.planId || item.id === render.planId);
         if (!seed?.url) return;
         try {
@@ -1366,6 +1434,116 @@ export default function UgcStudioPage() {
       } else {
         setApprovals((current) => ({ ...current, broll: { ...current.broll, status: "pending" } }));
       }
+    }
+  };
+
+  /* ─── Single-clip Regenerate Handlers ─── */
+
+  const handleRegenerateDialogueClip = async (videoId: string, feedback: string) => {
+    if (!plan || !selectedScene?.url) return;
+    const clip = plan.dialogueClips.find((c) => c.id === videoId);
+    if (!clip) return;
+
+    const feedbackPrompt = feedback.trim()
+      ? `${clip.prompt}\n\nREGENERATE FEEDBACK: The previous result was not right. ${feedback.trim()}`
+      : clip.prompt;
+
+    // Mark this clip as regenerating
+    setDialogueVideos((current) =>
+      current.map((item) =>
+        item.id === videoId ? { ...item, url: null, status: "running", error: null, prompt: feedbackPrompt } : item
+      )
+    );
+    addActivity("clips", `Regenerating ${clip.index + 1}...`);
+
+    try {
+      const response = await fetch("/api/video/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "kling",
+          model: "kling-3.0/video",
+          mode: "kling30",
+          prompt: feedbackPrompt,
+          duration: String(clip.durationSeconds),
+          aspect_ratio: "9:16",
+          sound: settings.videoSound,
+          kling_mode: "pro",
+          image_urls: [selectedScene.url],
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || "Video generation failed");
+      setDialogueVideos((current) =>
+        current.map((item) =>
+          item.id === videoId ? { ...item, url: json.videoUrl, status: "done", error: null } : item
+        )
+      );
+      addActivity("clips", `Clip ${clip.index + 1} regenerated.`, "success");
+    } catch (error: any) {
+      setDialogueVideos((current) =>
+        current.map((item) =>
+          item.id === videoId
+            ? { ...item, status: "error", error: error?.message || "Regeneration failed" }
+            : item
+        )
+      );
+      addActivity("clips", error?.message || `Clip ${clip.index + 1} regeneration failed`, "error");
+    }
+  };
+
+  const handleRegenerateBrollClip = async (videoId: string, feedback: string) => {
+    if (!plan) return;
+    const video = brollVideos.find((v) => v.id === videoId);
+    if (!video) return;
+    const seed = brollSeedImages.find((s) => s.planId === video.planId || s.id === video.planId);
+    if (!seed?.url) return;
+
+    const feedbackPrompt = feedback.trim()
+      ? `${video.prompt}\n\nREGENERATE FEEDBACK: The previous result was not right. ${feedback.trim()}`
+      : video.prompt;
+
+    // Mark this clip as regenerating
+    setBrollVideos((current) =>
+      current.map((item) =>
+        item.id === videoId ? { ...item, url: null, status: "running", error: null, prompt: feedbackPrompt } : item
+      )
+    );
+    addActivity("broll", `Regenerating ${video.title}...`);
+
+    try {
+      const response = await fetch("/api/video/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "kling",
+          model: "kling-3.0/video",
+          mode: "kling30",
+          prompt: feedbackPrompt,
+          duration: String(settings.videoDurationSeconds),
+          aspect_ratio: "9:16",
+          sound: false,
+          kling_mode: "pro",
+          image_urls: [seed.url],
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || "B-roll video generation failed");
+      setBrollVideos((current) =>
+        current.map((item) =>
+          item.id === videoId ? { ...item, url: json.videoUrl, status: "done", error: null } : item
+        )
+      );
+      addActivity("broll", `${video.title} regenerated.`, "success");
+    } catch (error: any) {
+      setBrollVideos((current) =>
+        current.map((item) =>
+          item.id === videoId
+            ? { ...item, status: "error", error: error?.message || "Regeneration failed" }
+            : item
+        )
+      );
+      addActivity("broll", error?.message || `${video.title} regeneration failed`, "error");
     }
   };
 
@@ -2098,6 +2276,7 @@ export default function UgcStudioPage() {
                             })
                           }
                           onDownload={() => video.url && downloadUrl(video.url, `${safeName(video.title)}.mp4`)}
+                          onRegenerate={(feedback) => handleRegenerateDialogueClip(video.id, feedback)}
                         />
                       ))}
                     </div>
@@ -2202,6 +2381,7 @@ export default function UgcStudioPage() {
                               })
                             }
                             onDownload={() => video.url && downloadUrl(video.url, `${safeName(video.title)}.mp4`)}
+                            onRegenerate={(feedback) => handleRegenerateBrollClip(video.id, feedback)}
                           />
                         ))}
                       </div>
