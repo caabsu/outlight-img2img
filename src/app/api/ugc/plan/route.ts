@@ -283,8 +283,8 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
   }));
 }
 
-function inferSettingForScript(theme: string, category: string) {
-  const corpus = `${theme} ${category}`.toLowerCase();
+function inferSettingForScript(guidance: string, category: string) {
+  const corpus = `${guidance} ${category}`.toLowerCase();
   if (/(office|work|desk|startup|founder|meeting|b2b)/.test(corpus)) return { place: "at my desk", room: "office" };
   if (/(bathroom|skincare|beauty|serum|face|cream|wash)/.test(corpus)) return { place: "at the mirror", room: "bathroom" };
   if (/(kitchen|cook|coffee|morning|breakfast|supplement|vitamin|drink)/.test(corpus)) return { place: "in the kitchen", room: "kitchen" };
@@ -295,17 +295,17 @@ function inferSettingForScript(theme: string, category: string) {
 }
 
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
-  const theme = cleanText(input.theme) || "creator testimonial";
+  const guidance = cleanText(input.description) || "";
   const ctaSentence = "Link is in my bio.";
   const knowledgeHint = knowledge ? ` ${finishSentence(knowledge)}` : "";
   const categoryLabel = category || "product";
-  const setting = inferSettingForScript(theme, category);
+  const setting = inferSettingForScript(guidance, category);
   const briefFocusLines = buildBriefFocusLines(input.description, productName, category);
 
   const variants = [
     {
       title: "Quick Take",
-      rationale: `Fast, punchy ${theme} script set ${setting.place}. Gets to the point in the first line and keeps moving.`,
+      rationale: `Fast, punchy script set ${setting.place}. Gets to the point in the first line and keeps moving.`,
       hook: `Okay so I have been using ${productName} for about two weeks now and I need to talk about it.`,
       dialogue:
         `Okay so I have been using ${productName} for about two weeks now and I need to talk about it. I am ${setting.place} right now and I literally just used it. ${briefFocusLines[0]} Honestly I was skeptical at first but the difference is noticeable. ${briefFocusLines[1]} If you have been looking for a good ${categoryLabel}, this is the one. ${ctaSentence}${knowledgeHint}`.trim(),
@@ -319,7 +319,7 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
     },
     {
       title: "Show Don't Tell",
-      rationale: `Visual-first ${theme} script where the creator demonstrates the product ${setting.place} with proof.`,
+      rationale: `Visual-first script where the creator demonstrates the product ${setting.place} with proof.`,
       hook: `Let me show you why I switched to ${productName}.`,
       dialogue:
         `Let me show you why I switched to ${productName}. I am ${setting.place} and I am going to show you exactly what I mean. ${briefFocusLines[2]} See? That is the difference. ${briefFocusLines[1]} I have tried a lot of ${categoryLabel} options and this is the one that actually delivers. You can check it out, ${ctaSentence}${knowledgeHint}`.trim(),
@@ -341,13 +341,13 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   });
 }
 
-function buildAvatarOptions(productName: string, theme: string, category: string): UgcAvatarOption[] {
-  const themeLabel = cleanText(theme) || "creator testimonial";
+function buildAvatarOptions(productName: string, guidance: string, category: string): UgcAvatarOption[] {
+  const guidanceLabel = cleanText(guidance) || "creator-style";
   return [
     {
       id: "avatar-1",
       label: "Credible Creator",
-      persona: `A relatable creator who feels right for a ${themeLabel} ad and speaks with practical confidence straight to camera.`,
+      persona: `A relatable creator who feels right for a ${guidanceLabel} ad and speaks with practical confidence straight to camera.`,
       wardrobe: "Clean monochrome top, simple jewelry, soft editorial grooming, premium-but-real styling.",
       castingRationale: `Best default option for ${productName} because it balances trust, polish, and conversion intent.`,
       voiceStyle: "Warm, direct, slightly breathy creator delivery.",
@@ -690,7 +690,7 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
       : buildGeneratedScripts(input.script, productName, category, input.knowledge);
 
   const selectedScript = scriptOptions[0];
-  const avatarOptions = buildAvatarOptions(productName, input.script.theme || input.script.description, category);
+  const avatarOptions = buildAvatarOptions(productName, input.script.description, category);
   const sceneVariations = buildSceneVariations(
     selectedScript,
     avatarOptions,
@@ -1076,7 +1076,6 @@ export async function POST(req: Request) {
         mode: body.script?.mode || "generate",
         text: cleanText(body.script?.text),
         totalSeconds: clamp(Number(body.script?.totalSeconds) || 20, 5, 60),
-        theme: cleanText(body.script?.theme) || "creator testimonial",
         description: cleanText(body.script?.description),
       },
       settings: {

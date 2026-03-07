@@ -83,7 +83,6 @@ const PRESET_OPTIONS = [
       sceneVariationCount: 3,
       bRollClipCount: 3,
     },
-    theme: "Quick product demo",
   },
   {
     id: "balanced",
@@ -96,7 +95,6 @@ const PRESET_OPTIONS = [
       sceneVariationCount: 4,
       bRollClipCount: 4,
     },
-    theme: "Creator testimonial",
   },
   {
     id: "review",
@@ -109,17 +107,7 @@ const PRESET_OPTIONS = [
       sceneVariationCount: 5,
       bRollClipCount: 5,
     },
-    theme: "Before and after",
   },
-] as const;
-
-const THEME_SUGGESTIONS = [
-  "Creator testimonial",
-  "Problem and solution",
-  "Before and after",
-  "Quick product demo",
-  "Office walkthrough",
-  "Lifestyle routine",
 ] as const;
 const PRODUCT_PICKER_BATCH_SIZE = 72;
 
@@ -818,7 +806,6 @@ export default function UgcStudioPage() {
   const [appearanceNotes, setAppearanceNotes] = useState("");
   const [scriptMode, setScriptMode] = useState<"generate" | "upload">("generate");
   const [scriptText, setScriptText] = useState("");
-  const [theme, setTheme] = useState("Creator testimonial");
   const [description, setDescription] = useState("");
   const [knowledge, setKnowledge] = useState("");
   const [settings, setSettings] = useState(DEFAULT_UGC_WORKFLOW_SETTINGS);
@@ -1027,7 +1014,6 @@ export default function UgcStudioPage() {
         mode: scriptMode,
         text: scriptText,
         totalSeconds: settings.dialogueSeconds,
-        theme,
         description,
       },
       settings,
@@ -1475,7 +1461,6 @@ export default function UgcStudioPage() {
       bRollClipCount: preset.settings.bRollClipCount,
       videoDurationSeconds: preset.settings.clipDurationSeconds,
     }));
-    setTheme(preset.theme);
     setShowPresetPanel(false);
     addActivity("setup", `${preset.name} preset applied.`, "success");
   };
@@ -1527,7 +1512,7 @@ export default function UgcStudioPage() {
     null;
   const selectedScenePlan = plan?.sceneVariations.find((s) => s.id === (selectedScene?.planId || selectedSceneId)) || null;
   const selectedAvatar = plan?.avatarOptions.find((a) => a.id === (selectedScene?.avatarId || selectedScenePlan?.avatarId)) || null;
-  const runFilePrefix = safeName(selectedProductCard.name || theme || "ugc-run");
+  const runFilePrefix = safeName(selectedProductCard.name || "ugc-run");
   const readySceneCount = sceneRenders.filter((r) => r.url).length;
   const readyDialogueCount = dialogueVideos.filter((v) => v.url).length;
   const readyBrollSeedCount = brollSeedImages.filter((i) => i.url).length;
@@ -1795,39 +1780,13 @@ export default function UgcStudioPage() {
                     </button>
                   </div>
 
-                  <div>
-                    <div className="mb-2 text-xs font-semibold text-slate-400">Theme</div>
-                    <div className="mb-2 flex flex-wrap gap-1.5">
-                      {THEME_SUGGESTIONS.map((item) => (
-                        <button
-                          key={item}
-                          onClick={() => setTheme(item)}
-                          className={cn(
-                            "rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition",
-                            theme === item
-                              ? "border-white/20 bg-white text-slate-950"
-                              : "border-slate-700 text-slate-400 hover:border-slate-500 hover:text-white"
-                          )}
-                        >
-                          {item}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      value={theme}
-                      onChange={(event) => setTheme(event.target.value)}
-                      placeholder="Or type a custom theme..."
-                      className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-slate-600"
-                    />
-                  </div>
-
                   {scriptMode === "generate" ? (
                     <div>
-                      <div className="mb-2 text-xs font-semibold text-slate-400">Guidance <span className="font-normal text-slate-500">(optional)</span></div>
+                      <div className="mb-2 text-xs font-semibold text-slate-400">Creative direction <span className="font-normal text-slate-500">(optional)</span></div>
                       <textarea
                         value={description}
                         onChange={(event) => setDescription(event.target.value)}
-                        placeholder="Describe the angle, concept, or hook style you want..."
+                        placeholder="e.g. &quot;Honest review angle, creator discovers the product at their desk&quot; or &quot;Problem-solution hook, quick before/after&quot;"
                         className="min-h-[120px] w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-slate-500 focus:border-slate-600"
                       />
                     </div>
