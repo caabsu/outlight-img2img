@@ -111,38 +111,57 @@ function estimateDurationSeconds(text: string, fallbackSeconds: number) {
   return clamp(Math.round(words / 2.5), 5, 60);
 }
 
-function buildBriefFocusLines(brief: string, productName: string, category: string) {
-  const normalized = cleanText(brief).toLowerCase();
-  const focus = {
-    trust: /(testimonial|recommend|review|personal|story|routine)/.test(normalized),
-    transformation: /(before|after|transform|difference|change|result)/.test(normalized),
-    demo: /(demo|show|visual|proof|on camera|see|angle)/.test(normalized),
-    premium: /(premium|luxury|elevated|editorial|high-end)/.test(normalized),
-    office: /(office|desk|work|meeting|startup)/.test(normalized),
-    lifestyle: /(lifestyle|daily|morning|night|routine)/.test(normalized),
-  };
+function buildProductLines(knowledge: string, productName: string, category: string): { detail: string; reaction: string; specifics: string } {
+  const k = cleanText(knowledge).toLowerCase();
+  const cat = (category || "").toLowerCase();
 
-  return [
-    focus.transformation
-      ? "Show the change quickly and make the payoff feel obvious on camera."
-      : focus.office
-        ? "Frame it like something that fits naturally into a real work setup."
-        : focus.demo
-          ? "Lead with the clearest visual proof instead of overexplaining it."
-          : "Show the payoff fast and keep the message easy to believe.",
-    focus.trust
-      ? "Keep the tone personal and specific so it lands like a real recommendation."
-      : focus.premium
-        ? "Make it feel polished but still native to creator footage."
-        : focus.lifestyle
-          ? "Make it feel like a natural part of a real routine."
-          : "Make it feel like something the creator genuinely uses.",
-    focus.premium
-      ? "Use concise premium-sounding wording without turning it into brand copy."
-      : focus.demo
-        ? "Build around one clear demo moment and close with a simple next step."
-        : `Keep ${productName} easy to picture in a real ${category || "product"} use case and end with a clean CTA.`,
-  ];
+  // Extract something real from knowledge if available
+  if (k.length > 20) {
+    const firstSentence = finishSentence(knowledge.slice(0, 120));
+    return {
+      detail: firstSentence,
+      reaction: `That is the part that actually got me — ${firstSentence.toLowerCase().slice(0, 60)}.`,
+      specifics: `The thing nobody talks about is ${firstSentence.toLowerCase().slice(0, 50)}.`,
+    };
+  }
+
+  // Category-specific spoken lines (not instructions — actual dialogue)
+  if (/(skincare|serum|cream|beauty|face|moisturizer|cleanser)/.test(cat))
+    return {
+      detail: `My skin genuinely looks different. Like, I woke up this morning and the texture was just smoother.`,
+      reaction: `I keep touching my face which is gross but it is that soft now.`,
+      specifics: `I have tried so many ${category || "skincare"} things that did nothing. This one I actually noticed.`,
+    };
+  if (/(supplement|vitamin|protein|health|wellness)/.test(cat))
+    return {
+      detail: `I have way more energy in the afternoon. Like, I am not crashing at 3pm anymore.`,
+      reaction: `It sounds dramatic but I genuinely feel a difference on days I skip it.`,
+      specifics: `I am pretty skeptical about ${category || "supplements"} in general so the fact that I kept taking it says something.`,
+    };
+  if (/(tech|app|software|saas|tool|gadget)/.test(cat))
+    return {
+      detail: `It just works the way you think it should. No setup headache, no learning curve.`,
+      reaction: `I keep finding little things it does that save me time and I did not even expect.`,
+      specifics: `I have used a lot of ${category || "tools"} like this and most of them overcomplicate everything. This does not.`,
+    };
+  if (/(food|snack|drink|coffee|tea|beverage)/.test(cat))
+    return {
+      detail: `The taste is actually good. Not like fake-healthy good, genuinely good.`,
+      reaction: `I bought it once thinking it would be mid and now I have it like every day.`,
+      specifics: `Most ${category || "food"} stuff that markets itself as better usually tastes worse. Not this.`,
+    };
+  if (/(fashion|clothing|shoes|wear|outfit|jacket|shirt)/.test(cat))
+    return {
+      detail: `The fit is insane. Like, I tried it on and immediately ordered another color.`,
+      reaction: `People have been asking me where this is from and that never happens.`,
+      specifics: `The quality for the price is actually ridiculous. I expected it to feel cheap and it does not.`,
+    };
+  // Fallback — general product
+  return {
+    detail: `The difference is actually noticeable. It is not one of those things where you are like did it work? You know it worked.`,
+    reaction: `I did not think I would care this much but here I am making a video about it.`,
+    specifics: `I have been through a lot of ${category || "stuff"} like this. Most of it is forgettable. This was not.`,
+  };
 }
 
 function makeId(prefix: string, index: number) {
@@ -200,16 +219,16 @@ function buildScriptBeats(dialogue: string, requestedSeconds: number): UgcScript
       text: sentence,
       delivery:
         index === 0
-          ? "Direct-to-camera hook with urgency."
+          ? "Casual and direct, like you just turned the camera on mid-thought."
           : index === sentences.length - 1
-            ? "Confident close that lands the CTA."
-            : "Conversational proof point with natural creator pacing.",
+            ? "Winding down naturally, not pitching — just wrapping up."
+            : "Relaxed and conversational, talking to a friend not an audience.",
       visualCue:
         index === 0
-          ? "Lean into frame and make immediate eye contact."
+          ? "Glance at camera, settle in, start talking naturally."
           : index === sentences.length - 1
-            ? "Hold the product near chest level for the CTA."
-            : "Use a small hand gesture while keeping the product visible.",
+            ? "Slight shrug or nod, relaxed posture, done talking."
+            : "Small hand gestures, look at the product briefly, stay natural.",
     };
   });
 }
@@ -296,33 +315,38 @@ function inferSettingForScript(guidance: string, category: string) {
 
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
   const guidance = cleanText(input.description) || "";
-  const ctaSentence = "Link is in my bio.";
-  const knowledgeHint = knowledge ? ` ${finishSentence(knowledge)}` : "";
   const categoryLabel = category || "product";
   const setting = inferSettingForScript(guidance, category);
-  const briefFocusLines = buildBriefFocusLines(input.description, productName, category);
+  const lines = buildProductLines(knowledge, productName, category);
 
+  // Three genuinely different script structures — not variations of the same formula
   const variants = [
     {
-      title: "Quick Take",
-      rationale: `Fast, punchy script set ${setting.place}. Gets to the point in the first line and keeps moving.`,
-      hook: `Okay so I have been using ${productName} for about two weeks now and I need to talk about it.`,
+      // PATTERN: Mid-thought — starts like the camera caught them in the middle of something
+      title: "Caught in the moment",
+      rationale: `Starts mid-action ${setting.place} — feels like the person was already using the product and decided to film. No setup, no intro.`,
+      hook: `Wait, okay, I need to show you this real quick.`,
+      cta: `Seriously, just try it.`,
       dialogue:
-        `Okay so I have been using ${productName} for about two weeks now and I need to talk about it. I am ${setting.place} right now and I literally just used it. ${briefFocusLines[0]} Honestly I was skeptical at first but the difference is noticeable. ${briefFocusLines[1]} If you have been looking for a good ${categoryLabel}, this is the one. ${ctaSentence}${knowledgeHint}`.trim(),
+        `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName} and — ${lines.detail} I know that sounds like I am being dramatic but ${lines.reaction} ${lines.specifics} Anyway, I will leave it at that. Seriously, just try it.`.trim(),
     },
     {
-      title: "Honest Review",
-      rationale: `Personal creator story angle set ${setting.place} — feels like a genuine recommendation, not an ad.`,
-      hook: `I was not planning on making this video but I keep getting asked about this ${categoryLabel}.`,
+      // PATTERN: Rant / storytime — the person has feelings about this category and this product breaks the pattern
+      title: "Storytime",
+      rationale: `Conversational rant that starts with a frustration about the category, then pivots to ${productName} as the thing that finally worked.`,
+      hook: `Can we talk about how most ${categoryLabel} is just... mid?`,
+      cta: `Do what you want with that information.`,
       dialogue:
-        `I was not planning on making this video but I keep getting asked about this ${categoryLabel}. So here is my honest take on ${productName}. I have been using it ${setting.place} and the thing that surprised me is how quickly I noticed a difference. ${briefFocusLines[1]} It is not one of those things you buy and forget about. I actually reach for it every day now. ${briefFocusLines[0]} If you want to try it yourself, ${ctaSentence}${knowledgeHint}`.trim(),
+        `Can we talk about how most ${categoryLabel} is just mid? Like, I have tried so many and they all kind of blend together. But then I started using ${productName} and — okay, I am ${setting.place} right now, let me just show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
     },
     {
-      title: "Show Don't Tell",
-      rationale: `Visual-first script where the creator demonstrates the product ${setting.place} with proof.`,
-      hook: `Let me show you why I switched to ${productName}.`,
+      // PATTERN: Quiet flex — understated, matter-of-fact, no hype
+      title: "No hype, just facts",
+      rationale: `Low-energy, matter-of-fact delivery ${setting.place}. No excitement, no selling — just someone sharing what they actually use.`,
+      hook: `I do not do product recommendations but I will make an exception.`,
+      cta: `That is all. Take it or leave it.`,
       dialogue:
-        `Let me show you why I switched to ${productName}. I am ${setting.place} and I am going to show you exactly what I mean. ${briefFocusLines[2]} See? That is the difference. ${briefFocusLines[1]} I have tried a lot of ${categoryLabel} options and this is the one that actually delivers. You can check it out, ${ctaSentence}${knowledgeHint}`.trim(),
+        `I do not do product recommendations but I will make an exception. I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim(),
     },
   ];
 
@@ -333,7 +357,7 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
       title: variant.title,
       rationale: variant.rationale,
       hook: variant.hook,
-      cta: ctaSentence,
+      cta: variant.cta,
       dialogue: variant.dialogue,
       estimatedSeconds,
       beats: buildScriptBeats(variant.dialogue, estimatedSeconds),
