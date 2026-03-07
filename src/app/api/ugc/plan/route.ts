@@ -486,106 +486,193 @@ function buildScriptFrameworks(
   guidance: string,
   setting: Setting,
 ) {
-  // Three fundamentally different hook types, energy levels, and narrative arcs:
-  // 1. CAUGHT MID-ACTION — high energy, discovery moment, camera catches them doing something
-  // 2. CONFESSION — vulnerable, quiet, opens with an admission
-  // 3. QUIET OBSERVATION — low energy, anti-sell, matter-of-fact
+  // When guidance exists, scripts are FULLY about the guidance angle.
+  // No generic category filler — every line serves the brief.
+  // When no guidance, use category/product to drive the angle.
 
+  if (hasGuidance) {
+    return buildGuidanceDrivenFrameworks(targetSeconds, targetWords, productName, intent, guidance);
+  }
+  return buildCategoryDrivenFrameworks(targetSeconds, targetWords, productName, categoryLabel, lines, emotion, setting);
+}
+
+/**
+ * Guidance-driven scripts: the guidance angle dominates EVERY line.
+ * No generic product/category filler — the entire script is about the concept.
+ */
+function buildGuidanceDrivenFrameworks(
+  targetSeconds: number,
+  targetWords: number,
+  productName: string,
+  intent: Intent,
+  guidance: string,
+) {
+  // Short scripts (<=15s)
   if (targetSeconds <= 15) {
     return [
-      // Framework 1: Mid-action discovery (high energy, short)
       {
-        title: hasGuidance ? `Mid-${intent.concept}` : "Caught mid-action",
-        rationale: hasGuidance
-          ? `Camera catches them mid-action — "${guidance}" interpreted as a discovery moment.`
-          : `High energy, person is mid-activity and reacts to something they notice.`,
+        title: `The ${intent.concept} moment`,
+        rationale: `Micro-story — "${guidance}" as a moment the person is living right now.`,
+        hook: `Wait.`,
+        cta: ``,
+        dialogue: trimToWords(`Wait. Look at this. I ${intent.problem} and I just put ${productName} right here. ${intent.payoff}. Like, I am ${intent.situation} right now looking at it.`, targetWords),
+      },
+      {
+        title: `Honest take`,
+        rationale: `Confession — "${guidance}" as something they were not sure about until it worked.`,
+        hook: `Okay real talk.`,
+        cta: ``,
+        dialogue: trimToWords(`Okay real talk. I ${intent.problem} and I did not think ${productName} would actually help. But I am ${intent.situation} and ${intent.payoff}. That is it.`, targetWords),
+      },
+      {
+        title: `No big deal`,
+        rationale: `Quiet observation — "${guidance}" stated matter-of-factly with no excitement.`,
+        hook: `So.`,
+        cta: ``,
+        dialogue: trimToWords(`So. I ${intent.problem}. Got ${productName}. Put it ${intent.situation}. ${intent.payoff}. I do not know why I am surprised.`, targetWords),
+      },
+    ];
+  }
+
+  // Medium scripts (<=25s)
+  if (targetSeconds <= 25) {
+    return [
+      {
+        title: `The ${intent.concept} moment`,
+        rationale: `Micro-story — "${guidance}" as a specific scene with sensory detail and emotional arc.`,
+        hook: `I was ${intent.situation} the other day and something happened.`,
+        cta: ``,
+        dialogue: trimToWords(`I was ${intent.situation} the other day and something happened. I ${intent.problem}. Like it was just sitting there bothering me. So I got ${productName} and I was ${intent.action}. And I stepped back and ${intent.payoff}. I keep going back to look at it.`, targetWords),
+      },
+      {
+        title: `The honest version`,
+        rationale: `Confession — admits "${guidance}" was a bigger deal than expected.`,
+        hook: `I am going to be honest about something.`,
+        cta: ``,
+        dialogue: trimToWords(`I am going to be honest about something. I ${intent.problem} and it was driving me crazy. I tried a few things and nothing worked. Then I got ${productName} and I was ${intent.action}. And ${intent.payoff}. I did not expect to care this much but here I am ${intent.situation} just staring at it.`, targetWords),
+      },
+      {
+        title: `No hype`,
+        rationale: `Anti-sell — "${guidance}" presented with zero enthusiasm, just facts.`,
+        hook: `This is not a big thing.`,
+        cta: ``,
+        dialogue: trimToWords(`This is not a big thing. I ${intent.problem}. I got ${productName}. I was ${intent.action} and now I am ${intent.situation}. ${intent.payoff}. It is not life-changing or whatever. But yeah, it works. Do what you want with that.`, targetWords),
+      },
+    ];
+  }
+
+  // Long scripts (25s+)
+  return [
+    {
+      title: `The ${intent.concept} story`,
+      rationale: `Full micro-story — "${guidance}" as a scene you walk into, with emotional buildup and payoff.`,
+      hook: `Okay so I need to talk about something.`,
+      cta: ``,
+      dialogue: trimToWords(`Okay so I need to talk about something. I was ${intent.situation} and I ${intent.problem}. It was one of those things that just bugged me every time I looked at it. I tried a couple of things and nothing really did anything. Then someone mentioned ${productName} and I was like fine, whatever. So I was ${intent.action} and I stepped back and ${intent.payoff}. Like I just stood there for a second. The whole feel of being ${intent.situation} is different now. I did not think I would care this much about ${intent.concept} but here I am making a video about it.`, targetWords),
+    },
+    {
+      title: `The honest version`,
+      rationale: `Confession — opens with vulnerability about "${guidance}", builds to a genuine realization.`,
+      hook: `I am going to be real with you.`,
+      cta: ``,
+      dialogue: trimToWords(`I am going to be real with you. I ${intent.problem} and I was kind of embarrassed about how much it bothered me. Like who cares right? But I do, apparently. So I got ${productName} and honestly I was not expecting much. I was ${intent.action} and then I was ${intent.situation} just looking at it. And ${intent.payoff}. It sounds stupid but it actually makes me feel better about the whole space now. I am not going to tell you what to do. But yeah, that is what happened.`, targetWords),
+    },
+    {
+      title: `No hype, just this`,
+      rationale: `Anti-sell — matter-of-fact about "${guidance}" with zero enthusiasm, just honest observations.`,
+      hook: `I do not usually talk about stuff like this.`,
+      cta: ``,
+      dialogue: trimToWords(`I do not usually talk about stuff like this. But I ${intent.problem} and it had been bugging me for a while. Not like a huge deal, just one of those things. I ended up getting ${productName}. I was ${intent.action} and now I am ${intent.situation}. ${intent.payoff}. It is not going to change your life. But the thing is, every time I walk by it now it just looks right. And I think that is kind of the whole point. Do what you want with that information.`, targetWords),
+    },
+  ];
+}
+
+/**
+ * Category-driven scripts: when no guidance is provided, use the product
+ * category and knowledge to create scripts from different emotional angles.
+ */
+function buildCategoryDrivenFrameworks(
+  targetSeconds: number,
+  targetWords: number,
+  productName: string,
+  categoryLabel: string,
+  lines: Lines,
+  emotion: EmotionDetail,
+  setting: Setting,
+) {
+  if (targetSeconds <= 15) {
+    return [
+      {
+        title: "Caught mid-action",
+        rationale: `High energy — camera catches them mid-activity with ${productName}.`,
         hook: `Wait wait wait.`,
         cta: ``,
-        dialogue: trimToWords(`Wait wait wait. ${emotion.microMoment}. I got ${productName} like a week ago and ${emotion.quietPayoff}.`, targetWords),
+        dialogue: trimToWords(`Wait wait wait. I am ${setting.place} right now and I just noticed something. ${lines.detail} I got ${productName} like a week ago and yeah. ${lines.reaction}`, targetWords),
       },
-      // Framework 2: Confession (vulnerable, short)
       {
         title: "Honest take",
-        rationale: hasGuidance
-          ? `Opens with vulnerability about "${guidance}" — quiet admission.`
-          : `Vulnerable opening that builds instant trust.`,
+        rationale: `Vulnerable opening about ${categoryLabel} — quiet admission that builds trust.`,
         hook: `Okay I was not going to post this.`,
         cta: ``,
-        dialogue: trimToWords(`Okay I was not going to post this. ${emotion.vulnerability}. But ${productName}? ${emotion.quietPayoff}. That is literally it.`, targetWords),
+        dialogue: trimToWords(`Okay I was not going to post this. ${emotion.vulnerability}. But ${productName}? ${lines.detail} That is literally it.`, targetWords),
       },
-      // Framework 3: Quiet observation (low energy, short)
       {
         title: "Just noticed",
-        rationale: `Anti-sell energy. No excitement, just an honest observation.`,
+        rationale: `Anti-sell energy. No excitement, just an honest observation about ${productName}.`,
         hook: `Hm.`,
         cta: ``,
-        dialogue: trimToWords(`Hm. So I have had ${productName} for a bit now. ${emotion.sensoryDetail} I do not know. ${emotion.quietPayoff}.`, targetWords),
+        dialogue: trimToWords(`Hm. So I have had ${productName} for a bit now. ${lines.detail} I do not know. ${lines.reaction}`, targetWords),
       },
     ];
   }
 
   if (targetSeconds <= 25) {
     return [
-      // Framework 1: Micro-story — drops viewer into a specific moment
       {
-        title: hasGuidance ? `The ${intent.concept} moment` : "The moment",
-        rationale: hasGuidance
-          ? `Micro-story that starts in a specific moment — "${guidance}" interpreted as a scene.`
-          : `Opens with a sensory, specific moment that pulls the viewer in.`,
-        hook: `I was ${intent.situation} the other day and something happened.`,
+        title: "The moment",
+        rationale: `Micro-story — opens with a specific moment ${setting.place} that pulls the viewer in.`,
+        hook: `I was ${setting.place} the other day and something happened.`,
         cta: ``,
-        dialogue: trimToWords(`I was ${intent.situation} the other day and something happened. ${emotion.vulnerability}. So I tried ${productName} and honestly? ${emotion.sensoryDetail} ${emotion.quietPayoff}. I keep thinking about it.`, targetWords),
+        dialogue: trimToWords(`I was ${setting.place} the other day and something happened. ${emotion.vulnerability}. So I tried ${productName} and honestly? ${lines.detail} ${lines.reaction} I keep thinking about it.`, targetWords),
       },
-      // Framework 2: Pattern interrupt — says something unexpected
       {
         title: "The contradiction",
-        rationale: hasGuidance
-          ? `Opens with a contradictory statement that reframes "${guidance}".`
-          : `Pattern interrupt — says something unexpected about ${categoryLabel} that makes you stop.`,
+        rationale: `Pattern interrupt — says something unexpected about ${categoryLabel}.`,
         hook: `Everyone is wrong about ${categoryLabel}.`,
         cta: ``,
-        dialogue: trimToWords(`Everyone is wrong about ${categoryLabel}. Like, the whole conversation around it is off. ${emotion.identityShift}. Got ${productName} and ${emotion.sensoryDetail} ${emotion.quietPayoff}. I am not making a whole thing out of this, it just actually works.`, targetWords),
+        dialogue: trimToWords(`Everyone is wrong about ${categoryLabel}. Like, the whole conversation around it is off. ${emotion.identityShift}. Got ${productName} and ${lines.detail} ${lines.reaction} I am not making a whole thing out of this, it just actually works.`, targetWords),
       },
-      // Framework 3: Quiet observation — anti-sell
       {
         title: "No big deal",
-        rationale: `Deliberately understated. Low energy, almost reluctant to share. Builds trust through anti-sell.`,
+        rationale: `Deliberately understated — almost reluctant to share. Builds trust through anti-sell.`,
         hook: `So.`,
         cta: ``,
-        dialogue: trimToWords(`So. This is not a big moment or anything. ${emotion.vulnerability}. I ended up with ${productName}. ${emotion.sensoryDetail} It is not life-changing. But ${emotion.quietPayoff}. And that is kind of the whole point.`, targetWords),
+        dialogue: trimToWords(`So. This is not a big moment or anything. ${emotion.vulnerability}. I ended up with ${productName}. ${lines.detail} It is not life-changing. But ${lines.reaction} And that is kind of the whole point.`, targetWords),
       },
     ];
   }
 
-  // 25+ seconds — full scripts
   return [
-    // Framework 1: Micro-story — full sensory arc
     {
-      title: hasGuidance ? `The ${intent.concept} story` : "The moment I noticed",
-      rationale: hasGuidance
-        ? `Full micro-story — "${guidance}" interpreted as a scene with emotional arc.`
-        : `Drops the viewer into a specific moment with sensory detail, builds to emotional payoff.`,
+      title: "The moment I noticed",
+      rationale: `Full micro-story — drops into a sensory moment ${setting.place}, builds to emotional payoff.`,
       hook: `Okay so I need to talk about something.`,
       cta: ``,
-      dialogue: trimToWords(`Okay so I need to talk about something. I was ${intent.situation} and I ${intent.problem}. I had tried a couple of things before and nothing really did it. Then I got ${productName}. And I was ${intent.situation}, just ${intent.action}. ${emotion.sensoryDetail} And I just stood there for a second like wait. ${emotion.quietPayoff}. ${emotion.identityShift}. I do not know, I just wanted to share that.`, targetWords),
+      dialogue: trimToWords(`Okay so I need to talk about something. I was ${setting.place} and ${emotion.vulnerability}. I had tried a couple of things before and nothing really did it. Then I got ${productName}. ${lines.detail} And I just stood there for a second like wait. ${lines.reaction} ${emotion.identityShift}. I do not know, I just wanted to share that.`, targetWords),
     },
-    // Framework 2: Confession — full vulnerability arc
     {
       title: "The honest version",
-      rationale: hasGuidance
-        ? `Vulnerability-first — opens with an admission that reframes "${guidance}".`
-        : `Confession format — opens with honesty about ${categoryLabel}, builds real trust.`,
+      rationale: `Confession — opens with honesty about ${categoryLabel}, builds real trust.`,
       hook: `I am going to be honest about something.`,
       cta: ``,
-      dialogue: trimToWords(`I am going to be honest about something. ${emotion.vulnerability}. Like genuinely, most ${categoryLabel} stuff just sits there and you forget about it. But somebody told me about ${productName} and I was like fine whatever. ${emotion.sensoryDetail} And then ${emotion.quietPayoff}. ${lines.specifics} I am not going to sit here and tell you what to do. But yeah. That happened.`, targetWords),
+      dialogue: trimToWords(`I am going to be honest about something. ${emotion.vulnerability}. Like genuinely, most ${categoryLabel} stuff just sits there and you forget about it. But somebody told me about ${productName} and I was like fine whatever. ${lines.detail} And then ${lines.reaction} ${lines.specifics} I am not going to sit here and tell you what to do. But yeah. That happened.`, targetWords),
     },
-    // Framework 3: Quiet observation — full anti-sell arc
     {
       title: "No hype, just this",
-      rationale: `Anti-sell energy throughout. Deliberately low-key. Builds trust by NOT trying to convince.`,
+      rationale: `Anti-sell energy throughout. Deliberately low-key, builds trust by NOT trying to convince.`,
       hook: `I do not really do this.`,
       cta: ``,
-      dialogue: trimToWords(`I do not really do this. Talk about things I buy. It feels weird. But I have had ${productName} for a while now and ${emotion.microMoment}. ${emotion.sensoryDetail} It is not going to change your life or whatever. But ${emotion.quietPayoff}. ${emotion.identityShift}. I do not know. Do what you want with that.`, targetWords),
+      dialogue: trimToWords(`I do not really do this. Talk about things I buy. It feels weird. But I have had ${productName} for a while now and ${emotion.microMoment}. ${lines.detail} It is not going to change your life or whatever. But ${lines.reaction} ${emotion.identityShift}. I do not know. Do what you want with that.`, targetWords),
     },
   ];
 }
@@ -1141,48 +1228,38 @@ function hasPlanShape(plan: any): plan is UgcWorkflowPlan {
 async function tryGeminiPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.GEMINI_API_KEY) return null;
 
-  const prompt = `You are an elite creative strategist for short-form video ads. Your job is to write scripts that feel like native content — not ads. People don't hate ads; they hate ads that FEEL like ads.
+  const hasGuidance = !!cleanText(input.script.description);
+  const guidanceBlock = hasGuidance
+    ? `\n## THE CREATIVE BRIEF — THIS IS YOUR #1 PRIORITY\nThe user's creative direction: "${input.script.description}"\n\nEVERY script MUST be built around this brief. It is not a suggestion — it is the angle, the concept, the world the scripts live in. Interpret it creatively but NEVER ignore it. If the brief says "corner" — every script is about a corner. If it says "morning routine" — every script is set in the morning. The brief defines WHAT the scripts are about. Everything else is HOW.\n\nDo NOT write generic product scripts that could apply to anything. Write scripts that can ONLY exist because of this specific brief.\n`
+    : `\n## NO CREATIVE BRIEF PROVIDED\nMine the product category and knowledge for the strongest emotional angle. Each script should find a different emotional entry point for the product.\n`;
 
-Improve the baseline workflow plan below. Keep the same top-level JSON shape and keep array lengths unchanged. Preserve IDs. Return only JSON.
-
-INPUTS
-- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
+  const prompt = `You are an elite creative strategist for short-form video ads. Your scripts feel like native content — not ads.
+${guidanceBlock}
+PRODUCT & CONTEXT
 - Product: ${JSON.stringify(input.product)}
-- Script request: ${JSON.stringify(input.script)}
-- Settings: ${JSON.stringify(input.settings)}
 - Knowledge: ${input.knowledge || "None"}
-- Creative direction (brief): ${input.script.description || "None provided — mine the product category for the strongest emotional angle."}
+- Duration: ${input.script.totalSeconds || 20}s ≈ ${Math.round((input.script.totalSeconds || 20) * 3)} words
+- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
+- Settings: ${JSON.stringify(input.settings)}
 - Override instructions: ${input.overrideInstructions || "None"}
 
-CREATIVE DIRECTION RULES:
-The brief is a creative compass — interpret it, never echo it. Examples:
-- "Corner angle. makes the empty corner cozy" → scripts about transforming a dead space, the feeling of a room finally coming together
-- "Morning routine" → set in a morning, product fits into waking up
-- "Gift idea" → someone discovering it as a gift, the reaction
+SCRIPT RULES:
+1. EMOTION-FIRST: Start from what the viewer FEELS. The product answers a feeling they already have.
+2. NATIVE: Pass the "sniff test." No marketing language, no superlatives, no brand voice.
+3. HOOK DIVERSITY — each script MUST use a different hook type:
+   - Script 1: MICRO-STORY — drops into a specific sensory moment
+   - Script 2: CONFESSION — opens with vulnerable honesty
+   - Script 3: QUIET OBSERVATION — anti-sell, matter-of-fact
+4. VOICE: Sentence fragments. Filler words. False starts. Like a voice memo.
+5. CLOSE: End naturally. NEVER: "link in bio", "use my code", "you need this."
+6. Each variation must feel like a DIFFERENT person wrote it.
 
-SCRIPT WRITING PHILOSOPHY:
-1. EMOTION-FIRST: Every script starts from what the viewer FEELS, not what the product does. The product is the answer to a feeling they already have.
-2. IDENTITY-BASED: Frame the product as something that confirms who the viewer is or wants to become. Not "this product is great" but "I didn't think I was the kind of person who cared about this, but here I am."
-3. SPECIFIC EMOTIONS: Not "confidence" → "the quiet relief of not second-guessing yourself." Not "happy" → "that dumb smile you get when something works the first time."
-4. NATIVE CONTENT: It should pass the "sniff test" — if someone scrolling would think "this is an ad," you failed. No marketing language, no superlatives, no brand voice.
-5. HOOK DIVERSITY: Each script MUST use a fundamentally different hook type:
-   - Script 1: MICRO-STORY — drops viewer into a specific moment with sensory detail
-   - Script 2: CONFESSION/VULNERABILITY — opens with an honest admission
-   - Script 3: QUIET OBSERVATION — low energy, anti-sell, matter-of-fact
-6. VOICE: Write how people actually talk. Sentence fragments. Filler words (okay so, honestly, like, wait). False starts. Varied rhythm. Never polished.
-7. CLOSE: End naturally — mid-thought, with a shrug, a trailing off. NEVER: "link in bio", "use my code", "you need this."
-8. DURATION: ~3 words per second. ${input.script.totalSeconds || 20}s ≈ ${Math.round((input.script.totalSeconds || 20) * 3)} words. Don't exceed.
+Improve the baseline plan. Keep same JSON shape and array lengths. Preserve IDs. Return only JSON.
 
 BASELINE PLAN
 ${JSON.stringify(baseline)}
 
-RULES
-1. Each script variation must feel like it came from a DIFFERENT person — different energy, different arc, different hook type.
-2. Dialogue clips must preserve the exact spoken text in order.
-3. Every scene and B-roll prompt must stay 9:16, realistic, lived-in.
-4. B-roll planning stays separate from dialogue planning.
-5. If safe mode is enabled, approval gates stay required.
-6. No markdown fences. Return only valid JSON.`;
+Return only valid JSON. No markdown fences.`;
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -1200,47 +1277,42 @@ RULES
 async function tryAnthropicPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
-  const prompt = `You are an elite creative strategist writing the script layer for a short-form video ad. Your scripts must feel like native content — not ads. If someone scrolling would think "this is an ad," you failed.
+  const hasGuidance = !!cleanText(input.script.description);
+  const guidanceBlock = hasGuidance
+    ? `\n## THE CREATIVE BRIEF — THIS IS YOUR #1 PRIORITY\nThe user's creative direction: "${input.script.description}"\n\nEVERY script MUST be built around this brief. It defines the angle, the concept, and the world the scripts live in. If the brief says "corner" — every script is about filling/transforming a corner. If it says "cozy" — every script is about making something feel cozy. The brief is NOT a suggestion. It is the creative constraint. Interpret it — don't echo it as dialogue — but NEVER ignore it.\n\nDo NOT write generic product scripts. Write scripts that can ONLY exist because of this specific brief.\n`
+    : `\n## NO CREATIVE BRIEF PROVIDED\nMine the product category and knowledge for the strongest emotional angle.\n`;
 
-Return only JSON. No markdown fences. Use the exact ids and array counts provided.
-
-INPUTS
-- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
+  const prompt = `You are an elite creative strategist. Your scripts feel like native content, not ads.
+${guidanceBlock}
+PRODUCT & CONTEXT
 - Product: ${JSON.stringify(input.product)}
-- Script request: ${JSON.stringify(input.script)}
-- Settings: ${JSON.stringify(input.settings)}
 - Knowledge: ${input.knowledge || "None"}
-- Creative direction (brief): ${input.script.description || "None provided — mine the product and category for the strongest emotional angle."}
+- Duration: ${input.script.totalSeconds || 20}s ≈ ${Math.round((input.script.totalSeconds || 20) * 3)} words
+- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
 - Override instructions: ${input.overrideInstructions || "None"}
 
-CREATIVE PHILOSOPHY:
-1. EMOTION-FIRST: Start from what the viewer FEELS, not what the product does. The product answers a feeling they already have.
-2. IDENTITY-BASED: "I didn't think I was the kind of person who cared about this, but here I am" > "this product is great."
-3. SPECIFIC EMOTIONS: Not "confidence" → "the quiet relief of not second-guessing yourself." Not "amazing" → "that dumb smile when something just works."
-4. NATIVE FEEL: Write like a voice memo to a friend. Sentence fragments. Filler words (okay so, honestly, like, wait). False starts. No marketing speak, no superlatives.
-5. CREATIVE DIRECTION: The brief is a compass, not a script. "Corner angle. cozy" → scripts about transforming dead space, feeling a room come together. NEVER echo the brief as spoken words.
+SCRIPT RULES:
+1. EMOTION-FIRST: Start from what the viewer FEELS. The product answers a feeling.
+2. NATIVE: If someone scrolling thinks "this is an ad," you failed.
+3. HOOK DIVERSITY — each script MUST use a different hook type:
+   - Script 1 (${baseline.scriptOptions[0]?.id}): MICRO-STORY — drops into a specific sensory moment
+   - Script 2 (${baseline.scriptOptions[1]?.id}): CONFESSION — opens with vulnerable honesty
+   - Script 3 (${baseline.scriptOptions[2]?.id}): QUIET OBSERVATION — anti-sell, matter-of-fact
+4. VOICE: Sentence fragments. Filler words. Like a voice memo.
+5. CLOSE: End naturally. NEVER CTA language.
+6. Each variation = different person, different energy, different arc.
 
-HOOK DIVERSITY — MANDATORY:
-Each of the 3 scripts MUST use a fundamentally different hook type AND emotional angle:
-- Script 1 (${baseline.scriptOptions[0]?.id}): MICRO-STORY — drops into a specific sensory moment. "I was standing in my kitchen at 6am and I looked at this thing..."
-- Script 2 (${baseline.scriptOptions[1]?.id}): CONFESSION — opens with vulnerable honesty. "I was not going to post this but..." or "Okay this is embarrassing..."
-- Script 3 (${baseline.scriptOptions[2]?.id}): QUIET OBSERVATION — anti-sell energy, deliberately understated. "So. I noticed something." No excitement.
-
-They must feel like they came from 3 DIFFERENT people.
-
-VOICE: Write exactly how people talk on their phones. Never polished. End naturally — trail off, shrug, stop mid-thought. NEVER: "link in bio", "use my code", "check it out", or any CTA.
-
-DURATION: ~3 words/second. ${input.script.totalSeconds || 20}s ≈ ${Math.round((input.script.totalSeconds || 20) * 3)} words. Don't exceed.
+Return only JSON. No markdown fences. Use exact ids and array counts.
 
 RETURN THIS EXACT JSON SHAPE
 {
-  "productAnalysis": "string — analyze the emotional motivator for this product, not features",
+  "productAnalysis": "string — the emotional motivator, not features",
   "selectedScriptId": "${baseline.selectedScriptId}",
   "scriptOptions": [
     ${baseline.scriptOptions
       .map(
         (option) =>
-          `{ "id": "${option.id}", "title": "string", "rationale": "string — explain the emotional angle and hook type", "hook": "string", "cta": "string — natural exit, not a sales pitch", "dialogue": "string — full spoken script" }`
+          `{ "id": "${option.id}", "title": "string", "rationale": "string — the emotional angle and hook type", "hook": "string", "cta": "string — natural exit", "dialogue": "string — full spoken script about THE BRIEF" }`
       )
       .join(",\n    ")}
   ],
@@ -1256,7 +1328,7 @@ RETURN THIS EXACT JSON SHAPE
     ${baseline.sceneVariations
       .map(
         (scene) =>
-          `{ "id": "${scene.id}", "title": "string", "summary": "string", "environment": "string — specific, lived-in, real", "avatarId": "avatar-1 | avatar-2 | avatar-3", "camera": "string", "lighting": "string" }`
+          `{ "id": "${scene.id}", "title": "string", "summary": "string", "environment": "string — specific, lived-in", "avatarId": "avatar-1 | avatar-2 | avatar-3", "camera": "string", "lighting": "string" }`
       )
       .join(",\n    ")}
   ],
@@ -1271,12 +1343,12 @@ RETURN THIS EXACT JSON SHAPE
 }
 
 RULES
-1. Each script must use a DIFFERENT hook framework, emotional angle, and energy level. This is non-negotiable.
-2. Dialogue must sound speakable — easy to say on camera, natural rhythm.
+1. Each script MUST reflect the creative brief. Generic scripts = failure.
+2. Dialogue must sound speakable — natural rhythm, easy to say.
 3. SelectedScriptId must match one of the provided script ids.
-4. Scene environments must be specific and lived-in — "sunlit kitchen with coffee mug and crumbs on the counter" not "modern kitchen."
-5. B-roll must be designed as start frames for motion clips, not final stills.
-6. Do not include prompts, beats, dialogue clip batches, approval gates, architecture, or summary.
+4. Scene environments: specific and lived-in, not generic.
+5. B-roll: start frames for motion, not final stills.
+6. Do not include prompts, beats, dialogue clips, approval gates, architecture, or summary.
 7. Return only valid JSON.`;
 
   try {
