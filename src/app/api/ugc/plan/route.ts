@@ -151,22 +151,31 @@ function makeId(prefix: string, index: number) {
 
 function inferEnvironment(scriptText: string, category: string) {
   const corpus = `${scriptText} ${category}`.toLowerCase();
-  if (/(office|desk|meeting|slack|presentation|zoom|workday)/.test(corpus)) {
-    return "sunlit founder office with a clean desk and lived-in startup energy";
+  if (/(office|desk|meeting|slack|presentation|zoom|workday|founder|startup|co-?working)/.test(corpus)) {
+    return "sunlit modern office with a clean desk, laptop and notebook visible, large window with natural daylight, lived-in startup feel with plants and coffee mug";
   }
-  if (/(bathroom|shower|mirror|skincare|serum|cream|routine)/.test(corpus)) {
-    return "bright bathroom vanity with soft natural daylight and premium toiletry styling";
+  if (/(bathroom|shower|mirror|skincare|serum|cream|face|moisturiz|cleanser|wash|vanity)/.test(corpus)) {
+    return "bright modern bathroom at the vanity mirror, soft natural daylight from a window, clean marble or white countertop with a few real toiletries, bathroom mirror reflecting warm light";
   }
-  if (/(kitchen|cook|coffee|breakfast|drink|snack|meal)/.test(corpus)) {
-    return "warm kitchen counter setup with practical morning light and believable countertop clutter";
+  if (/(kitchen|cook|coffee|breakfast|drink|snack|meal|smoothie|supplement|vitamin)/.test(corpus)) {
+    return "warm kitchen counter with morning light through the window, clean countertop with a cutting board, mugs, and real kitchen items visible, homey and lived-in";
   }
-  if (/(gym|workout|run|protein|fitness|recovery)/.test(corpus)) {
-    return "modern gym corner with matte equipment, sweat realism, and directional side light";
+  if (/(gym|workout|run|protein|fitness|recovery|exercise|sweat|yoga|stretch)/.test(corpus)) {
+    return "modern home gym or fitness studio corner, matte equipment in background, rubber flooring, directional side light from a window, post-workout energy";
   }
-  if (/(car|commute|travel|airport|carry-on)/.test(corpus)) {
-    return "parked car interior with soft windshield light and handheld creator framing";
+  if (/(car|commute|travel|airport|carry-on|road|drive)/.test(corpus)) {
+    return "parked car interior, soft natural light through the windshield, clean dashboard, phone propped on the dash for a selfie angle";
   }
-  return "tasteful home-studio apartment corner with natural window light and creator-friendly depth";
+  if (/(bedroom|morning|night|routine|pillow|bed|wake|sleep)/.test(corpus)) {
+    return "cozy bedroom with an unmade bed in the background, soft morning light from curtains, nightstand with a lamp and personal items, relaxed atmosphere";
+  }
+  if (/(living|couch|sofa|lounge|tv|relax|chill|home)/.test(corpus)) {
+    return "stylish living room with a sofa and throw pillows in the background, warm ambient light, plants, bookshelf or art on the wall, comfortable and real";
+  }
+  if (/(outdoor|garden|patio|balcony|park|walk|sun|nature)/.test(corpus)) {
+    return "outdoor patio or balcony with greenery, natural sunlight, comfortable seating visible, warm golden-hour feel";
+  }
+  return "well-lit apartment with natural window light, a few personal items visible in the background, clean but lived-in, warm and inviting atmosphere";
 }
 
 function buildScriptBeats(dialogue: string, requestedSeconds: number): UgcScriptBeat[] {
@@ -274,34 +283,46 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
   }));
 }
 
+function inferSettingForScript(theme: string, category: string) {
+  const corpus = `${theme} ${category}`.toLowerCase();
+  if (/(office|work|desk|startup|founder|meeting|b2b)/.test(corpus)) return { place: "at my desk", room: "office" };
+  if (/(bathroom|skincare|beauty|serum|face|cream|wash)/.test(corpus)) return { place: "at the mirror", room: "bathroom" };
+  if (/(kitchen|cook|coffee|morning|breakfast|supplement|vitamin|drink)/.test(corpus)) return { place: "in the kitchen", room: "kitchen" };
+  if (/(gym|fitness|workout|protein|recovery)/.test(corpus)) return { place: "after my workout", room: "gym" };
+  if (/(bedroom|morning routine|night routine|sleep)/.test(corpus)) return { place: "in my room", room: "bedroom" };
+  if (/(outdoor|walk|nature|garden)/.test(corpus)) return { place: "outside", room: "patio" };
+  return { place: "at home", room: "living room" };
+}
+
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
   const theme = cleanText(input.theme) || "creator testimonial";
-  const ctaSentence = "Tap below to try it.";
-  const knowledgeHint = knowledge ? ` Brand context: ${finishSentence(knowledge)}` : "";
+  const ctaSentence = "Link is in my bio.";
+  const knowledgeHint = knowledge ? ` ${finishSentence(knowledge)}` : "";
   const categoryLabel = category || "product";
+  const setting = inferSettingForScript(theme, category);
   const briefFocusLines = buildBriefFocusLines(input.description, productName, category);
 
   const variants = [
     {
-      title: "Direct Hook",
-      rationale: `Fast ${theme} version that gets to the point immediately and sets up a clear first scene.`,
-      hook: "If you want the quick version, this is the one to use.",
+      title: "Quick Take",
+      rationale: `Fast, punchy ${theme} script set ${setting.place}. Gets to the point in the first line and keeps moving.`,
+      hook: `Okay so I have been using ${productName} for about two weeks now and I need to talk about it.`,
       dialogue:
-        `If you want the quick version, ${productName} is the ${categoryLabel} I keep reaching for. ${briefFocusLines[0]} ${briefFocusLines[1]} ${ctaSentence}${knowledgeHint}`.trim(),
+        `Okay so I have been using ${productName} for about two weeks now and I need to talk about it. I am ${setting.place} right now and I literally just used it. ${briefFocusLines[0]} Honestly I was skeptical at first but the difference is noticeable. ${briefFocusLines[1]} If you have been looking for a good ${categoryLabel}, this is the one. ${ctaSentence}${knowledgeHint}`.trim(),
     },
     {
-      title: "Creator Story",
-      rationale: `Personal recommendation angle built for trust, retention, and a natural selfie-style delivery within the ${theme} theme.`,
-      hook: "I did not expect to keep using this as much as I do.",
+      title: "Honest Review",
+      rationale: `Personal creator story angle set ${setting.place} — feels like a genuine recommendation, not an ad.`,
+      hook: `I was not planning on making this video but I keep getting asked about this ${categoryLabel}.`,
       dialogue:
-        `I did not expect ${productName} to become part of my routine this quickly, but it did. ${briefFocusLines[1]} It feels easy to talk about because the result is visible, the use case is real, and it fits naturally into a creator-style video. ${ctaSentence}${knowledgeHint}`.trim(),
+        `I was not planning on making this video but I keep getting asked about this ${categoryLabel}. So here is my honest take on ${productName}. I have been using it ${setting.place} and the thing that surprised me is how quickly I noticed a difference. ${briefFocusLines[1]} It is not one of those things you buy and forget about. I actually reach for it every day now. ${briefFocusLines[0]} If you want to try it yourself, ${ctaSentence}${knowledgeHint}`.trim(),
     },
     {
-      title: "Show And Tell",
-      rationale: `More visual version designed to support both on-camera dialogue and stronger supporting shots for a ${theme} ad.`,
-      hook: "Watch how this looks in a real shot.",
+      title: "Show Don't Tell",
+      rationale: `Visual-first ${theme} script where the creator demonstrates the product ${setting.place} with proof.`,
+      hook: `Let me show you why I switched to ${productName}.`,
       dialogue:
-        `Watch how ${productName} looks when you actually use it in frame. ${briefFocusLines[2]} That is what makes the ad easy to believe, easy to demo, and easy to cut with supporting B-roll. ${ctaSentence}${knowledgeHint}`.trim(),
+        `Let me show you why I switched to ${productName}. I am ${setting.place} and I am going to show you exactly what I mean. ${briefFocusLines[2]} See? That is the difference. ${briefFocusLines[1]} I have tried a lot of ${categoryLabel} options and this is the one that actually delivers. You can check it out, ${ctaSentence}${knowledgeHint}`.trim(),
     },
   ];
 
@@ -403,7 +424,7 @@ function buildSceneVariations(
       avatarId: avatar.id,
       camera,
       lighting,
-      prompt: `Place this exact referenced ${category || "product"} for ${productName} into a 9:16 ${settings.imageResolution} UGC base scene. Preserve the real product exactly: ${productAppearance}. Include ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. The person should appear to be filming themselves or holding the recording device, looking directly into the camera, ready to talk to the viewer. Environment: ${environment}. Camera framing: ${camera}. Lighting: ${lighting}. Keep the product clearly readable in frame, do not change its design, and make the scene stable enough to use as the starting image for multiple talking clips.`,
+      prompt: `9:16 ${settings.imageResolution} vertical UGC selfie-style photo of a real person about to film a creator video about ${productName}. The product (${productAppearance}) must be clearly visible and true to its real appearance. The person is ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. SELFIE FRAMING: The shot looks like the person set their phone on a shelf, desk, or tripod at arm's length. The camera is at eye level or slightly above. The person faces the camera directly, relaxed and natural, as if about to start talking to their audience. No one is holding a phone or camera — hands are free or holding the product. ENVIRONMENT: ${environment}. This must match the script context: "${finishSentence(script.dialogue.slice(0, 200))}". Camera: ${camera}. Lighting: ${lighting} — natural to this specific room, not studio lighting. The overall feel should be an authentic creator selfie, not a produced photoshoot.`,
     };
   });
 }
