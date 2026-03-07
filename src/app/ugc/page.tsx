@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IBM_Plex_Sans, Space_Grotesk } from "next/font/google";
 import { MODEL_LIST } from "@/lib/models";
 import {
@@ -828,10 +828,10 @@ export default function UgcStudioPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showPromptPanel, setShowPromptPanel] = useState(false);
   const [showPresetPanel, setShowPresetPanel] = useState(false);
+  const [showProductSelector, setShowProductSelector] = useState(false);
   const [activeStage, setActiveStage] = useState<UgcStageView>("setup");
 
   const imageModelOptions = useMemo(() => MODEL_LIST.filter((model) => model.id !== "nanobanana-3-pro"), []);
-  const deferredProductSearch = useDeferredValue(productSearch);
   const selectedScene = useMemo(
     () => sceneRenders.find((render) => render.id === selectedSceneId) || null,
     [sceneRenders, selectedSceneId]
@@ -877,20 +877,6 @@ export default function UgcStudioPage() {
   );
 
   const promptPackView = sectionPromptPack(promptPack, plan);
-  const filteredCatalogProducts = useMemo(() => {
-    if (!deferredProductSearch.trim()) return products.slice(0, 40);
-    const query = deferredProductSearch.toLowerCase();
-    return products
-      .filter(
-        (product) =>
-          product.name.toLowerCase().includes(query) ||
-          product.slug.toLowerCase().includes(query) ||
-          product.shopify_vendor?.toLowerCase().includes(query) ||
-          product.shopify_product_type?.toLowerCase().includes(query)
-      )
-      .slice(0, 40);
-  }, [deferredProductSearch, products]);
-
   const addActivity = (stage: string, message: string, tone: ActivityEntry["tone"] = "info") => {
     setActivity((current) => [
       {
@@ -1089,6 +1075,18 @@ export default function UgcStudioPage() {
     setScriptText(script.dialogue);
     setSelectedScriptId(script.id);
     await handleBuildPlan({ scriptOverride: script.dialogue });
+  };
+
+  const handleRegenerateScripts = async () => {
+    if (scriptMode !== "generate") return;
+    await handleBuildPlan({
+      overrideInstructions: [
+        approvals.script.note,
+        "Discard the current generated script set and return three fresh alternatives with different hooks, structures, and wording. Use the user brief only as direction for angle, concept, and emphasis, not as copy to repeat verbatim.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    });
   };
 
   const handleGenerateScenes = async () => {
@@ -1718,106 +1716,21 @@ export default function UgcStudioPage() {
 
         <div className="grid gap-6 xl:grid-cols-[300px_minmax(0,1fr)_320px]">
           <aside className="space-y-5 xl:sticky xl:top-20 xl:self-start">
-            <SectionCard title="Run setup" eyebrow="Controls">
-              <div className="space-y-5">
-                <div>
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Duration</div>
-                  <div className="grid grid-cols-4 gap-2">
-                    {[15, 20, 25, 30].map((seconds) => (
-                      <button
-                        key={seconds}
-                        onClick={() => setSettings((current) => ({ ...current, dialogueSeconds: seconds }))}
-                        className={cn(
-                          "rounded-[12px] border px-3 py-2 text-sm font-semibold transition",
-                          settings.dialogueSeconds === seconds
-                            ? "border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                            : "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-400 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
-                        )}
-                      >
-                        {seconds}s
-                      </button>
-                    ))}
+            <SectionCard title="Run recipe" eyebrow="At a glance">
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ["Duration", `${settings.dialogueSeconds}s`],
+                  ["Mode", settings.safeMode === "safe" ? "Review" : "Fast"],
+                  ["Scenes", String(settings.sceneVariationCount)],
+                  ["Coverage", String(settings.bRollClipCount)],
+                  ["Images", imageModelOptions.find((model) => model.id === settings.imageModelId)?.label || settings.imageModelId],
+                  ["Planner", activePlannerLabel],
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="rounded-[14px] border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/70">
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{label}</div>
+                    <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{value}</div>
                   </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Mode</div>
-                  <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
-                    <button
-                      onClick={() => setSettings((current) => ({ ...current, safeMode: "safe" }))}
-                      className={cn(
-                        "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
-                        settings.safeMode === "safe"
-                          ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                          : "text-slate-500 dark:text-slate-400"
-                      )}
-                    >
-                      Review
-                    </button>
-                    <button
-                      onClick={() => setSettings((current) => ({ ...current, safeMode: "fast" }))}
-                      className={cn(
-                        "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
-                        settings.safeMode === "fast"
-                          ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                          : "text-slate-500 dark:text-slate-400"
-                      )}
-                    >
-                      Fast
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid gap-3">
-                  <label className="block">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Scene options</div>
-                    <input
-                      type="number"
-                      min={1}
-                      max={8}
-                      value={settings.sceneVariationCount}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, sceneVariationCount: Number(event.target.value) || 4 }))
-                      }
-                      className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                  </label>
-                  <label className="block">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Coverage clips</div>
-                    <input
-                      type="number"
-                      min={1}
-                      max={8}
-                      value={settings.bRollClipCount}
-                      onChange={(event) =>
-                        setSettings((current) => ({ ...current, bRollClipCount: Number(event.target.value) || 4 }))
-                      }
-                      className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    />
-                  </label>
-                  <label className="block">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Image model</div>
-                    <select
-                      value={settings.imageModelId}
-                      onChange={(event) => setSettings((current) => ({ ...current, imageModelId: event.target.value }))}
-                      className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                    >
-                      {imageModelOptions.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-
-                <button
-                  onClick={() => handleBuildPlan()}
-                  disabled={planLoading}
-                  className="w-full rounded-[12px] bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                >
-                  {planLoading ? "Generating scripts..." : "Generate scripts"}
-                </button>
+                ))}
               </div>
             </SectionCard>
 
@@ -1926,133 +1839,37 @@ export default function UgcStudioPage() {
             </SectionCard>
 
             {activeStage === "setup" ? (
-              <div className="grid gap-6 2xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-                <SectionCard
-                  title="Script brief"
-                  eyebrow="Step 01"
-                  actions={
-                    <button
-                      onClick={() => handleBuildPlan()}
-                      disabled={planLoading}
-                      className="rounded-[12px] bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
-                    >
-                      {planLoading ? "Generating..." : "Generate scripts"}
-                    </button>
-                  }
-                >
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
-                      <button
-                        onClick={() => setScriptMode("generate")}
-                        className={cn(
-                          "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
-                          scriptMode === "generate"
-                            ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                            : "text-slate-500 dark:text-slate-400"
-                        )}
-                      >
-                        Generate
-                      </button>
-                      <button
-                        onClick={() => setScriptMode("upload")}
-                        className={cn(
-                          "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
-                          scriptMode === "upload"
-                            ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
-                            : "text-slate-500 dark:text-slate-400"
-                        )}
-                      >
-                        Use my script
-                      </button>
-                    </div>
-
-                    <div className="grid gap-5">
-                      <label className="block">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Theme</div>
-                        <div className="mb-3 flex flex-wrap gap-2">
-                          {THEME_SUGGESTIONS.map((item) => (
-                            <button
-                              key={item}
-                              onClick={() => setTheme(item)}
-                              className={cn(
-                                "rounded-[10px] border px-3 py-1.5 text-xs font-semibold transition",
-                                theme === item
-                                  ? "border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950"
-                                  : "border-slate-300 text-slate-700 hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
-                              )}
-                            >
-                              {item}
-                            </button>
-                          ))}
-                        </div>
-                        <input
-                          value={theme}
-                          onChange={(event) => setTheme(event.target.value)}
-                          placeholder="Creator testimonial"
-                          className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                        />
-                      </label>
-
-                      {scriptMode === "generate" ? (
-                        <label className="block">
-                          <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Description</div>
-                          <textarea
-                            value={description}
-                            onChange={(event) => setDescription(event.target.value)}
-                            placeholder="Describe the angle, the promise, the room, the audience feel, or any detail the script should carry."
-                            className="min-h-[240px] w-full rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                          />
-                        </label>
-                      ) : (
-                        <div className="space-y-3">
-                          <textarea
-                            value={scriptText}
-                            onChange={(event) => setScriptText(event.target.value)}
-                            placeholder="Paste your approved script here."
-                            className="min-h-[240px] w-full rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                          />
-                          <label className="inline-flex cursor-pointer items-center rounded-[10px] border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white">
-                            Import text file
-                            <input
-                              type="file"
-                              accept=".txt,.md"
-                              className="hidden"
-                              onChange={(event) => handleScriptImport(event.target.files?.[0] || null)}
-                            />
-                          </label>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid gap-3 md:grid-cols-3">
-                      <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Planner</div>
-                        <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{activePlannerLabel}</div>
-                        <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{plannerStatusNote}</div>
+              <SectionCard
+                title="Build the run"
+                eyebrow="Step 01"
+                actions={
+                  <button
+                    onClick={() => handleBuildPlan()}
+                    disabled={planLoading}
+                    className="rounded-[12px] bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                  >
+                    {planLoading ? "Generating..." : "Generate scripts"}
+                  </button>
+                }
+              >
+                <div className="grid gap-5 xl:grid-cols-[1.05fr_1.15fr_0.8fr]">
+                  <div className="space-y-4 rounded-[16px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Product reference
                       </div>
-                      <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Talking pace</div>
-                        <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{clipDurationLabel}</div>
-                        <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Short lines are merged to avoid padded 5 second clips.</div>
-                      </div>
-                      <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Coverage agent</div>
-                        <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{coverageStatusLabel}</div>
-                        <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Starts automatically once the base scene is locked.</div>
+                      <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        Pick from the catalog or upload a custom hero image.
                       </div>
                     </div>
-                  </div>
-                </SectionCard>
 
-                <SectionCard title="Product reference" eyebrow="Step 02">
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-slate-200 bg-slate-50 p-1 dark:border-slate-800 dark:bg-slate-900">
+                    <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-950">
                       <button
                         onClick={() => setProductSource("catalog")}
                         className={cn(
                           "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
                           productSource === "catalog"
-                            ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                            ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
                             : "text-slate-500 dark:text-slate-400"
                         )}
                       >
@@ -2063,7 +1880,7 @@ export default function UgcStudioPage() {
                         className={cn(
                           "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
                           productSource === "upload"
-                            ? "bg-white text-slate-950 shadow-sm dark:bg-slate-800 dark:text-white"
+                            ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
                             : "text-slate-500 dark:text-slate-400"
                         )}
                       >
@@ -2072,16 +1889,15 @@ export default function UgcStudioPage() {
                     </div>
 
                     {productSource === "catalog" ? (
-                      <div className="grid gap-4 xl:grid-cols-[290px_minmax(0,1fr)]">
-                        <div className="rounded-[14px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
-                          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Selected product</div>
+                      <div className="space-y-4">
+                        <div className="rounded-[14px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
                           {selectedProduct ? (
-                            <div className="mt-3 space-y-3">
-                              <div className="h-[220px] overflow-hidden rounded-[12px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+                            <div className="grid grid-cols-[76px_minmax(0,1fr)] items-center gap-4">
+                              <div className="h-20 w-[76px] overflow-hidden rounded-[12px] border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={selectedProduct.image_url} alt={selectedProduct.name} className="h-full w-full object-cover" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <div className="text-sm font-semibold text-slate-950 dark:text-white">{selectedProduct.name}</div>
                                 <div className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
                                   {selectedProduct.shopify_vendor || "Manual"} {selectedProduct.shopify_product_type ? `· ${selectedProduct.shopify_product_type}` : ""}
@@ -2089,73 +1905,30 @@ export default function UgcStudioPage() {
                               </div>
                             </div>
                           ) : (
-                            <div className="mt-3 rounded-[12px] border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
-                              Choose a product from the list.
+                            <div className="rounded-[12px] border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                              No product selected yet.
                             </div>
                           )}
-
-                          <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-                            <span>{catalogCountLabel}</span>
-                            <button
-                              onClick={async () => {
-                                const ok = await refreshProducts();
-                                addActivity("product", ok ? "Catalog refreshed." : "Catalog refresh failed.", ok ? "success" : "error");
-                              }}
-                              disabled={productsLoading}
-                              className="rounded-[10px] border border-slate-300 px-3 py-1.5 font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
-                            >
-                              {productsLoading ? "Loading..." : "Refresh"}
-                            </button>
-                          </div>
                         </div>
 
-                        <div className="overflow-hidden rounded-[14px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950/70">
-                          <div className="border-b border-slate-200 p-4 dark:border-slate-800">
-                            <input
-                              value={productSearch}
-                              onChange={(event) => setProductSearch(event.target.value)}
-                              placeholder="Search the catalog"
-                              className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-900 dark:text-white"
-                            />
-                          </div>
-                          <div className="max-h-[560px] overflow-y-auto">
-                            {productsLoading ? (
-                              <div className="p-6 text-sm text-slate-500 dark:text-slate-400">Loading products...</div>
-                            ) : filteredCatalogProducts.length === 0 ? (
-                              <div className="p-6 text-sm text-slate-500 dark:text-slate-400">
-                                {products.length === 0 ? "No catalog products were loaded. Refresh or upload a product image." : "No products matched your search."}
-                              </div>
-                            ) : (
-                              filteredCatalogProducts.map((product) => (
-                                <button
-                                  key={product.id}
-                                  onClick={() => {
-                                    setSelectedProduct(product);
-                                    setProductSource("catalog");
-                                    addActivity("product", `Selected ${product.name} from the catalog.`, "success");
-                                  }}
-                                  className={cn(
-                                    "grid w-full grid-cols-[72px_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-200 px-4 py-3 text-left transition hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-900/70",
-                                    selectedProduct?.id === product.id && "bg-sky-50 dark:bg-sky-950/20"
-                                  )}
-                                >
-                                  <div className="h-16 w-[72px] overflow-hidden rounded-[10px] border border-slate-200 bg-slate-100 dark:border-slate-800 dark:bg-slate-900">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img src={product.image_url} alt={product.name} className="h-full w-full object-cover" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <div className="text-sm font-semibold text-slate-950 dark:text-white">{product.name}</div>
-                                    <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                                      {product.shopify_vendor || "Manual"} {product.shopify_product_type ? `· ${product.shopify_product_type}` : ""}
-                                    </div>
-                                  </div>
-                                  <div className={cn("rounded-[8px] border px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]", selectedProduct?.id === product.id ? "border-sky-500 bg-sky-50 text-sky-700 dark:bg-sky-950/20 dark:text-sky-300" : "border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400")}>
-                                    {selectedProduct?.id === product.id ? "Selected" : "Pick"}
-                                  </div>
-                                </button>
-                              ))
-                            )}
-                          </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => setShowProductSelector(true)}
+                            className="rounded-[12px] bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-200"
+                          >
+                            {selectedProduct ? "Change product" : "Choose from catalog"}
+                          </button>
+                          <button
+                            onClick={async () => {
+                              const ok = await refreshProducts();
+                              addActivity("product", ok ? "Catalog refreshed." : "Catalog refresh failed.", ok ? "success" : "error");
+                            }}
+                            disabled={productsLoading}
+                            className="rounded-[12px] border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                          >
+                            {productsLoading ? "Loading..." : "Refresh"}
+                          </button>
+                          <div className="text-xs text-slate-500 dark:text-slate-400">{catalogCountLabel}</div>
                         </div>
                       </div>
                     ) : (
@@ -2165,10 +1938,10 @@ export default function UgcStudioPage() {
                           <input
                             value={uploadedProductName}
                             onChange={(event) => setUploadedProductName(event.target.value)}
-                            className="w-full rounded-[12px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                            className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                           />
                         </label>
-                        <label className="inline-flex cursor-pointer items-center rounded-[10px] border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white">
+                        <label className="inline-flex cursor-pointer items-center rounded-[12px] border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white">
                           {uploadingProduct ? "Uploading..." : "Upload product image"}
                           <input
                             type="file"
@@ -2178,7 +1951,7 @@ export default function UgcStudioPage() {
                           />
                         </label>
                         {uploadedProductUrl ? (
-                          <div className="h-[420px] overflow-hidden rounded-[14px] border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
+                          <div className="h-[250px] overflow-hidden rounded-[14px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={uploadedProductUrl} alt={uploadedProductName} className="h-full w-full object-cover" />
                           </div>
@@ -2191,13 +1964,223 @@ export default function UgcStudioPage() {
                       <textarea
                         value={appearanceNotes}
                         onChange={(event) => setAppearanceNotes(event.target.value)}
-                        placeholder="Anything that must stay exact: materials, finish, branding, hero details, or proportions."
-                        className="min-h-[120px] w-full rounded-[14px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        placeholder="Materials, finish, branding, proportions, or other details that must stay exact."
+                        className="min-h-[108px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
                       />
                     </label>
                   </div>
-                </SectionCard>
-              </div>
+
+                  <div className="space-y-4 rounded-[16px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Script direction
+                      </div>
+                      <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        Start with AI-generated options or paste the script you already approved.
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-950">
+                      <button
+                        onClick={() => setScriptMode("generate")}
+                        className={cn(
+                          "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
+                          scriptMode === "generate"
+                            ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                            : "text-slate-500 dark:text-slate-400"
+                        )}
+                      >
+                        Generate
+                      </button>
+                      <button
+                        onClick={() => setScriptMode("upload")}
+                        className={cn(
+                          "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
+                          scriptMode === "upload"
+                            ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                            : "text-slate-500 dark:text-slate-400"
+                        )}
+                      >
+                        Upload
+                      </button>
+                    </div>
+
+                    <label className="block">
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Theme</div>
+                      <div className="mb-3 flex flex-wrap gap-2">
+                        {THEME_SUGGESTIONS.map((item) => (
+                          <button
+                            key={item}
+                            onClick={() => setTheme(item)}
+                            className={cn(
+                              "rounded-[10px] border px-3 py-1.5 text-xs font-semibold transition",
+                              theme === item
+                                ? "border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                                : "border-slate-300 text-slate-700 hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                            )}
+                          >
+                            {item}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        value={theme}
+                        onChange={(event) => setTheme(event.target.value)}
+                        placeholder="Creator testimonial"
+                        className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                      />
+                    </label>
+
+                    {scriptMode === "generate" ? (
+                      <label className="block">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Script guidance</div>
+                        <textarea
+                          value={description}
+                          onChange={(event) => setDescription(event.target.value)}
+                          placeholder="Describe the angle, concepts, claims to emphasize, room ideas, audience feel, or hook style you want the scripts to explore."
+                          className="min-h-[220px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        />
+                        <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                          This is used as direction for the script angles and concepts. It is not meant to be copied word-for-word into the dialogue.
+                        </div>
+                      </label>
+                    ) : (
+                      <div className="space-y-3">
+                        <textarea
+                          value={scriptText}
+                          onChange={(event) => setScriptText(event.target.value)}
+                          placeholder="Paste your approved script here."
+                          className="min-h-[220px] w-full rounded-[14px] border border-slate-200 bg-white px-4 py-3 text-sm leading-6 text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        />
+                        <label className="inline-flex cursor-pointer items-center rounded-[12px] border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white">
+                          Import text file
+                          <input
+                            type="file"
+                            accept=".txt,.md"
+                            className="hidden"
+                            onChange={(event) => handleScriptImport(event.target.files?.[0] || null)}
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4 rounded-[16px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                        Initial config
+                      </div>
+                      <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                        Set runtime, review mode, and generation counts before the planner starts.
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Duration</div>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[15, 20, 25, 30].map((seconds) => (
+                          <button
+                            key={seconds}
+                            onClick={() => setSettings((current) => ({ ...current, dialogueSeconds: seconds }))}
+                            className={cn(
+                              "rounded-[12px] border px-3 py-2 text-sm font-semibold transition",
+                              settings.dialogueSeconds === seconds
+                                ? "border-slate-950 bg-slate-950 text-white dark:border-white dark:bg-white dark:text-slate-950"
+                                : "border-slate-200 bg-white text-slate-700 hover:border-slate-400 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                            )}
+                          >
+                            {seconds}s
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Mode</div>
+                      <div className="grid grid-cols-2 gap-2 rounded-[14px] border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-950">
+                        <button
+                          onClick={() => setSettings((current) => ({ ...current, safeMode: "safe" }))}
+                          className={cn(
+                            "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
+                            settings.safeMode === "safe"
+                              ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                              : "text-slate-500 dark:text-slate-400"
+                          )}
+                        >
+                          Review
+                        </button>
+                        <button
+                          onClick={() => setSettings((current) => ({ ...current, safeMode: "fast" }))}
+                          className={cn(
+                            "rounded-[10px] px-3 py-2 text-sm font-semibold transition",
+                            settings.safeMode === "fast"
+                              ? "bg-slate-950 text-white dark:bg-white dark:text-slate-950"
+                              : "text-slate-500 dark:text-slate-400"
+                          )}
+                        >
+                          Fast
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <label className="block">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Scene options</div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={8}
+                          value={settings.sceneVariationCount}
+                          onChange={(event) =>
+                            setSettings((current) => ({ ...current, sceneVariationCount: Number(event.target.value) || 4 }))
+                          }
+                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        />
+                      </label>
+                      <label className="block">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Coverage clips</div>
+                        <input
+                          type="number"
+                          min={1}
+                          max={8}
+                          value={settings.bRollClipCount}
+                          onChange={(event) =>
+                            setSettings((current) => ({ ...current, bRollClipCount: Number(event.target.value) || 4 }))
+                          }
+                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        />
+                      </label>
+                      <label className="block">
+                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Image model</div>
+                        <select
+                          value={settings.imageModelId}
+                          onChange={(event) => setSettings((current) => ({ ...current, imageModelId: event.target.value }))}
+                          className="w-full rounded-[12px] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-sky-500 dark:border-slate-800 dark:bg-slate-950 dark:text-white"
+                        >
+                          {imageModelOptions.map((model) => (
+                            <option key={model.id} value={model.id}>
+                              {model.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+
+                    <div className="grid gap-3">
+                      <div className="rounded-[14px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Planner</div>
+                        <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{activePlannerLabel}</div>
+                        <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">{plannerStatusNote}</div>
+                      </div>
+                      <div className="rounded-[14px] border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Talking pace</div>
+                        <div className="mt-2 text-sm font-semibold text-slate-950 dark:text-white">{clipDurationLabel}</div>
+                        <div className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">Short lines are merged so the actor is not padded into unnecessary 5 second clips.</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
             ) : null}
 
             {activeStage === "plan" ? (
@@ -2237,7 +2220,18 @@ export default function UgcStudioPage() {
                             <h3 className="font-[var(--font-ugc-display)] text-xl font-semibold tracking-[-0.03em] text-slate-950 dark:text-white">Choose the script</h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400">Selecting a different card rebuilds the downstream scene and clip plan around that script.</p>
                           </div>
-                          <StatusPill status={approvals.script.status} />
+                          <div className="flex items-center gap-2">
+                            {scriptMode === "generate" ? (
+                              <button
+                                onClick={handleRegenerateScripts}
+                                disabled={planLoading}
+                                className="rounded-[10px] border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-sky-500 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:border-sky-500 dark:hover:text-white"
+                              >
+                                Discard all and retry
+                              </button>
+                            ) : null}
+                            <StatusPill status={approvals.script.status} />
+                          </div>
                         </div>
                         <div className="grid gap-4 xl:grid-cols-3">
                           {plan.scriptOptions.map((script) => (
@@ -2707,7 +2701,7 @@ export default function UgcStudioPage() {
                   steps={[
                     {
                       label: "Write scripts",
-                      description: "Turns the product, theme, duration, and description into short creator-style scripts.",
+                      description: "Turns the product, theme, duration, and brief into short creator-style scripts without copying the brief word-for-word.",
                       status: plan ? approvals.script.status : planLoading ? "running" : "pending",
                     },
                     {
@@ -2800,6 +2794,21 @@ export default function UgcStudioPage() {
             </SectionCard>
           </aside>
         </div>
+
+        {showProductSelector ? (
+          <ProductSelectorModal
+            products={products}
+            search={productSearch}
+            setSearch={setProductSearch}
+            onClose={() => setShowProductSelector(false)}
+            onSelect={(product) => {
+              setSelectedProduct(product);
+              setProductSource("catalog");
+              setShowProductSelector(false);
+              addActivity("product", `Selected ${product.name} from the catalog.`, "success");
+            }}
+          />
+        ) : null}
 
         {showPromptPanel ? (
           <OverlaySheet

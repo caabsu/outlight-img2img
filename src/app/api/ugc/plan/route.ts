@@ -111,6 +111,40 @@ function estimateDurationSeconds(text: string, fallbackSeconds: number) {
   return clamp(Math.round(words / 2.5), 5, 60);
 }
 
+function buildBriefFocusLines(brief: string, productName: string, category: string) {
+  const normalized = cleanText(brief).toLowerCase();
+  const focus = {
+    trust: /(testimonial|recommend|review|personal|story|routine)/.test(normalized),
+    transformation: /(before|after|transform|difference|change|result)/.test(normalized),
+    demo: /(demo|show|visual|proof|on camera|see|angle)/.test(normalized),
+    premium: /(premium|luxury|elevated|editorial|high-end)/.test(normalized),
+    office: /(office|desk|work|meeting|startup)/.test(normalized),
+    lifestyle: /(lifestyle|daily|morning|night|routine)/.test(normalized),
+  };
+
+  return [
+    focus.transformation
+      ? "Show the change quickly and make the payoff feel obvious on camera."
+      : focus.office
+        ? "Frame it like something that fits naturally into a real work setup."
+        : focus.demo
+          ? "Lead with the clearest visual proof instead of overexplaining it."
+          : "Show the payoff fast and keep the message easy to believe.",
+    focus.trust
+      ? "Keep the tone personal and specific so it lands like a real recommendation."
+      : focus.premium
+        ? "Make it feel polished but still native to creator footage."
+        : focus.lifestyle
+          ? "Make it feel like a natural part of a real routine."
+          : "Make it feel like something the creator genuinely uses.",
+    focus.premium
+      ? "Use concise premium-sounding wording without turning it into brand copy."
+      : focus.demo
+        ? "Build around one clear demo moment and close with a simple next step."
+        : `Keep ${productName} easy to picture in a real ${category || "product"} use case and end with a clean CTA.`,
+  ];
+}
+
 function makeId(prefix: string, index: number) {
   return `${prefix}-${index + 1}`;
 }
@@ -242,12 +276,10 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
 
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
   const theme = cleanText(input.theme) || "creator testimonial";
-  const description =
-    finishSentence(input.description) ||
-    `Show why ${productName} feels worth reaching for in a real-world creator setting.`;
   const ctaSentence = "Tap below to try it.";
   const knowledgeHint = knowledge ? ` Brand context: ${finishSentence(knowledge)}` : "";
   const categoryLabel = category || "product";
+  const briefFocusLines = buildBriefFocusLines(input.description, productName, category);
 
   const variants = [
     {
@@ -255,21 +287,21 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
       rationale: `Fast ${theme} version that gets to the point immediately and sets up a clear first scene.`,
       hook: "If you want the quick version, this is the one to use.",
       dialogue:
-        `If you want the quick version, ${productName} is the ${categoryLabel} I keep reaching for. ${description} You can show it clearly on camera, explain the result fast, and make it feel believable instead of overproduced. ${ctaSentence}${knowledgeHint}`.trim(),
+        `If you want the quick version, ${productName} is the ${categoryLabel} I keep reaching for. ${briefFocusLines[0]} ${briefFocusLines[1]} ${ctaSentence}${knowledgeHint}`.trim(),
     },
     {
       title: "Creator Story",
       rationale: `Personal recommendation angle built for trust, retention, and a natural selfie-style delivery within the ${theme} theme.`,
       hook: "I did not expect to keep using this as much as I do.",
       dialogue:
-        `I did not expect ${productName} to become part of my routine this quickly, but it did. ${description} It feels easy to talk about because the result is visible, the use case is real, and it fits naturally into a creator-style video. ${ctaSentence}${knowledgeHint}`.trim(),
+        `I did not expect ${productName} to become part of my routine this quickly, but it did. ${briefFocusLines[1]} It feels easy to talk about because the result is visible, the use case is real, and it fits naturally into a creator-style video. ${ctaSentence}${knowledgeHint}`.trim(),
     },
     {
       title: "Show And Tell",
       rationale: `More visual version designed to support both on-camera dialogue and stronger supporting shots for a ${theme} ad.`,
       hook: "Watch how this looks in a real shot.",
       dialogue:
-        `Watch how ${productName} looks when you actually use it in frame. ${description} That is what makes the ad easy to believe, easy to demo, and easy to cut with supporting B-roll. ${ctaSentence}${knowledgeHint}`.trim(),
+        `Watch how ${productName} looks when you actually use it in frame. ${briefFocusLines[2]} That is what makes the ad easy to believe, easy to demo, and easy to cut with supporting B-roll. ${ctaSentence}${knowledgeHint}`.trim(),
     },
   ];
 
@@ -923,12 +955,13 @@ RETURN THIS EXACT JSON SHAPE
 
 RULES
 1. Keep the dialogue natural, creator-friendly, and easy to say on camera.
-2. Match the runtime target by making each script concise but complete.
-3. SelectedScriptId must match one of the provided script ids.
-4. Scene directions must preserve the referenced product and feel believable for a selfie-style talking ad.
-5. B-roll directions must be designed as start frames for motion, not polished final stills.
-6. Do not include prompts, beats, dialogue clip batches, approval gates, architecture, or summary fields.
-7. Return only valid JSON.`;
+2. Treat the user description as directional input for angle, concept, and emphasis. Do not mirror it word-for-word in the dialogue unless the user uploaded exact script text.
+3. Match the runtime target by making each script concise but complete.
+4. SelectedScriptId must match one of the provided script ids.
+5. Scene directions must preserve the referenced product and feel believable for a selfie-style talking ad.
+6. B-roll directions must be designed as start frames for motion, not polished final stills.
+7. Do not include prompts, beats, dialogue clip batches, approval gates, architecture, or summary fields.
+8. Return only valid JSON.`;
 
   try {
     const anthropic = new Anthropic({

@@ -184,7 +184,7 @@ export const DEFAULT_UGC_WORKFLOW_SETTINGS: UgcWorkflowSettings = {
 
 export const DEFAULT_UGC_PROMPT_PACK: UgcAgentPromptPack = {
   strategist:
-    "You are the Script Strategist for UGC video ads. Use the chosen product, duration, theme, and user description to write short creator-style dialogue options. Keep the wording natural, specific, easy to say on camera, and matched to the requested runtime. Open with a strong first line, keep the middle visually demonstrable, and end with a simple call to action.",
+    "You are the Script Strategist for UGC video ads. Use the chosen product, duration, theme, and user brief to write short creator-style dialogue options. Treat the brief as directional guidance for angle, concept, and emphasis, not copy to repeat verbatim unless the user supplied an exact script. Keep the wording natural, specific, easy to say on camera, and matched to the requested runtime. Open with a strong first line, keep the middle visually demonstrable, and end with a simple call to action.",
   sceneArchitect:
     "You are the Scene Architect. Study the approved script and product image, then design vertical base-scene prompts that preserve the exact product appearance. Each scene must include a believable on-camera person who feels right for the script, appears to be filming themselves, and looks toward the camera. Match the room and styling to the script so the result feels commercially usable and consistent enough to support both talking clips and B-roll.",
   dialogueDirector:
