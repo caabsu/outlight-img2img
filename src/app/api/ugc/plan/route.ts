@@ -313,19 +313,82 @@ function inferSettingForScript(guidance: string, category: string) {
   return { place: "at home", room: "living room" };
 }
 
-function buildGuidanceLine(guidance: string, productName: string): string {
-  // Turn the user's guidance into a natural spoken line that drives the script angle
-  const g = guidance.toLowerCase().trim();
-  if (!g) return "";
+/**
+ * Parse the user's creative direction into structured intent.
+ * The guidance is a brief — NOT dialogue. We extract the concept,
+ * setting, and angle so we can build scripts that interpret the brief
+ * rather than parrot it word-for-word.
+ */
+function parseGuidanceIntent(guidance: string, productName: string, category: string) {
+  const g = guidance.toLowerCase();
 
-  // If it already reads like a sentence, use it almost directly
-  if (g.length > 30 && /\s/.test(g)) {
-    // Wrap the guidance concept into a spoken framing
-    return `The thing about ${productName} is — ${guidance.endsWith(".") ? guidance : guidance + "."} `;
+  // Extract setting hints from guidance
+  const settingHints: Record<string, { situation: string; action: string }> = {
+    "corner": { situation: "standing in front of this empty corner", action: "just finished setting it up" },
+    "cozy": { situation: "at home getting everything set up", action: "making this space feel right" },
+    "desk": { situation: "at my desk", action: "reorganizing my setup" },
+    "office": { situation: "at work", action: "just rearranged everything" },
+    "kitchen": { situation: "in the kitchen", action: "putting things together" },
+    "bathroom": { situation: "at the mirror", action: "going through my routine" },
+    "bedroom": { situation: "in my room", action: "switching things up" },
+    "morning": { situation: "just woke up", action: "starting my morning" },
+    "night": { situation: "winding down", action: "doing my night routine" },
+    "gym": { situation: "at the gym", action: "just finished working out" },
+    "outdoor": { situation: "outside", action: "enjoying the weather" },
+    "car": { situation: "in my car", action: "about to head out" },
+    "travel": { situation: "on the go", action: "packing up" },
+    "gift": { situation: "at home", action: "just opened this" },
+    "unbox": { situation: "at home", action: "just got this delivered" },
+  };
+
+  let situation = "";
+  let action = "";
+  for (const [keyword, hint] of Object.entries(settingHints)) {
+    if (g.includes(keyword)) {
+      situation = hint.situation;
+      action = hint.action;
+      break;
+    }
   }
 
-  // Short guidance — treat it as the angle/concept keyword
-  return `I wanted to talk about ${productName} from the ${guidance} angle. `;
+  // Extract the core concept — what is the angle about?
+  // e.g. "Corner angle. makes the empty corner cozy" → concept is about filling/transforming a space
+  const conceptPatterns: Array<{ test: RegExp; concept: string; problem: string; payoff: string }> = [
+    { test: /(corner|empty|awkward|gap|space|fill)/, concept: "transforming a space", problem: "had this awkward empty space that was bothering me", payoff: "it completely changed the vibe" },
+    { test: /(cozy|warm|comfort|homey|inviting)/, concept: "making things cozy", problem: "wanted to make this space feel more like home", payoff: "it actually feels cozy now" },
+    { test: /(before.?after|transform|change|makeover|glow.?up)/, concept: "a transformation", problem: "it used to look so different", payoff: "look at the difference" },
+    { test: /(problem|solution|fix|solve|issue|struggle)/, concept: "solving a problem", problem: "been dealing with this for a while", payoff: "this actually fixed it" },
+    { test: /(routine|daily|every.?day|habit|ritual)/, concept: "a daily routine", problem: "was looking for something that fits into my day", payoff: "it just slots right in" },
+    { test: /(compare|versus|vs|better|switch|alternative)/, concept: "a comparison", problem: "tried a bunch of other options first", payoff: "this is the one that actually works" },
+    { test: /(cheap|budget|affordable|price|value|worth)/, concept: "value for money", problem: "did not want to spend a fortune", payoff: "the quality for the price is wild" },
+    { test: /(surprise|unexpected|did.?not.?expect|shock)/, concept: "a surprise", problem: "honestly did not expect much", payoff: "but then it actually surprised me" },
+    { test: /(minimal|clean|simple|sleek|modern)/, concept: "keeping it minimal", problem: "wanted something that does not look out of place", payoff: "it fits perfectly" },
+    { test: /(upgrade|level.?up|step.?up|premium|quality)/, concept: "an upgrade", problem: "finally decided to upgrade", payoff: "should have done this sooner" },
+    { test: /(first.?time|just.?got|new|unbox|arrived)/, concept: "a first impression", problem: "just got this and had to talk about it", payoff: "the first impression is strong" },
+    { test: /(aesthetic|look|style|vibe|design|decor)/, concept: "the aesthetic", problem: "was going for a certain look", payoff: "it nailed the vibe" },
+  ];
+
+  let concept = "this product";
+  let problem = `started using ${productName} recently`;
+  let payoff = "it actually delivered";
+
+  for (const pattern of conceptPatterns) {
+    if (pattern.test.test(g)) {
+      concept = pattern.concept;
+      problem = pattern.problem;
+      payoff = pattern.payoff;
+      break;
+    }
+  }
+
+  // If we didn't match a setting from keywords, infer from category
+  if (!situation) {
+    const s = inferSettingForScript(guidance, category);
+    situation = s.place;
+    action = `using ${productName}`;
+  }
+
+  return { situation, action, concept, problem, payoff };
 }
 
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
@@ -334,129 +397,97 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   const setting = inferSettingForScript(guidance, category);
   const lines = buildProductLines(knowledge, productName, category);
   const targetSeconds = input.totalSeconds || 20;
-  const guidanceLine = buildGuidanceLine(guidance, productName);
   const hasGuidance = guidance.length > 0;
 
-  // When the user gives guidance, it IS the concept. The script must revolve around it.
-  // When there's no guidance, fall back to generic product-category scripts.
+  // Parse the guidance into creative intent — never echo it as dialogue
+  const intent = hasGuidance
+    ? parseGuidanceIntent(guidance, productName, category)
+    : { situation: setting.place, action: `using ${productName}`, concept: "this product", problem: `started using ${productName} recently`, payoff: "it actually delivered" };
+
+  // Scripts interpret the guidance brief, they never repeat it verbatim.
+  // The brief shapes the hook, the setting, and the story arc.
 
   const variants = targetSeconds <= 15
     ? [
         {
-          title: hasGuidance ? guidance.slice(0, 40) : "Quick take",
+          title: hasGuidance ? `The ${intent.concept}` : "Quick take",
           rationale: hasGuidance
-            ? `Built around the direction: "${guidance}". Short and punchy.`
+            ? `Interprets "${guidance}" as a short, punchy take.`
             : `Quick, mid-action take ${setting.place}.`,
-          hook: hasGuidance
-            ? `Okay so — ${guidance.split(/[.!?]/)[0] || guidance}.`
-            : `Wait — okay, look at this.`,
+          hook: `Okay wait — look at this.`,
           cta: `That is all.`,
-          dialogue: hasGuidance
-            ? `Okay so — ${guidance.split(/[.!?]/)[0] || guidance}. I am ${setting.place} with ${productName} right now. ${lines.detail} That is all.`.trim()
-            : `Wait — okay, look at this. I am ${setting.place} and I just used ${productName}. ${lines.detail} That is all.`.trim(),
+          dialogue: `Okay wait — look at this. I am ${intent.situation} right now and I ${intent.problem}. Got ${productName} and ${intent.payoff}. That is all.`.trim(),
         },
         {
-          title: hasGuidance ? "Different angle" : "Straight up",
+          title: "Different take",
           rationale: hasGuidance
-            ? `Same direction ("${guidance}") but a different entry point.`
-            : `Short rant about ${categoryLabel} that pivots to ${productName}.`,
-          hook: hasGuidance
-            ? `Here is why I bring up ${productName}.`
-            : `Most ${categoryLabel} is mid.`,
+            ? `Different entry point on "${guidance}".`
+            : `Short direct take on ${productName}.`,
+          hook: `Real quick before I forget.`,
           cta: `Just saying.`,
-          dialogue: hasGuidance
-            ? `Here is why I bring up ${productName}. ${guidanceLine}${lines.detail} Just saying.`.trim()
-            : `Most ${categoryLabel} is mid. I have tried a bunch. Then I found ${productName}. ${lines.detail} Just saying.`.trim(),
+          dialogue: `Real quick before I forget. ${lines.detail} I have been ${intent.action} with ${productName} and ${intent.payoff}. Just saying.`.trim(),
         },
         {
-          title: hasGuidance ? "Matter of fact" : "No hype",
-          rationale: hasGuidance
-            ? `Understated take on "${guidance}".`
-            : `Matter-of-fact, zero selling.`,
-          hook: `Real quick.`,
+          title: "Matter of fact",
+          rationale: `Understated, no energy, just honest.`,
+          hook: `So.`,
           cta: `That is it.`,
-          dialogue: hasGuidance
-            ? `Real quick. ${guidanceLine}I am ${setting.place}, been using ${productName}. ${lines.detail} That is it.`.trim()
-            : `Real quick. I am ${setting.place}, been using ${productName}. ${lines.detail} That is it.`.trim(),
+          dialogue: `So. I ${intent.problem}. Got ${productName}. ${intent.payoff}. That is it.`.trim(),
         },
       ]
     : targetSeconds <= 25
       ? [
           {
-            title: hasGuidance ? guidance.slice(0, 40) : "Caught in the moment",
+            title: hasGuidance ? `The ${intent.concept}` : "Caught in the moment",
             rationale: hasGuidance
-              ? `Built around: "${guidance}". Starts mid-action ${setting.place}.`
+              ? `Interprets "${guidance}" — opens mid-action ${intent.situation}.`
               : `Starts mid-action ${setting.place} — feels unplanned.`,
-            hook: hasGuidance
-              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}.`
-              : `Wait, okay, I need to show you this real quick.`,
-            cta: `Seriously, just try it.`,
-            dialogue: hasGuidance
-              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}. I am ${setting.place} right now with ${productName}. ${lines.detail} ${lines.reaction} Seriously, just try it.`.trim()
-              : `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName}. ${lines.detail} ${lines.reaction} Seriously, just try it.`.trim(),
+            hook: `Okay so this is going to sound random but stay with me.`,
+            cta: `Seriously though.`,
+            dialogue: `Okay so this is going to sound random but stay with me. I ${intent.problem}. And then I found ${productName}. I am ${intent.situation} right now, I just finished ${intent.action}. ${lines.detail} ${intent.payoff}. Seriously though.`.trim(),
           },
           {
-            title: hasGuidance ? "Different angle" : "Storytime",
+            title: "The rant",
             rationale: hasGuidance
-              ? `Same concept ("${guidance}") but opens with category frustration.`
+              ? `Opens with category frustration, pivots to "${guidance}" angle.`
               : `Starts with frustration about ${categoryLabel}, then pivots to ${productName}.`,
-            hook: hasGuidance
-              ? `${guidance.split(/[.!?]/)[0] || guidance} — let me explain.`
-              : `Can we talk about how most ${categoryLabel} is just mid?`,
+            hook: `I have a thing to say about ${categoryLabel}.`,
             cta: `Do what you want with that.`,
-            dialogue: hasGuidance
-              ? `${guidance.split(/[.!?]/)[0] || guidance} — let me explain. I have tried a lot of ${categoryLabel} and most of it blends together. ${productName} is different. I am ${setting.place} right now. ${lines.detail} ${lines.reaction} Do what you want with that.`.trim()
-              : `Can we talk about how most ${categoryLabel} is just mid? I have tried so many. But then I started using ${productName}. I am ${setting.place} right now. ${lines.detail} ${lines.reaction} Do what you want with that.`.trim(),
+            dialogue: `I have a thing to say about ${categoryLabel}. Most of it is whatever. I ${intent.problem} and tried a bunch of stuff that did not work. Then I got ${productName}. ${lines.detail} ${intent.payoff}. ${lines.reaction} Do what you want with that.`.trim(),
           },
           {
-            title: hasGuidance ? "Understated" : "No hype, just facts",
-            rationale: hasGuidance
-              ? `Low-energy take on "${guidance}". No excitement, just honest.`
-              : `Matter-of-fact delivery ${setting.place}. No excitement, no selling.`,
-            hook: `I do not usually talk about products but here we are.`,
+            title: "Understated",
+            rationale: `Low-energy, matter-of-fact. No excitement, just honest.`,
+            hook: `Not a big deal but.`,
             cta: `Take it or leave it.`,
-            dialogue: hasGuidance
-              ? `I do not usually talk about products but here we are. ${guidanceLine}I am ${setting.place}, been using ${productName} for a while. ${lines.detail} I am not going to hype it up. ${lines.reaction} Take it or leave it.`.trim()
-              : `I do not usually talk about products but here we are. I am ${setting.place}, been using ${productName} for a while. ${lines.detail} I am not going to hype it up. ${lines.reaction} Take it or leave it.`.trim(),
+            dialogue: `Not a big deal but. I ${intent.problem} and ended up getting ${productName}. I am ${intent.situation} and I have been ${intent.action}. ${lines.detail} Not going to make a whole thing out of it. ${intent.payoff}. Take it or leave it.`.trim(),
           },
         ]
       : [
           {
-            title: hasGuidance ? guidance.slice(0, 40) : "Caught in the moment",
+            title: hasGuidance ? `The ${intent.concept}` : "Caught in the moment",
             rationale: hasGuidance
-              ? `Full take on: "${guidance}". Starts mid-action ${setting.place}.`
+              ? `Full take on "${guidance}" — starts mid-action, builds to payoff.`
               : `Starts mid-action ${setting.place} — feels unplanned and real.`,
-            hook: hasGuidance
-              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}.`
-              : `Wait, okay, I need to show you this real quick.`,
-            cta: `Seriously, just try it.`,
-            dialogue: hasGuidance
-              ? `Okay I need to talk about this — ${guidance.split(/[.!?]/)[0] || guidance}. I am ${setting.place} right now and I have been using ${productName} and I need to get into it. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${lines.specifics} Anyway. Seriously, just try it.`.trim()
-              : `Wait, okay, I need to show you this real quick. I am ${setting.place} right now and I just used ${productName} and I need to talk about it. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${lines.specifics} Anyway. Seriously, just try it.`.trim(),
+            hook: `Okay so this is going to sound random but stay with me.`,
+            cta: `Anyway. Yeah.`,
+            dialogue: `Okay so this is going to sound random but stay with me. I ${intent.problem}. I tried a few things and nothing really clicked. Then someone mentioned ${productName} and I figured why not. I am ${intent.situation} right now, just finished ${intent.action}. ${lines.detail} I know that sounds dramatic but ${lines.reaction} ${intent.payoff}. ${lines.specifics} Anyway. Yeah.`.trim(),
           },
           {
-            title: hasGuidance ? "Different angle" : "Storytime",
+            title: "The rant",
             rationale: hasGuidance
-              ? `Same concept ("${guidance}") with a category-frustration opening.`
-              : `Conversational rant that starts with frustration about ${categoryLabel}, then pivots to ${productName}.`,
-            hook: hasGuidance
-              ? `${guidance.split(/[.!?]/)[0] || guidance} — okay let me explain why this matters.`
-              : `Can we talk about how most ${categoryLabel} is just mid?`,
+              ? `Category frustration opening that leads into the "${guidance}" angle.`
+              : `Conversational rant about ${categoryLabel}, then pivots to ${productName}.`,
+            hook: `Can we talk about ${categoryLabel} for a second?`,
             cta: `Do what you want with that information.`,
-            dialogue: hasGuidance
-              ? `${guidance.split(/[.!?]/)[0] || guidance} — okay let me explain why this matters. I have tried so many ${categoryLabel} and they all kind of blend together. But ${productName} is different. I am ${setting.place} right now, let me show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim()
-              : `Can we talk about how most ${categoryLabel} is just mid? Like, I have tried so many and they all kind of blend together. But then I started using ${productName}. I am ${setting.place} right now, let me just show you. ${lines.detail} ${lines.reaction} I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
+            dialogue: `Can we talk about ${categoryLabel} for a second? Like, I have gone through so many and they all kind of blend together. I ${intent.problem} and honestly was about to give up. But then I got ${productName}. I am ${intent.situation} right now, let me show you. ${lines.detail} ${lines.reaction} ${intent.payoff}. I am not saying it is perfect for everyone but for me? Yeah. ${lines.specifics} Do what you want with that information.`.trim(),
           },
           {
-            title: hasGuidance ? "Understated" : "No hype, just facts",
-            rationale: hasGuidance
-              ? `Low-energy, honest take on "${guidance}".`
-              : `Matter-of-fact delivery ${setting.place}. No excitement, no selling.`,
-            hook: `I do not usually talk about products but here we are.`,
+            title: "Understated",
+            rationale: `Low-energy, honest, no selling.`,
+            hook: `I do not usually talk about stuff I buy but.`,
             cta: `That is all. Take it or leave it.`,
-            dialogue: hasGuidance
-              ? `I do not usually talk about products but here we are. ${guidanceLine}I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim()
-              : `I do not usually talk about products but here we are. I have been using ${productName} for a while now. I am ${setting.place}, just got done using it, figured I would mention it. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${lines.reaction} That is all. Take it or leave it.`.trim(),
+            dialogue: `I do not usually talk about stuff I buy but. I ${intent.problem}. Ended up getting ${productName} and now I am ${intent.situation}. ${lines.detail} I am not going to sit here and hype it up because that is not my thing. ${lines.specifics} ${intent.payoff}. ${lines.reaction} That is all. Take it or leave it.`.trim(),
           },
         ];
 
@@ -1020,10 +1051,10 @@ INPUTS
 - Script request: ${JSON.stringify(input.script)}
 - Settings: ${JSON.stringify(input.settings)}
 - Knowledge: ${input.knowledge || "None"}
-- Creative direction: ${input.script.description || "None provided — use your best judgment based on the product and category."}
+- Creative direction (brief): ${input.script.description || "None provided — use your best judgment based on the product and category."}
 - Override instructions: ${input.overrideInstructions || "None"}
 
-CRITICAL: The "Creative direction" field above is the user's primary guidance for the script angle, concept, and style. Every script MUST reflect this direction. If the user says "before and after" then the scripts should be structured around showing a before and after. If they say "morning routine" then the scripts should be set in a morning routine. The scripts must serve this direction — do not ignore it.
+CRITICAL: The "Creative direction" is a short brief describing the angle, concept, or vibe — NOT dialogue to copy. Interpret it. For example "Corner angle. makes the empty corner cozy" means the scripts should be about someone filling an awkward empty corner and making a space feel cozy using the product. "Morning routine" means set the script in a morning and show the product as part of it. NEVER echo the brief text as spoken words. Write natural dialogue that embodies the concept.
 
 AGENT PROMPTS
 ${JSON.stringify(input.promptPack)}
@@ -1032,7 +1063,7 @@ BASELINE PLAN
 ${JSON.stringify(baseline)}
 
 RULES
-1. Scripts must directly reflect the creative direction provided by the user.
+1. Scripts must interpret the creative direction brief — never parrot it as dialogue.
 2. Dialogue clips must preserve the exact spoken text in order.
 3. Every scene and B-roll image prompt must stay 9:16-first and realistic.
 4. B-roll planning is separate from dialogue planning; do not collapse them.
@@ -1065,10 +1096,10 @@ INPUTS
 - Script request: ${JSON.stringify(input.script)}
 - Settings: ${JSON.stringify(input.settings)}
 - Knowledge: ${input.knowledge || "None"}
-- Creative direction: ${input.script.description || "None provided — use your best judgment based on the product and category."}
+- Creative direction (brief): ${input.script.description || "None provided — use your best judgment based on the product and category."}
 - Override instructions: ${input.overrideInstructions || "None"}
 
-CRITICAL: The "Creative direction" above is the user's primary guidance. It defines the angle, concept, and style of the scripts. Every script you write MUST directly reflect this direction. If they say "problem solution" write problem-solution scripts. If they say "morning routine" set it in a morning. Do NOT ignore it.
+CRITICAL: The "Creative direction" is a short brief describing the angle, concept, or vibe — NOT dialogue to copy. Interpret it creatively. For example "Corner angle. makes the empty corner cozy" means scripts should be about filling an awkward space and making it feel cozy. "Morning routine" means set the script in a morning. NEVER echo the brief text as spoken words — write natural dialogue that embodies the concept.
 
 AGENT INTENT
 - Strategist: ${cleanText(input.promptPack.strategist) || DEFAULT_UGC_PROMPT_PACK.strategist}
@@ -1115,7 +1146,7 @@ RETURN THIS EXACT JSON SHAPE
 }
 
 RULES
-1. Scripts MUST reflect the creative direction. This is the most important rule.
+1. Scripts must interpret the creative direction brief — never parrot it as dialogue. This is the most important rule.
 2. Keep the dialogue natural, authentic, and easy to say on camera.
 3. Match the runtime target (${input.script.totalSeconds || 20} seconds ≈ ${Math.round((input.script.totalSeconds || 20) * 2.5)} words) by making each script concise but complete.
 4. SelectedScriptId must match one of the provided script ids.
