@@ -20,6 +20,8 @@ import {
   type UgcScriptBeat,
   type UgcScriptInput,
   type UgcScriptOption,
+  type UgcShotType,
+  type UgcStoryRole,
   type UgcWorkflowPlan,
 } from "@/lib/ugc-types";
 
@@ -113,6 +115,117 @@ function estimateDurationSeconds(text: string, fallbackSeconds: number) {
   return clamp(Math.round(words / WORDS_PER_SECOND), 5, 60);
 }
 
+// ---------------------------------------------------------------------------
+// Story role detection — marker-based classification
+// Inspired by AIUGC-master's beat role system
+// ---------------------------------------------------------------------------
+
+const PROBLEM_MARKERS = /\b(problem|ugly|hate|bad|worst|annoying|frustrated|struggle|issue|broken|terrible|awful|wrong|dark|bothered|bugged|drove me crazy|gave up|nothing worked|did not work|burned|skeptic)\b/i;
+const PRODUCT_MOMENT_MARKERS = /\b(got this|tried this|found this|switched to|started using|turned it on|put it|installed|set it up|ordered|bought|picked up|unboxed|opened)\b/i;
+const PROOF_MARKERS = /\b(difference|changed|works|actually|noticed|felt|looks|feels|surprised|compliment|asked me|texts|dms|people|everyone|reaction|result|before.?after|transform)\b/i;
+const CTA_MARKERS = /\b(do what you want|that is it|that is all|just saying|take it or leave|anyway|yeah|whatever|I do not know)\b/i;
+
+function detectStoryRole(
+  text: string,
+  index: number,
+  totalBeats: number,
+  productName: string,
+): UgcStoryRole {
+  const t = text.toLowerCase();
+
+  // First beat is always hook
+  if (index === 0) return "hook";
+  // Last beat is always cta/exit
+  if (index === totalBeats - 1) return "cta";
+
+  // Product name mention + action verb = product moment
+  if (t.includes(productName.toLowerCase()) && PRODUCT_MOMENT_MARKERS.test(t)) return "product_moment";
+  // Product moment markers even without name
+  if (PRODUCT_MOMENT_MARKERS.test(t) && index > 0 && index < totalBeats - 1) return "product_moment";
+
+  // Problem markers (usually early in script)
+  if (PROBLEM_MARKERS.test(t) && index <= Math.ceil(totalBeats / 2)) return "problem";
+
+  // Proof markers (usually later in script)
+  if (PROOF_MARKERS.test(t) && index >= Math.floor(totalBeats / 3)) return "proof";
+
+  // CTA markers
+  if (CTA_MARKERS.test(t)) return "cta";
+
+  // Default: support (filler/transition)
+  return "support";
+}
+
+/**
+ * Determine shot type based on story role and content.
+ * - hook and cta always A-roll (person talking to camera)
+ * - product_moment can be hybrid (cut to product B-roll mid-speech)
+ * - visual/show cues suggest B-roll cutaway
+ */
+function assignShotType(
+  text: string,
+  storyRole: UgcStoryRole,
+  index: number,
+): UgcShotType {
+  // Opening and closing are always direct-to-camera
+  if (index === 0 || storyRole === "hook" || storyRole === "cta") return "a_roll";
+
+  // Visual cue words suggest B-roll cutaway
+  const hasVisualCue = /\b(look at|show you|see this|watch|right here|check this)\b/i.test(text);
+  if (hasVisualCue) return "hybrid";
+
+  // Product moments can be hybrid if they describe physical action
+  if (storyRole === "product_moment" && /\b(put it|turned|set it|installed|opened)\b/i.test(text)) return "hybrid";
+
+  return "a_roll";
+}
+
+/**
+ * Compress script dialogue to fit within a word budget.
+ * Preserves hook and cta, drops lowest-priority support sentences.
+ */
+function compressScript(dialogue: string, targetWords: number, productName: string): string {
+  const sentences = splitSentences(dialogue);
+  if (countWords(dialogue) <= targetWords) return dialogue;
+
+  // Score each sentence by narrative importance
+  const scored = sentences.map((sentence, index) => {
+    const role = detectStoryRole(sentence, index, sentences.length, productName);
+    const importance: Record<UgcStoryRole, number> = {
+      hook: 5.0,
+      cta: 5.0,
+      product_moment: 4.5,
+      proof: 4.0,
+      problem: 3.5,
+      support: 1.0,
+    };
+    return { sentence, score: importance[role], index };
+  });
+
+  // Always keep first and last
+  const result: typeof scored = [scored[0]];
+  let currentWords = countWords(scored[0].sentence);
+
+  // Sort middle sentences by importance, pick greedily
+  const middle = scored.slice(1, -1).sort((a, b) => b.score - a.score);
+  for (const item of middle) {
+    const words = countWords(item.sentence);
+    if (currentWords + words <= targetWords - countWords(scored[scored.length - 1].sentence)) {
+      result.push(item);
+      currentWords += words;
+    }
+  }
+
+  // Add last sentence
+  if (scored.length > 1) {
+    result.push(scored[scored.length - 1]);
+  }
+
+  // Restore original order
+  result.sort((a, b) => a.index - b.index);
+  return result.map((r) => r.sentence).join(" ");
+}
+
 function buildProductLines(knowledge: string, productName: string, category: string): { detail: string; reaction: string; specifics: string } {
   const k = cleanText(knowledge).toLowerCase();
   const cat = (category || "").toLowerCase();
@@ -199,10 +312,28 @@ function inferEnvironment(scriptText: string, category: string) {
   return "well-lit apartment with natural window light, a few personal items visible in the background, clean but lived-in, warm and inviting atmosphere";
 }
 
-function buildScriptBeats(dialogue: string, requestedSeconds: number): UgcScriptBeat[] {
+function buildScriptBeats(dialogue: string, requestedSeconds: number, productName = ""): UgcScriptBeat[] {
   const sentences = splitSentences(dialogue);
   const totalWords = Math.max(1, countWords(dialogue));
   let cursor = 0;
+
+  const deliveryByRole: Record<UgcStoryRole, string> = {
+    hook: "Casual and direct, mid-thought energy.",
+    problem: "Slightly frustrated or reflective, grounded.",
+    product_moment: "Natural shift in energy — noticing something.",
+    proof: "Genuine reaction, not performed.",
+    cta: "Winding down, not pitching.",
+    support: "Relaxed, conversational.",
+  };
+
+  const visualCueByRole: Record<UgcStoryRole, string> = {
+    hook: "Settle into frame, eyes on camera.",
+    problem: "Slight frown or head tilt, relatable.",
+    product_moment: "Glance at product, gesture toward it.",
+    proof: "Small smile or raised eyebrows, genuine.",
+    cta: "Slight shrug or nod, done talking.",
+    support: "Small hand gestures, natural.",
+  };
 
   return sentences.map((sentence, index) => {
     const words = Math.max(1, countWords(sentence));
@@ -214,23 +345,16 @@ function buildScriptBeats(dialogue: string, requestedSeconds: number): UgcScript
         : clamp(startSecond + allocation, startSecond + 1, requestedSeconds);
     cursor = endSecond;
 
+    const storyRole = detectStoryRole(sentence, index, sentences.length, productName);
+
     return {
       id: makeId("beat", index),
       startSecond,
       endSecond,
       text: sentence,
-      delivery:
-        index === 0
-          ? "Casual and direct, like you just turned the camera on mid-thought."
-          : index === sentences.length - 1
-            ? "Winding down naturally, not pitching — just wrapping up."
-            : "Relaxed and conversational, talking to a friend not an audience.",
-      visualCue:
-        index === 0
-          ? "Glance at camera, settle in, start talking naturally."
-          : index === sentences.length - 1
-            ? "Slight shrug or nod, relaxed posture, done talking."
-            : "Small hand gestures, look at the product briefly, stay natural.",
+      storyRole,
+      delivery: deliveryByRole[storyRole],
+      visualCue: visualCueByRole[storyRole],
     };
   });
 }
@@ -284,12 +408,30 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
     });
   }
 
-  while (clips.length > 1 && clips[clips.length - 1].wordCount < 7) {
-    const tail = clips.pop();
-    if (!tail) break;
-    const previous = clips[clips.length - 1];
-    previous.text = `${previous.text} ${tail.text}`.trim();
-    previous.wordCount += tail.wordCount;
+  // Beat merging pass — merge any clip under 5 words with its neighbor
+  // (inspired by AIUGC-master's beat merging to prevent fragmentation)
+  const MIN_CLIP_WORDS = 5;
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < clips.length; i++) {
+      if (clips[i].wordCount < MIN_CLIP_WORDS && clips.length > 1) {
+        // Merge with the shorter neighbor
+        const prev = i > 0 ? clips[i - 1] : null;
+        const next = i < clips.length - 1 ? clips[i + 1] : null;
+        const target = !prev ? next! : !next ? prev : prev.wordCount <= next.wordCount ? prev : next;
+        const targetIdx = target === prev ? i - 1 : i + 1;
+        if (targetIdx < i) {
+          clips[targetIdx].text = `${clips[targetIdx].text} ${clips[i].text}`.trim();
+        } else {
+          clips[targetIdx].text = `${clips[i].text} ${clips[targetIdx].text}`.trim();
+        }
+        clips[targetIdx].wordCount += clips[i].wordCount;
+        clips.splice(i, 1);
+        merged = true;
+        break;
+      }
+    }
   }
 
   return clips.map((clip, index) => {
@@ -427,16 +569,18 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   );
 
   return frameworks.map((variant, index) => {
-    const estimatedSeconds = estimateDurationSeconds(variant.dialogue, input.totalSeconds);
+    // Compress if dialogue exceeds word budget (preserves hook/cta, drops filler)
+    const dialogue = compressScript(variant.dialogue, targetWords, productName);
+    const estimatedSeconds = estimateDurationSeconds(dialogue, input.totalSeconds);
     return {
       id: makeId("script", index),
       title: variant.title,
       rationale: variant.rationale,
       hook: variant.hook,
       cta: variant.cta,
-      dialogue: variant.dialogue,
+      dialogue,
       estimatedSeconds,
-      beats: buildScriptBeats(variant.dialogue, estimatedSeconds),
+      beats: buildScriptBeats(dialogue, estimatedSeconds, productName),
     } satisfies UgcScriptOption;
   });
 }
@@ -732,19 +876,35 @@ function buildSceneVariations(
   overrides: UgcAnthropicCreativeScene[] = []
 ): UgcSceneVariation[] {
   const baseEnvironment = inferEnvironment(script.dialogue, category);
+
+  // Expression variation profiles — each variant gets a distinct expression/pose/crop
+  // so candidates look genuinely different (inspired by AIUGC-master's control room)
+  const expressionProfiles = [
+    { expression: "relaxed half-smile, settled into the space", pose: "natural stance, phone at eye level", crop: "chest-up, centered" },
+    { expression: "just-arrived energy, slightly surprised", pose: "torso angled, slightly off-center", crop: "medium, more environment visible" },
+    { expression: "thoughtful, considering something", pose: "leaning slightly, one hand near product", crop: "tighter portrait, intimate" },
+    { expression: "matter-of-fact confident, no performance", pose: "relaxed shoulders, direct gaze", crop: "wider, more room context" },
+    { expression: "warm, lived-in comfort", pose: "casual posture, settled in", crop: "slightly off-center, side-lit" },
+    { expression: "knowing look, about to share something", pose: "product held smaller, deeper in frame", crop: "deeper composition, layered" },
+    { expression: "mid-thought, natural and unposed", pose: "weight shifted, authentic stance", crop: "classic selfie framing" },
+    { expression: "quietly pleased, understated", pose: "hands free, product visible nearby", crop: "balanced, product and person" },
+  ];
+
   const cameraDirections = [
-    "handheld chest-up framing with subtle push-in",
-    "tripod eye-level framing with product held near lens",
-    "three-quarter framing from a slight corner angle",
-    "tight medium shot with shallow depth and foreground practicals",
-    "over-the-desk vertical framing with confident negative space",
-    "slightly lower camera angle for more authority and presence",
+    "chest-up selfie framing",
+    "eye-level, product held near lens",
+    "three-quarter angle",
+    "medium shot, more room visible",
+    "slightly off-center composition",
+    "lower angle, more presence",
+    "classic selfie, phone on shelf",
+    "wider context, environment emphasis",
   ];
   const lightingDirections = [
-    "soft side window light with gentle wrap on skin",
-    "neutral daylight with a polished bounce fill",
-    "warm golden practicals balanced with clean daylight",
-    "editorial softbox treatment that still feels native to UGC",
+    "soft side window light",
+    "neutral daylight",
+    "warm golden practicals",
+    "natural ambient, no studio feel",
   ];
   const sceneCount = clamp(settings.sceneVariationCount, 1, MAX_SCENE_VARIATIONS);
 
@@ -755,16 +915,18 @@ function buildSceneVariations(
       avatarOptions[index % avatarOptions.length];
     const camera = cleanText(override?.camera) || cameraDirections[index % cameraDirections.length];
     const lighting = cleanText(override?.lighting) || lightingDirections[index % lightingDirections.length];
+    const profile = expressionProfiles[index % expressionProfiles.length];
+    const expressionProfile = `${profile.expression}, ${profile.pose}, ${profile.crop}`;
     const title = cleanText(override?.title) || `Base Scene ${index + 1}`;
     const summary =
       cleanText(override?.summary) ||
       index === 0
-        ? "Clean, natural framing with clear product visibility. Feels like a real person in their real space."
+        ? "Clean, natural framing with clear product visibility."
         : index === 1
-          ? "Slightly more polished framing with deliberate camera angle."
+          ? "Different angle and expression — more energy."
           : index === 2
-            ? "Warmer, more lived-in feel — casual and authentic."
-            : "Alternate angle that keeps the same room and person but shifts the composition.";
+            ? "Warmer, more intimate framing."
+            : "Alternate composition — different pose and crop.";
     const environment = cleanText(override?.environment) || baseEnvironment;
 
     return {
@@ -775,7 +937,8 @@ function buildSceneVariations(
       avatarId: avatar.id,
       camera,
       lighting,
-      prompt: `9:16 ${settings.imageResolution} vertical selfie-style photo of a real person with ${productName}. The product (${productAppearance}) must be clearly visible and true to its real appearance. The person is ${avatar.label}: ${avatar.persona} Wardrobe: ${avatar.wardrobe}. SELFIE FRAMING: The shot looks like the person set their phone on a shelf, desk, or tripod at arm's length. The camera is at eye level or slightly above. The person faces the camera directly, relaxed and natural, as if about to start talking. No one is holding a phone or camera — hands are free or holding the product. ENVIRONMENT: ${environment}. This must match the script context: "${finishSentence(script.dialogue.slice(0, 200))}". Camera: ${camera}. Lighting: ${lighting} — natural to this specific room, not studio lighting. The overall feel should be authentic and natural, not a produced photoshoot.`,
+      expressionProfile,
+      prompt: `9:16 ${settings.imageResolution} vertical selfie photo. A real person with ${productName} (${productAppearance}), clearly visible. ${avatar.label}: ${avatar.persona}. Wardrobe: ${avatar.wardrobe}. Expression: ${profile.expression}. Pose: ${profile.pose}. Crop: ${profile.crop}. Phone propped at arm's length, selfie POV. Environment: ${environment}. ${lighting}. This variant must look distinct from other candidates — different expression, pose, and crop — while keeping the product identical. Product must stay true to real appearance. No one holding a phone. Authentic UGC feel, not a photoshoot.`,
     };
   });
 }
@@ -791,19 +954,15 @@ function buildDialogueClips(
     Math.max(script.estimatedSeconds, settings.dialogueSeconds),
     settings.clipDurationSeconds
   );
-  const objectives = ["Hook", "Proof", "Demo", "CTA", "Reinforcement", "Close"];
-  const movements = [
-    "natural subtle motion",
-    "small hand gesture",
-    "slight shift, stays relaxed",
-    "gentle nod, winding down",
-  ];
-  const cameras = [
-    "steady, natural",
-    "slight push-in",
-    "steady, face and product visible",
-    "subtle reframe",
-  ];
+
+  const movementByRole: Record<UgcStoryRole, string> = {
+    hook: "settle into frame, natural energy",
+    problem: "slight tension, relatable frustration",
+    product_moment: "glance at product, natural gesture",
+    proof: "subtle reaction, genuine",
+    cta: "gentle nod, winding down",
+    support: "small hand gesture, relaxed",
+  };
 
   return segments.map((segment, index) => {
     const priorDuration = segments
@@ -811,9 +970,9 @@ function buildDialogueClips(
       .reduce((total, item) => total + item.durationSeconds, 0);
     const startSecond = priorDuration;
     const endSecond = startSecond + segment.durationSeconds;
-    const objective = objectives[Math.min(index, objectives.length - 1)];
-    const movement = movements[index % movements.length];
-    const camera = cameras[index % cameras.length];
+    const storyRole = detectStoryRole(segment.text, index, segments.length, productName);
+    const shotType = assignShotType(segment.text, storyRole, index);
+    const movement = movementByRole[storyRole];
     return {
       id: makeId("dialogue-clip", index),
       index,
@@ -822,14 +981,21 @@ function buildDialogueClips(
       durationSeconds: segment.durationSeconds,
       wordCount: segment.wordCount,
       spokenText: segment.text,
-      objective,
+      storyRole,
+      shotType,
+      objective: storyRole,
       movement,
-      camera,
+      camera: "natural",
       prompt: `${segment.durationSeconds}-second ${settings.videoAspectRatio} video from the base scene image. The person says this EXACT line naturally: "${segment.text}". Natural motion, ${movement}. The scene comes to life from the image — same person, same room, same lighting. Spoken audio with synced mouth movement.`,
     };
   });
 }
 
+/**
+ * Build B-roll shots that are narrative-matched to specific story beats.
+ * Each B-roll shot has a purpose in the story — it covers a specific moment
+ * rather than being a random angle. Inspired by AIUGC-master's shot graph.
+ */
 function buildBrollImagePlans(
   script: UgcScriptOption,
   productName: string,
@@ -837,66 +1003,28 @@ function buildBrollImagePlans(
   settings: UgcPlanRequest["settings"],
   overrides: UgcAnthropicCreativeBroll[] = []
 ): UgcBrollImagePlan[] {
-  // Simple, varied shot directions — let the AI bring creativity
-  const shotBlueprints = [
-    {
-      title: "Close-up",
-      objective: "Product close-up from a different angle",
-      angle: "close-up, tight crop on the product",
-      lens: "close",
-      lighting: "same room light",
-      withoutHuman: true,
-    },
-    {
-      title: "Detail shot",
-      objective: "Texture or detail of the product",
-      angle: "macro, very close, focus on surface or detail",
-      lens: "macro",
-      lighting: "same room light",
-      withoutHuman: true,
-    },
-    {
-      title: "Wide context",
-      objective: "The product in its environment from further away",
-      angle: "wider perspective, more of the room visible",
-      lens: "wide",
-      lighting: "same room light",
-      withoutHuman: false,
-    },
-    {
-      title: "Alternate angle",
-      objective: "Same scene, completely different viewpoint",
-      angle: "different perspective, vary the distance and height",
-      lens: "natural",
-      lighting: "same room light",
-      withoutHuman: true,
-    },
-    {
-      title: "In-use moment",
-      objective: "The product being interacted with",
-      angle: "action shot, hands or interaction visible",
-      lens: "medium",
-      lighting: "same room light",
-      withoutHuman: false,
-    },
-  ];
+  // Analyze the script to find narrative moments worth covering with B-roll
+  const beats = buildScriptBeats(script.dialogue, script.estimatedSeconds, productName);
+  const narrativeShots = matchBrollToBeats(beats, productName);
 
   const count = clamp(settings.bRollClipCount, 1, MAX_BROLL_CLIPS);
 
   return Array.from({ length: count }, (_, index) => {
-    const shot = shotBlueprints[index % shotBlueprints.length];
+    const narrativeShot = narrativeShots[index % narrativeShots.length];
     const override = overrides[index];
-    const title = cleanText(override?.title) || shot.title;
-    const objective = cleanText(override?.objective) || shot.objective;
-    const angle = cleanText(override?.angle) || shot.angle;
-    const lens = cleanText(override?.lens) || shot.lens;
-    const lighting = cleanText(override?.lighting) || shot.lighting;
-    const withoutHuman = typeof override?.withoutHuman === "boolean" ? override.withoutHuman : shot.withoutHuman;
+    const title = cleanText(override?.title) || narrativeShot.title;
+    const objective = cleanText(override?.objective) || narrativeShot.objective;
+    const angle = cleanText(override?.angle) || narrativeShot.angle;
+    const lens = cleanText(override?.lens) || narrativeShot.lens;
+    const lighting = cleanText(override?.lighting) || narrativeShot.lighting;
+    const withoutHuman = typeof override?.withoutHuman === "boolean" ? override.withoutHuman : narrativeShot.withoutHuman;
     return {
       id: makeId("broll-image", index),
       index,
       title,
       objective,
+      storyPhase: narrativeShot.storyPhase,
+      coversBeatId: narrativeShot.coversBeatId,
       angle,
       lens,
       lighting,
@@ -904,6 +1032,123 @@ function buildBrollImagePlans(
       prompt: `${settings.imageAspectRatio} ${settings.imageResolution} photo of ${productName} (${productAppearance}). Same scene and lighting as the base image but a different, ${angle}. Vary the distance and perspective. ${withoutHuman ? "No person in frame." : "Person can appear but product is the focus."} Be creative with the composition.`,
     };
   });
+}
+
+/**
+ * Match B-roll shots to narrative beats — each B-roll shot covers a story moment.
+ * Returns at least 5 shot blueprints, prioritized by narrative importance.
+ */
+function matchBrollToBeats(
+  beats: UgcScriptBeat[],
+  productName: string,
+): Array<{
+  title: string;
+  objective: string;
+  storyPhase: UgcStoryRole;
+  coversBeatId: string;
+  angle: string;
+  lens: string;
+  lighting: string;
+  withoutHuman: boolean;
+}> {
+  const shots: Array<{
+    title: string;
+    objective: string;
+    storyPhase: UgcStoryRole;
+    coversBeatId: string;
+    angle: string;
+    lens: string;
+    lighting: string;
+    withoutHuman: boolean;
+    priority: number;
+  }> = [];
+
+  // Map each story role to a specific B-roll shot type
+  const roleToShot: Record<UgcStoryRole, {
+    title: string;
+    angle: string;
+    lens: string;
+    withoutHuman: boolean;
+    priority: number;
+  }> = {
+    hook: {
+      title: "Scene establish",
+      angle: "wider perspective, the room and environment",
+      lens: "wide",
+      withoutHuman: true,
+      priority: 2,
+    },
+    problem: {
+      title: "Before state",
+      angle: "the space or situation before the product, empty or incomplete",
+      lens: "natural",
+      withoutHuman: true,
+      priority: 3,
+    },
+    product_moment: {
+      title: "Product reveal",
+      angle: "close-up of the product in its real position, the moment it enters the scene",
+      lens: "close",
+      withoutHuman: false,
+      priority: 5,
+    },
+    proof: {
+      title: "After state",
+      angle: "the result — the improved space, the visible difference, the product working",
+      lens: "medium",
+      withoutHuman: true,
+      priority: 4,
+    },
+    cta: {
+      title: "Product detail",
+      angle: "macro detail, texture or material close-up",
+      lens: "macro",
+      withoutHuman: true,
+      priority: 1,
+    },
+    support: {
+      title: "Alternate angle",
+      angle: "different perspective, vary the distance and height creatively",
+      lens: "natural",
+      withoutHuman: true,
+      priority: 0,
+    },
+  };
+
+  for (const beat of beats) {
+    const shotTemplate = roleToShot[beat.storyRole];
+    shots.push({
+      ...shotTemplate,
+      objective: `Covers "${beat.text.slice(0, 60)}..." — ${shotTemplate.title.toLowerCase()} for the ${beat.storyRole} moment`,
+      storyPhase: beat.storyRole,
+      coversBeatId: beat.id,
+      lighting: "same room light, match the base scene",
+    });
+  }
+
+  // Sort by narrative priority (product_moment > proof > problem > hook > cta > support)
+  shots.sort((a, b) => b.priority - a.priority);
+
+  // Deduplicate by story phase — keep highest priority per role
+  const seen = new Set<UgcStoryRole>();
+  const unique = shots.filter((shot) => {
+    if (seen.has(shot.storyPhase)) return false;
+    seen.add(shot.storyPhase);
+    return true;
+  });
+
+  // Ensure at least 5 shots by adding fallback angles if needed
+  const fallbacks = [
+    { title: "Close-up", angle: "close-up, tight crop on the product", lens: "close", withoutHuman: true, storyPhase: "support" as UgcStoryRole, coversBeatId: "", objective: "Product close-up from a different angle", lighting: "same room light, match the base scene", priority: 0 },
+    { title: "Interaction", angle: "hands interacting with the product naturally", lens: "medium", withoutHuman: false, storyPhase: "product_moment" as UgcStoryRole, coversBeatId: "", objective: "The product being touched or used", lighting: "same room light, match the base scene", priority: 0 },
+    { title: "Wide room", angle: "wider view showing the full environment", lens: "wide", withoutHuman: true, storyPhase: "hook" as UgcStoryRole, coversBeatId: "", objective: "Full context of the space", lighting: "same room light, match the base scene", priority: 0 },
+  ];
+
+  while (unique.length < 5 && fallbacks.length > 0) {
+    unique.push(fallbacks.shift()!);
+  }
+
+  return unique;
 }
 
 function buildBrollClipPlans(
@@ -1031,7 +1276,8 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
             estimatedSeconds: estimateDurationSeconds(input.script.text, input.script.totalSeconds),
             beats: buildScriptBeats(
               cleanText(input.script.text),
-              estimateDurationSeconds(input.script.text, input.script.totalSeconds)
+              estimateDurationSeconds(input.script.text, input.script.totalSeconds),
+              productName
             ),
           } satisfies UgcScriptOption,
         ]
@@ -1115,7 +1361,7 @@ function buildPlanFromAnthropicCreative(
       cta: cleanText(option?.cta) || fallback.cta,
       dialogue,
       estimatedSeconds,
-      beats: buildScriptBeats(dialogue, estimatedSeconds),
+      beats: buildScriptBeats(dialogue, estimatedSeconds, productName),
     } satisfies UgcScriptOption;
   });
 
@@ -1333,18 +1579,23 @@ RETURN THIS EXACT JSON SHAPE
     ${baseline.bRollImagePlans
       .map(
         (plan) =>
-          `{ "id": "${plan.id}", "title": "string", "objective": "string", "angle": "string", "lens": "string", "lighting": "string", "withoutHuman": true }`
+          `{ "id": "${plan.id}", "title": "string", "objective": "string — which story moment this covers (${plan.storyPhase})", "angle": "string", "lens": "string", "lighting": "string", "withoutHuman": ${plan.withoutHuman} }`
       )
       .join(",\n    ")}
   ]
 }
+
+STORY ROLES IN THE SCRIPT:
+Each script beat has a narrative role: hook → problem → product_moment → proof → cta.
+- B-roll shots should cover specific story moments (product_moment gets a close-up reveal, proof gets the "after" state, etc.)
+- Scene variations should each have a distinct expression and pose — not the same person in the same stance repeated.
 
 RULES
 1. Each script MUST reflect the creative brief. Generic scripts = failure.
 2. Dialogue must sound speakable — natural rhythm, easy to say.
 3. SelectedScriptId must match one of the provided script ids.
 4. Scene environments: specific and lived-in, not generic.
-5. B-roll: start frames for motion, not final stills.
+5. B-roll shots must be narrative-matched — each covers a specific story moment, not random angles.
 6. Do not include prompts, beats, dialogue clips, approval gates, architecture, or summary.
 7. Return only valid JSON.`;
 

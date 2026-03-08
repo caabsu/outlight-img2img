@@ -2,6 +2,8 @@ export type UgcSafeMode = "safe" | "fast";
 export type UgcScriptMode = "generate" | "upload";
 export type UgcProductSource = "catalog" | "upload";
 export type UgcStageId = "script" | "scene" | "dialogue" | "broll";
+export type UgcStoryRole = "hook" | "problem" | "product_moment" | "proof" | "cta" | "support";
+export type UgcShotType = "a_roll" | "b_roll" | "hybrid";
 
 export type UgcWorkflowSettings = {
   safeMode: UgcSafeMode;
@@ -58,6 +60,7 @@ export type UgcScriptBeat = {
   startSecond: number;
   endSecond: number;
   text: string;
+  storyRole: UgcStoryRole;
   delivery: string;
   visualCue: string;
 };
@@ -90,6 +93,7 @@ export type UgcSceneVariation = {
   avatarId: string;
   camera: string;
   lighting: string;
+  expressionProfile: string;
   prompt: string;
 };
 
@@ -101,6 +105,8 @@ export type UgcDialogueClipPlan = {
   durationSeconds: number;
   wordCount: number;
   spokenText: string;
+  storyRole: UgcStoryRole;
+  shotType: UgcShotType;
   objective: string;
   movement: string;
   camera: string;
@@ -112,6 +118,8 @@ export type UgcBrollImagePlan = {
   index: number;
   title: string;
   objective: string;
+  storyPhase: UgcStoryRole;
+  coversBeatId?: string;
   angle: string;
   lens: string;
   lighting: string;
