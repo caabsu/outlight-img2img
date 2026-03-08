@@ -793,16 +793,16 @@ function buildDialogueClips(
   );
   const objectives = ["Hook", "Proof", "Demo", "CTA", "Reinforcement", "Close"];
   const movements = [
-    "Lean slightly into frame, then settle into a natural chest-level hold of the product.",
-    "Use one precise hand gesture and rotate the product toward camera.",
-    "Shift weight once and point to a key product detail mid-line.",
-    "Finish with a small nod, relaxed and done.",
+    "natural subtle motion",
+    "small hand gesture",
+    "slight shift, stays relaxed",
+    "gentle nod, winding down",
   ];
   const cameras = [
-    "steady handheld framing with a tiny natural sway",
-    "locked eye-level framing with a subtle digital push",
-    "tight medium vertical framing that favors face plus product",
-    "slightly off-center framing so the product can occupy the lower third",
+    "steady, natural",
+    "slight push-in",
+    "steady, face and product visible",
+    "subtle reframe",
   ];
 
   return segments.map((segment, index) => {
@@ -825,7 +825,7 @@ function buildDialogueClips(
       objective,
       movement,
       camera,
-      prompt: `Use the selected base scene as the starting image for a ${segment.durationSeconds}-second ${settings.videoAspectRatio} video of a person talking about ${productName}. The person speaks naturally at a conversational pace with subtle, authentic movements. They say this exact script: "${segment.text}". Keep synced spoken audio, accurate mouth movement, and continuity with the same person, wardrobe, room, product placement, and lighting. This clip should feel natural and efficient, not slow or padded, covering the full line within ${segment.durationSeconds} seconds. Movement: ${movement} Camera behavior: ${camera}. Environment continuity: ${selectedEnvironment}. Objective: ${objective}. The result should feel like real, authentic footage and cut cleanly with the clips before and after it.`,
+      prompt: `${segment.durationSeconds}-second ${settings.videoAspectRatio} video from the base scene image. The person says this EXACT line naturally: "${segment.text}". Natural motion, ${movement}. The scene comes to life from the image — same person, same room, same lighting. Spoken audio with synced mouth movement.`,
     };
   });
 }
@@ -837,45 +837,46 @@ function buildBrollImagePlans(
   settings: UgcPlanRequest["settings"],
   overrides: UgcAnthropicCreativeBroll[] = []
 ): UgcBrollImagePlan[] {
+  // Simple, varied shot directions — let the AI bring creativity
   const shotBlueprints = [
     {
-      title: "Product Hero Insert",
-      objective: "Show the product in a clean, high-retention hero angle that can open or punctuate a claim.",
-      angle: "front three-quarter product angle",
-      lens: "50mm commercial lens look",
-      lighting: "polished daylight with crisp separation",
+      title: "Close-up",
+      objective: "Product close-up from a different angle",
+      angle: "close-up, tight crop on the product",
+      lens: "close",
+      lighting: "same room light",
       withoutHuman: true,
     },
     {
-      title: "Hand Interaction Detail",
-      objective: "Show natural handling so the product feels tactile and real.",
-      angle: "close-up hand-held interaction",
-      lens: "85mm detail crop",
-      lighting: "soft side light with clean highlights",
+      title: "Detail shot",
+      objective: "Texture or detail of the product",
+      angle: "macro, very close, focus on surface or detail",
+      lens: "macro",
+      lighting: "same room light",
+      withoutHuman: true,
+    },
+    {
+      title: "Wide context",
+      objective: "The product in its environment from further away",
+      angle: "wider perspective, more of the room visible",
+      lens: "wide",
+      lighting: "same room light",
       withoutHuman: false,
     },
     {
-      title: "Before / After Coverage",
-      objective: "Create the empty-scene or alternate-state shot needed for transformation storytelling.",
-      angle: "matching angle to the hero scene, slightly wider",
-      lens: "35mm natural perspective",
-      lighting: "same room lighting with controlled contrast",
+      title: "Alternate angle",
+      objective: "Same scene, completely different viewpoint",
+      angle: "different perspective, vary the distance and height",
+      lens: "natural",
+      lighting: "same room light",
       withoutHuman: true,
     },
     {
-      title: "Feature Macro",
-      objective: "Capture texture, finish, buttons, material, or formula detail for edit rhythm.",
-      angle: "macro detail perspective",
-      lens: "100mm macro",
-      lighting: "specular micro-highlights with premium rolloff",
-      withoutHuman: true,
-    },
-    {
-      title: "Lifestyle Cutaway",
-      objective: "Show the product in use in a wider contextual setup that supports the spoken proof.",
-      angle: "wider lived-in environment cutaway",
-      lens: "28mm wide angle lens",
-      lighting: "ambient natural light with gentle practicals",
+      title: "In-use moment",
+      objective: "The product being interacted with",
+      angle: "action shot, hands or interaction visible",
+      lens: "medium",
+      lighting: "same room light",
       withoutHuman: false,
     },
   ];
@@ -900,11 +901,7 @@ function buildBrollImagePlans(
       lens,
       lighting,
       withoutHuman,
-      prompt: `Create a ${settings.imageAspectRatio}, ${settings.imageResolution} starting frame for a B-roll clip about ${productName}. Match the approved room and preserve the exact product appearance: ${productAppearance}. Shot intent: ${objective}. Angle: ${angle}. Lens: ${lens}. Lighting: ${lighting}. ${
-        withoutHuman
-          ? "Remove the person unless hands are essential, and keep continuity with the same scene."
-          : "If a person appears, keep them secondary and the product primary."
-      } This image is a starting point for motion, not a final still, so give it clear movement potential and edit-ready composition. Reference the script claim: "${script.hook}"`,
+      prompt: `${settings.imageAspectRatio} ${settings.imageResolution} photo of ${productName} (${productAppearance}). Same scene and lighting as the base image but a different, ${angle}. Vary the distance and perspective. ${withoutHuman ? "No person in frame." : "Person can appear but product is the focus."} Be creative with the composition.`,
     };
   });
 }
@@ -919,7 +916,7 @@ function buildBrollClipPlans(
     imagePlanId: plan.id,
     title: plan.title,
     durationSeconds: settings.clipDurationSeconds,
-    prompt: `Use the approved B-roll start image. Create a ${settings.clipDurationSeconds}-second ${settings.videoAspectRatio} commercial B-roll clip. Objective: ${plan.objective}. Camera behavior should match ${plan.angle} with a ${plan.lens} feeling. Lighting continuity: ${plan.lighting}. Keep the motion clean, premium, and edit-ready for insertion between dialogue clips.`,
+    prompt: `${settings.clipDurationSeconds}-second ${settings.videoAspectRatio} B-roll clip from the start image. Gentle, natural motion — the scene comes to life. Keep it smooth and cinematic.`,
   }));
 }
 
