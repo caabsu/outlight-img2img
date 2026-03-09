@@ -1113,10 +1113,24 @@ export default function UgcStudioPage() {
           status: settings.safeMode === "safe" ? "pending" : "approved",
         },
       }));
-      if (!options?.skipNavigation) {
-        setActiveStage("plan");
-      }
       addActivity("plan", `${nextPlan.scriptOptions.length} scripts ready.`, "success");
+
+      // When user provided their own script, skip the script selection stage
+      // and go directly to scene generation
+      const isUploadMode = scriptMode === "upload" || !!options?.scriptOverride;
+      if (!options?.skipNavigation) {
+        if (isUploadMode) {
+          // Auto-approve the script and jump to scene generation
+          setApprovals((current) => ({
+            ...current,
+            script: { ...current.script, status: "approved" },
+          }));
+          setActiveStage("scene");
+          setAutoGenerateScenes(true);
+        } else {
+          setActiveStage("plan");
+        }
+      }
     } catch (error: any) {
       setErrorMessage(error?.message || "Failed to generate scripts");
       addActivity("plan", error?.message || "Failed to generate scripts", "error");
@@ -2099,9 +2113,11 @@ export default function UgcStudioPage() {
               </div>
 
               <PrimaryAction
-                label={planLoading ? "Generating scripts..." : "Generate scripts"}
+                label={planLoading
+                  ? (scriptMode === "upload" ? "Building plan..." : "Generating scripts...")
+                  : (scriptMode === "upload" ? "Build plan & generate scenes" : "Generate scripts")}
                 onClick={() => handleBuildPlan()}
-                disabled={!selectedProductCard.name.trim()}
+                disabled={!selectedProductCard.name.trim() || (scriptMode === "upload" && !scriptText.trim())}
                 loading={planLoading}
               />
             </SectionCard>
