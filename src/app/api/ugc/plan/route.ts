@@ -28,11 +28,15 @@ import {
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
 const REMOTE_PLANNER_TIMEOUT_MS = 55000;
-// Natural conversational pace — 3.2 wps matches casual fast-talking (TikTok/Reels pace).
-// Too slow (2.5) = awkward pauses; too fast (4.0) = rushed/unintelligible.
-const WORDS_PER_SECOND = 3.2;
-const MIN_DIALOGUE_CLIP_SECONDS = 3;
+// Speech rate — 170 WPM from AIUGC-master, ≈ 2.83 wps.
+// Adjusted to 3.0 for TikTok/Reels pacing (slightly faster than standard speech).
+const WORDS_PER_SECOND = 3.0;
+const WORDS_PER_MINUTE = WORDS_PER_SECOND * 60; // 180 WPM
+const SPEECH_PADDING_SECONDS = 0.75; // Breathing room after each clip
+const MIN_DIALOGUE_CLIP_SECONDS = 2;
 const MAX_DIALOGUE_CLIP_SECONDS = 8;
+const MIN_WORDS_PER_BEAT = 5; // Minimum words before merging with neighbor
+const SPEECH_BUDGET_RATIO = 0.9; // 90% of target duration for speech
 
 type UgcAnthropicCreativeScript = {
   id: string;
@@ -112,7 +116,9 @@ function countWords(text: string) {
 function estimateDurationSeconds(text: string, fallbackSeconds: number) {
   const words = countWords(text);
   if (!words) return fallbackSeconds;
-  return clamp(Math.round(words / WORDS_PER_SECOND), 5, 60);
+  // AIUGC-master formula: (word_count / wpm) * 60, rounded to 2 decimals
+  const seconds = (words / Math.max(WORDS_PER_MINUTE, 1)) * 60;
+  return Math.round(seconds * 100) / 100;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,7 +129,17 @@ function estimateDurationSeconds(text: string, fallbackSeconds: number) {
 const PROBLEM_MARKERS = /\b(problem|ugly|hate|bad|worst|annoying|frustrated|struggle|issue|broken|terrible|awful|wrong|dark|bothered|bugged|drove me crazy|gave up|nothing worked|did not work|burned|skeptic)\b/i;
 const PRODUCT_MOMENT_MARKERS = /\b(got this|tried this|found this|switched to|started using|turned it on|put it|installed|set it up|ordered|bought|picked up|unboxed|opened)\b/i;
 const PROOF_MARKERS = /\b(difference|changed|works|actually|noticed|felt|looks|feels|surprised|compliment|asked me|texts|dms|people|everyone|reaction|result|before.?after|transform)\b/i;
-const CTA_MARKERS = /\b(do what you want|that is it|that is all|just saying|take it or leave|anyway|yeah|whatever|I do not know)\b/i;
+const CTA_MARKERS_ROLE = /\b(do what you want|that is it|that is all|just saying|take it or leave|anyway|yeah|whatever|I do not know)\b/i;
+
+// AIUGC-master visual markers for shot type classification
+const VISUAL_MARKERS = /\b(show|close-up|close up|detail|before|after|texture|angle|b-roll|look at|see this|watch|right here|check this)\b/i;
+const PROBLEM_VISUAL_MARKERS = /\b(dark|flat|missing|felt off|feels off|awkward|uninviting|bad lighting)\b/i;
+const PRODUCT_REVEAL_MARKERS = /\b(turned it on|turn it on|turned on|switched it on|switched on|lit up|transform|transformed|brand called|got this lamp|got this light)\b/i;
+const PROOF_VISUAL_MARKERS = /\b(warm|glowy|glow|hotel feeling|changed the room|transformed|where did you get|texts|texts since|asked me about|comments|dms)\b/i;
+
+// AIUGC-master compression scoring markers
+const CTA_SCORE_MARKERS = /\b(shop|buy|learn more|order|try|tap|click)\b/i;
+const IMPACT_SCORE_MARKERS = /\b(before|after|same house|different|again|dark|night|glow|warm)\b/i;
 
 function detectStoryRole(
   text: string,
@@ -150,80 +166,172 @@ function detectStoryRole(
   if (PROOF_MARKERS.test(t) && index >= Math.floor(totalBeats / 3)) return "proof";
 
   // CTA markers
-  if (CTA_MARKERS.test(t)) return "cta";
+  if (CTA_MARKERS_ROLE.test(t)) return "cta";
 
   // Default: support (filler/transition)
   return "support";
 }
 
 /**
+ * Check if a beat supports a visual cutaway based on AIUGC-master logic.
+ * Different story roles have different visual marker sets.
+ */
+function supportsVisualCutaway(text: string, storyRole: UgcStoryRole): boolean {
+  if (VISUAL_MARKERS.test(text)) return true;
+  if (storyRole === "problem") return PROBLEM_VISUAL_MARKERS.test(text);
+  if (storyRole === "product_moment") return PRODUCT_REVEAL_MARKERS.test(text);
+  if (storyRole === "proof" || storyRole === "support") {
+    return PROBLEM_VISUAL_MARKERS.test(text) || PROOF_VISUAL_MARKERS.test(text) || PRODUCT_REVEAL_MARKERS.test(text);
+  }
+  return false;
+}
+
+/**
  * Determine shot type based on story role and content.
- * - hook and cta always A-roll (person talking to camera)
- * - product_moment can be hybrid (cut to product B-roll mid-speech)
- * - visual/show cues suggest B-roll cutaway
+ * Matches AIUGC-master's _shot_type_for_text() logic:
+ * - hook and cta always A-roll
+ * - explicit visual markers → b_roll
+ * - visual cutaway support + duration >= 3.2s → hybrid
  */
 function assignShotType(
   text: string,
   storyRole: UgcStoryRole,
   index: number,
+  durationSeconds = 4,
 ): UgcShotType {
   // Opening and closing are always direct-to-camera
   if (index === 0 || storyRole === "hook" || storyRole === "cta") return "a_roll";
 
-  // Visual cue words suggest B-roll cutaway
-  const hasVisualCue = /\b(look at|show you|see this|watch|right here|check this)\b/i.test(text);
-  if (hasVisualCue) return "hybrid";
+  // Explicit visual markers → B-roll
+  if (VISUAL_MARKERS.test(text)) return "b_roll";
 
-  // Product moments can be hybrid if they describe physical action
-  if (storyRole === "product_moment" && /\b(put it|turned|set it|installed|opened)\b/i.test(text)) return "hybrid";
+  // Visual cutaway support + sufficient duration → hybrid
+  if (supportsVisualCutaway(text, storyRole) && durationSeconds >= 3.2) return "hybrid";
 
   return "a_roll";
 }
 
 /**
- * Compress script dialogue to fit within a word budget.
- * Preserves hook and cta, drops lowest-priority support sentences.
+ * Score a sentence for compression priority.
+ * Matches AIUGC-master's _score_sentence() system.
  */
-function compressScript(dialogue: string, targetWords: number, productName: string): string {
+function scoreSentence(sentence: string, productName: string, brandName: string): number {
+  const lower = sentence.toLowerCase();
+  let score = 0;
+
+  // Product name mention: +6.0
+  if (productName && lower.includes(productName.toLowerCase())) score += 6.0;
+
+  // Brand name mention: +4.0
+  if (brandName && lower.includes(brandName.toLowerCase())) score += 4.0;
+
+  // CTA markers: +5.0
+  if (CTA_SCORE_MARKERS.test(lower)) score += 5.0;
+
+  // Impact markers: +3.0
+  if (IMPACT_SCORE_MARKERS.test(lower)) score += 3.0;
+
+  // Proof markers: +4.0
+  if (PROOF_MARKERS.test(lower)) score += 4.0;
+
+  // Problem markers: +4.0
+  if (PROBLEM_MARKERS.test(lower)) score += 4.0;
+
+  // Word count preference — optimal ~10 words: up to +2.5
+  const words = countWords(sentence);
+  score += Math.max(0, 2.5 - Math.abs(words - 10) * 0.2);
+
+  return score;
+}
+
+/**
+ * Compress script dialogue to fit within a word budget.
+ * Uses AIUGC-master's greedy selection algorithm with protected segments.
+ */
+function compressScript(dialogue: string, targetWords: number, productName: string, brandName = ""): string {
   const sentences = splitSentences(dialogue);
   if (countWords(dialogue) <= targetWords) return dialogue;
 
-  // Score each sentence by narrative importance
-  const scored = sentences.map((sentence, index) => {
-    const role = detectStoryRole(sentence, index, sentences.length, productName);
-    const importance: Record<UgcStoryRole, number> = {
-      hook: 5.0,
-      cta: 5.0,
-      product_moment: 4.5,
-      proof: 4.0,
-      problem: 3.5,
-      support: 1.0,
-    };
-    return { sentence, score: importance[role], index };
-  });
+  const speechBudgetSec = (targetWords / WORDS_PER_SECOND) * SPEECH_BUDGET_RATIO;
+  const maxBeats = 8;
 
-  // Always keep first and last
-  const result: typeof scored = [scored[0]];
-  let currentWords = countWords(scored[0].sentence);
+  // Identify protected segments (hook, cta, product_moment, problem, proof)
+  const protectedIndices = new Set<number>();
+  // First sentence (hook) is always protected
+  if (sentences.length > 0) protectedIndices.add(0);
+  // Last sentence (cta) is always protected
+  if (sentences.length > 1) protectedIndices.add(sentences.length - 1);
 
-  // Sort middle sentences by importance, pick greedily
-  const middle = scored.slice(1, -1).sort((a, b) => b.score - a.score);
-  for (const item of middle) {
-    const words = countWords(item.sentence);
-    if (currentWords + words <= targetWords - countWords(scored[scored.length - 1].sentence)) {
-      result.push(item);
-      currentWords += words;
+  // Find product moment, problem, proof sentences and protect them
+  for (let i = 1; i < sentences.length - 1; i++) {
+    const role = detectStoryRole(sentences[i], i, sentences.length, productName);
+    if ((role === "product_moment" || role === "problem" || role === "proof") && countWords(sentences[i]) >= 3) {
+      protectedIndices.add(i);
     }
   }
 
-  // Add last sentence
-  if (scored.length > 1) {
-    result.push(scored[scored.length - 1]);
+  // Build scored items
+  const items = sentences.map((sentence, index) => ({
+    sentence,
+    index,
+    score: scoreSentence(sentence, productName, brandName),
+    words: countWords(sentence),
+    duration: countWords(sentence) / WORDS_PER_SECOND,
+    isProtected: protectedIndices.has(index),
+  }));
+
+  // Start with protected segments
+  const chosen: typeof items = [];
+  let currentSpeech = 0;
+
+  for (const item of items) {
+    if (item.isProtected) {
+      chosen.push(item);
+      currentSpeech += item.duration;
+    }
+  }
+
+  // Build supplement pool (non-protected, sorted by score desc, index asc for ties)
+  const supplements = items
+    .filter((item) => !item.isProtected)
+    .sort((a, b) => b.score - a.score || a.index - b.index);
+
+  // Target segment count
+  const preferredClipSeconds = 4.5;
+  const targetSegmentCount = Math.max(3, Math.min(maxBeats, Math.round(speechBudgetSec / Math.max(preferredClipSeconds, 1))));
+
+  // Greedy selection
+  for (const item of supplements) {
+    // Stop if enough segments and budget hit
+    if (chosen.length >= targetSegmentCount && currentSpeech >= speechBudgetSec * 0.8) break;
+
+    // Skip if would exceed hard budget with sufficient segments
+    if (currentSpeech + item.duration > speechBudgetSec && chosen.length >= Math.max(3, Math.min(targetSegmentCount, 4))) continue;
+
+    // Add if room
+    if (currentSpeech + item.duration <= speechBudgetSec) {
+      chosen.push(item);
+      currentSpeech += item.duration;
+    }
+
+    // Hard stop at max beats
+    if (chosen.length >= maxBeats) break;
   }
 
   // Restore original order
-  result.sort((a, b) => a.index - b.index);
-  return result.map((r) => r.sentence).join(" ");
+  chosen.sort((a, b) => a.index - b.index);
+
+  // Merge tiny segments (< 3 words)
+  const merged: string[] = [];
+  for (const item of chosen) {
+    if (item.words < 3 && merged.length > 0) {
+      merged[merged.length - 1] = `${merged[merged.length - 1]} ${item.sentence}`;
+    } else {
+      merged.push(item.sentence);
+    }
+  }
+
+  return merged.join(" ");
 }
 
 function buildProductLines(knowledge: string, productName: string, category: string): { detail: string; reaction: string; specifics: string } {
@@ -314,7 +422,6 @@ function inferEnvironment(scriptText: string, category: string) {
 
 function buildScriptBeats(dialogue: string, requestedSeconds: number, productName = ""): UgcScriptBeat[] {
   const sentences = splitSentences(dialogue);
-  const totalWords = Math.max(1, countWords(dialogue));
   let cursor = 0;
 
   const deliveryByRole: Record<UgcStoryRole, string> = {
@@ -335,14 +442,22 @@ function buildScriptBeats(dialogue: string, requestedSeconds: number, productNam
     support: "Small hand gestures, natural.",
   };
 
+  // AIUGC-master beat timing: duration = speech_duration + padding, clamped to [min, max+1.5]
+  const maxDuration = MAX_DIALOGUE_CLIP_SECONDS + 1.5;
+
   return sentences.map((sentence, index) => {
     const words = Math.max(1, countWords(sentence));
-    const allocation = clamp(Math.round((words / totalWords) * requestedSeconds), 2, requestedSeconds);
-    const startSecond = cursor;
-    const endSecond =
-      index === sentences.length - 1
-        ? requestedSeconds
-        : clamp(startSecond + allocation, startSecond + 1, requestedSeconds);
+    // Speech duration from AIUGC formula
+    const speechDuration = (words / Math.max(WORDS_PER_MINUTE, 1)) * 60;
+    const durationTarget = Math.max(
+      MIN_DIALOGUE_CLIP_SECONDS,
+      Math.min(maxDuration, speechDuration + SPEECH_PADDING_SECONDS)
+    );
+    // Round to 2 decimals
+    const duration = Math.round(durationTarget * 100) / 100;
+
+    const startSecond = Math.round(cursor * 100) / 100;
+    const endSecond = Math.round((startSecond + duration) * 100) / 100;
     cursor = endSecond;
 
     const storyRole = detectStoryRole(sentence, index, sentences.length, productName);
@@ -359,15 +474,65 @@ function buildScriptBeats(dialogue: string, requestedSeconds: number, productNam
   });
 }
 
+/**
+ * AIUGC-master's _split_long_chunk: split text by clause boundaries first,
+ * then fall back to word-level splitting.
+ */
+function splitLongChunk(text: string, maxWords: number): string[] {
+  const words = countWords(text);
+  if (words <= maxWords) return [text];
+
+  // Try clause-based split first (split on ,;: boundary)
+  const clauses = text.split(/(?<=[,;:])\s+/).filter(Boolean);
+  if (clauses.length > 1) {
+    const groups: string[] = [];
+    let current: string[] = [];
+    let currentWc = 0;
+    for (const clause of clauses) {
+      const cw = countWords(clause);
+      if (current.length > 0 && currentWc + cw > maxWords) {
+        groups.push(current.join(" "));
+        current = [clause];
+        currentWc = cw;
+      } else {
+        current.push(clause);
+        currentWc += cw;
+      }
+    }
+    if (current.length > 0) groups.push(current.join(" "));
+    return groups;
+  }
+
+  // Fallback: split words directly in chunks of maxWords
+  const allWords = text.split(/\s+/);
+  const groups: string[] = [];
+  for (let i = 0; i < allWords.length; i += maxWords) {
+    groups.push(allWords.slice(i, i + maxWords).join(" "));
+  }
+  return groups;
+}
+
+/**
+ * AIUGC-master's clause-first splitting algorithm for dialogue clips.
+ *
+ * 1. Split text into sentences
+ * 2. Split long sentences by clause boundaries (,;:)
+ * 3. Group small chunks together to reach target word count
+ * 4. Merge tiny beats (< MIN_WORDS_PER_BEAT) with neighbors
+ * 5. Duration = speech_duration + SPEECH_PADDING_SECONDS
+ */
 function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDurationSeconds: number) {
   const sentences = splitSentences(dialogue);
-  const preferredSeconds = clamp(clipDurationSeconds, MIN_DIALOGUE_CLIP_SECONDS, 7);
-  const targetWordsPerClip = Math.max(11, Math.round(WORDS_PER_SECOND * preferredSeconds));
-  const maxWordsPerClip = Math.max(targetWordsPerClip + 5, 18);
+  const preferredSeconds = clamp(clipDurationSeconds, MIN_DIALOGUE_CLIP_SECONDS, MAX_DIALOGUE_CLIP_SECONDS);
+  // AIUGC-master: sentence_hold_seconds = hero_max_seconds + 1.5
+  const sentenceHoldSeconds = MAX_DIALOGUE_CLIP_SECONDS + 1.5;
+  const maxWords = Math.max(8, Math.floor((sentenceHoldSeconds / 60) * WORDS_PER_MINUTE));
+  const targetWords = Math.max(6, Math.floor((preferredSeconds / 60) * WORDS_PER_MINUTE));
 
   if (sentences.length === 0) {
+    const speechDur = countWords(dialogue) / WORDS_PER_SECOND;
     const fallbackDuration = clamp(
-      Math.round(Math.max(totalSeconds, MIN_DIALOGUE_CLIP_SECONDS)),
+      Math.round((speechDur + SPEECH_PADDING_SECONDS) * 100) / 100,
       MIN_DIALOGUE_CLIP_SECONDS,
       MAX_DIALOGUE_CLIP_SECONDS
     );
@@ -381,46 +546,77 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
     ];
   }
 
-  const clips: Array<{ id: string; text: string; wordCount: number }> = [];
-  let current: string[] = [];
-  let currentWords = 0;
-
-  sentences.forEach((sentence) => {
-    const words = countWords(sentence);
-    if (current.length > 0 && (currentWords >= targetWordsPerClip || currentWords + words > maxWordsPerClip)) {
-      clips.push({
-        id: makeId("clip-segment", clips.length),
-        text: current.join(" "),
-        wordCount: currentWords,
-      });
-      current = [];
-      currentWords = 0;
-    }
-    current.push(sentence);
-    currentWords += words;
-  });
-
-  if (current.length > 0) {
-    clips.push({
-      id: makeId("clip-segment", clips.length),
-      text: current.join(" "),
-      wordCount: currentWords,
-    });
+  // Phase 1: Split long sentences by clause boundaries, then group to target
+  const rawChunks: string[] = [];
+  for (const sentence of sentences) {
+    const subChunks = splitLongChunk(sentence, maxWords);
+    rawChunks.push(...subChunks);
   }
 
-  // Beat merging pass — merge any clip under 5 words with its neighbor
-  // (inspired by AIUGC-master's beat merging to prevent fragmentation)
-  const MIN_CLIP_WORDS = 5;
-  let merged = true;
-  while (merged) {
-    merged = false;
+  // Phase 2: Group small chunks together to reach target word count
+  const grouped: Array<{ text: string; wordCount: number }> = [];
+  let current: string[] = [];
+  let currentWc = 0;
+
+  for (const chunk of rawChunks) {
+    const cw = countWords(chunk);
+    if (current.length > 0 && currentWc + cw > targetWords) {
+      grouped.push({ text: current.join(" "), wordCount: currentWc });
+      current = [chunk];
+      currentWc = cw;
+    } else {
+      current.push(chunk);
+      currentWc += cw;
+    }
+  }
+  if (current.length > 0) {
+    grouped.push({ text: current.join(" "), wordCount: currentWc });
+  }
+
+  // Phase 3: Beat merging — merge clips under MIN_WORDS_PER_BEAT with neighbor
+  // AIUGC-master: can merge if both roles are identical or either is "support"
+  const clips = grouped.map((g, i) => ({ id: makeId("clip-segment", i), ...g }));
+  const minSpeechSeconds = 2.0;
+
+  let didMerge = true;
+  while (didMerge) {
+    didMerge = false;
     for (let i = 0; i < clips.length; i++) {
-      if (clips[i].wordCount < MIN_CLIP_WORDS && clips.length > 1) {
-        // Merge with the shorter neighbor
+      const speechDur = clips[i].wordCount / WORDS_PER_SECOND;
+      if ((clips[i].wordCount < MIN_WORDS_PER_BEAT || speechDur < minSpeechSeconds) && clips.length > 1) {
+        // Merge with shorter neighbor
         const prev = i > 0 ? clips[i - 1] : null;
         const next = i < clips.length - 1 ? clips[i + 1] : null;
         const target = !prev ? next! : !next ? prev : prev.wordCount <= next.wordCount ? prev : next;
-        const targetIdx = target === prev ? i - 1 : i + 1;
+        const targetIdx = clips.indexOf(target);
+
+        // Check merged result fits constraints
+        const mergedWords = target.wordCount + clips[i].wordCount;
+        const mergedDuration = mergedWords / WORDS_PER_SECOND + SPEECH_PADDING_SECONDS;
+        if (mergedDuration > sentenceHoldSeconds) continue; // Skip if too long
+
+        if (targetIdx < i) {
+          clips[targetIdx].text = `${clips[targetIdx].text} ${clips[i].text}`.trim();
+        } else {
+          clips[targetIdx].text = `${clips[i].text} ${clips[targetIdx].text}`.trim();
+        }
+        clips[targetIdx].wordCount = mergedWords;
+        clips.splice(i, 1);
+        didMerge = true;
+        break;
+      }
+    }
+  }
+
+  // Phase 4: Post-merge tiny check — merge clips under 3 words or 1.0s with neighbor
+  let didPostMerge = true;
+  while (didPostMerge) {
+    didPostMerge = false;
+    for (let i = 0; i < clips.length; i++) {
+      const speechDur = clips[i].wordCount / WORDS_PER_SECOND;
+      if ((clips[i].wordCount < 3 || speechDur < 1.0) && clips.length > 1) {
+        // Prefer merging with previous
+        const targetIdx = i > 0 ? i - 1 : i + 1;
         if (targetIdx < i) {
           clips[targetIdx].text = `${clips[targetIdx].text} ${clips[i].text}`.trim();
         } else {
@@ -428,24 +624,27 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
         }
         clips[targetIdx].wordCount += clips[i].wordCount;
         clips.splice(i, 1);
-        merged = true;
+        didPostMerge = true;
         break;
       }
     }
   }
 
+  // Phase 5: Assign duration — AIUGC formula: speech_duration + padding, clamped
+  const maxDuration = MAX_DIALOGUE_CLIP_SECONDS + 1.5;
   return clips.map((clip, index) => {
-    // Calculate tight duration — add 0.5s buffer for natural breathing room, not more
-    const rawSeconds = clip.wordCount / WORDS_PER_SECOND + 0.5;
+    const speechDuration = clip.wordCount / WORDS_PER_SECOND;
+    const durationRaw = speechDuration + SPEECH_PADDING_SECONDS;
+    const duration = clamp(
+      Math.round(durationRaw * 100) / 100,
+      MIN_DIALOGUE_CLIP_SECONDS,
+      maxDuration
+    );
     return {
-      id: clip.id || makeId("clip-segment", index),
+      id: makeId("clip-segment", index),
       text: clip.text,
       wordCount: clip.wordCount,
-      durationSeconds: clamp(
-        Math.round(rawSeconds),
-        MIN_DIALOGUE_CLIP_SECONDS,
-        MAX_DIALOGUE_CLIP_SECONDS
-      ),
+      durationSeconds: Math.round(duration),
     };
   });
 }
@@ -877,17 +1076,45 @@ function buildSceneVariations(
 ): UgcSceneVariation[] {
   const baseEnvironment = inferEnvironment(script.dialogue, category);
 
-  // Expression variation profiles — each variant gets a distinct expression/pose/crop
-  // so candidates look genuinely different (inspired by AIUGC-master's control room)
+  // AIUGC-master's BASE_IMAGE_VARIATION_PROFILES — 6 exact profiles cycled by index
+  // Each candidate must be visibly distinct in expression, pose, crop, and emotional register
   const expressionProfiles = [
-    { expression: "relaxed half-smile, settled into the space", pose: "natural stance, phone at eye level", crop: "chest-up, centered" },
-    { expression: "just-arrived energy, slightly surprised", pose: "torso angled, slightly off-center", crop: "medium, more environment visible" },
-    { expression: "thoughtful, considering something", pose: "leaning slightly, one hand near product", crop: "tighter portrait, intimate" },
-    { expression: "matter-of-fact confident, no performance", pose: "relaxed shoulders, direct gaze", crop: "wider, more room context" },
-    { expression: "warm, lived-in comfort", pose: "casual posture, settled in", crop: "slightly off-center, side-lit" },
-    { expression: "knowing look, about to share something", pose: "product held smaller, deeper in frame", crop: "deeper composition, layered" },
-    { expression: "mid-thought, natural and unposed", pose: "weight shifted, authentic stance", crop: "classic selfie framing" },
-    { expression: "quietly pleased, understated", pose: "hands free, product visible nearby", crop: "balanced, product and person" },
+    {
+      expression: "Relieved half-smile with subtle asymmetry, like the product genuinely improved the space.",
+      pose: "Relaxed shoulders and natural arm's-length selfie posture, body opened slightly toward the product.",
+      crop: "Phone held just below eye level with the person anchored on the left third so the product reads clearly.",
+      emotionalRegister: "quiet relief and a small genuine sense of satisfaction, not performative amazement",
+    },
+    {
+      expression: "Pleasant just-arrived-home expression with soft surprise, not a worried or embarrassed face.",
+      pose: "Torso angled toward the product with the head turning back toward the phone as if catching the moment.",
+      crop: "Phone slightly farther from the face for more environment, with an off-center crop that reveals the product.",
+      emotionalRegister: "the grounded emotional lift of arriving home to a space that suddenly feels welcoming",
+    },
+    {
+      expression: "Thoughtful approving look with relaxed brows and a faint smile, as if noticing the material quality.",
+      pose: "Slight lean that gives the product room to read, without stiff shoulders or mannequin posture.",
+      crop: "Closer portrait crop with the face and product both in frame, avoiding dead-center symmetry.",
+      emotionalRegister: "calm appreciation of the product's effect on texture, materials, and atmosphere",
+    },
+    {
+      expression: "Matter-of-fact confident look with neutral-positive energy, not a repeated frown.",
+      pose: "Natural stance with the person subtly stepping aside to let product details stay legible.",
+      crop: "Slightly wider selfie crop with believable phone perspective and clear environment context.",
+      emotionalRegister: "practical confidence that the space now feels intentional and real",
+    },
+    {
+      expression: "Contented lived-in expression with a soft easy smile, like someone enjoying the mood of the space.",
+      pose: "Casual relaxed posture with slight body turn and believable lifestyle ease, not square-on framing.",
+      crop: "Warmer side-lit selfie angle with more environment visible so the shot feels lifestyle-led.",
+      emotionalRegister: "comfortable lived-in warmth that feels aspirational without becoming glossy or staged",
+    },
+    {
+      expression: "Attentive knowing look with subtle confidence and natural micro-expression.",
+      pose: "Person held smaller in frame so the environment depth plays, while keeping natural selfie posture.",
+      crop: "Deeper, slightly wider handheld selfie composition that prioritizes environment depth and product visibility.",
+      emotionalRegister: "assured satisfaction in seeing the full environment finally read as warm and cohesive",
+    },
   ];
 
   const cameraDirections = [
@@ -929,6 +1156,45 @@ function buildSceneVariations(
             : "Alternate composition — different pose and crop.";
     const environment = cleanText(override?.environment) || baseEnvironment;
 
+    // First script line as narrative seed for the scene
+    const firstLine = splitSentences(script.dialogue)[0] || "";
+
+    // AIUGC-master layered prompt structure
+    const promptParts = [
+      // Core frame
+      `Ultra-realistic iPhone front-camera UGC frame. It must look like a real smartphone screenshot, not CGI or illustration.`,
+      // Product anchor
+      `Reference object anchor: ${productName} (${productAppearance}).`,
+      // Environment
+      `Environment: ${environment}.`,
+      // Scene depth architecture
+      `Scene depth architecture: Foreground: ${avatar.label} in the close near-field of a front camera, with natural handheld presence; Mid-ground: the immediate lived-in space, arranged so ${productName} is visible and legible; Background: the deeper room or exterior context, with believable light falloff and environmental depth.`,
+      // Expression direction
+      `Expression direction: ${profile.expression}`,
+      `Pose direction: ${profile.pose}`,
+      `Camera variation for this candidate: ${profile.crop}`,
+      `Emotional register: ${profile.emotionalRegister}`,
+      // Lighting
+      `${lighting}.`,
+      // Persona
+      `${avatar.label}: ${avatar.persona}. Wardrobe: ${avatar.wardrobe}.`,
+      // Phone camera physics
+      `Selfie camera physics: preserve the characteristic close near-field of a front camera, slight smartphone wide-angle compression, and subtle front-camera fisheye at the frame corners.`,
+      // Human realism
+      `Human realism requirements: subtle asymmetry in expression, believable eye moisture, real pores, natural flyaway hairs, non-identical mouth/brow shapes, and no mannequin face, dead eyes, cloned expression, or generic AI beauty pass.`,
+      // Phone camera realism
+      `Phone-camera realism requirements: natural skin texture, believable smartphone HDR, realistic edge detail, real-world lighting falloff, subtle handheld imperfections, no synthetic plastic skin, realistic exposure rolloff, and no camera UI visible.`,
+      // Variation directive
+      `Variation directive: this candidate must be visibly distinct from the other base-image options in expression, pose, crop, and light interaction while keeping the product identical.`,
+      // Product constraints
+      `Product: ${productName}. Must preserve exactly: product form, silhouette, materials, colors, and branding. Product must stay true to real appearance.`,
+      `Product visibility requirement: Keep product immediately readable at glance with clean contrast, practical lighting, unobstructed silhouette.`,
+      `Product prominence guidance: The product should be clearly identifiable and on-screen, but integrated into complete lifestyle scene rather than dominating whole frame like catalog hero shot.`,
+      `Forbidden mutations: do not change product color, shape, branding, or materials. No one holding a phone.`,
+      // Narrative seed
+      firstLine ? `Narrative seed from opening script line: "${firstLine}". Use only as scene context, not as literal instruction.` : "",
+    ].filter(Boolean);
+
     return {
       id: makeId("scene", index),
       title,
@@ -938,7 +1204,7 @@ function buildSceneVariations(
       camera,
       lighting,
       expressionProfile,
-      prompt: `9:16 ${settings.imageResolution} vertical selfie photo. A real person with ${productName} (${productAppearance}), clearly visible. ${avatar.label}: ${avatar.persona}. Wardrobe: ${avatar.wardrobe}. Expression: ${profile.expression}. Pose: ${profile.pose}. Crop: ${profile.crop}. Phone propped at arm's length, selfie POV. Environment: ${environment}. ${lighting}. This variant must look distinct from other candidates — different expression, pose, and crop — while keeping the product identical. Product must stay true to real appearance. No one holding a phone. Authentic UGC feel, not a photoshoot.`,
+      prompt: promptParts.join(" "),
     };
   });
 }
@@ -971,7 +1237,7 @@ function buildDialogueClips(
     const startSecond = priorDuration;
     const endSecond = startSecond + segment.durationSeconds;
     const storyRole = detectStoryRole(segment.text, index, segments.length, productName);
-    const shotType = assignShotType(segment.text, storyRole, index);
+    const shotType = assignShotType(segment.text, storyRole, index, segment.durationSeconds);
     const movement = movementByRole[storyRole];
     return {
       id: makeId("dialogue-clip", index),
