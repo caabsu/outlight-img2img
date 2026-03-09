@@ -755,29 +755,107 @@ function trimToWords(text: string, targetWords: number): string {
   return result.join(" ");
 }
 
-function buildAvatarOptions(productName: string, guidance: string, category: string): UgcAvatarOption[] {
+// ---------------------------------------------------------------------------
+// Speaker identity extraction — infer who is speaking from script + guidance
+// ---------------------------------------------------------------------------
+
+type SpeakerIdentity = {
+  gender: "male" | "female" | "neutral";
+  descriptor: string; // e.g. "a young man", "a woman in her 30s"
+  context: string; // e.g. "husband buying a gift for his wife"
+};
+
+const MALE_MARKERS = /\b(husband|boyfriend|dad|father|grandpa|grandfather|his wife|his girlfriend|her birthday|for her|he |him |his |guy|man|bro|dude|I.m a guy|as a man|as a dad|my wife|my girlfriend)\b/i;
+const FEMALE_MARKERS = /\b(wife|girlfriend|mom|mother|grandma|grandmother|her husband|her boyfriend|his birthday|for him|she |her |gal|woman|girl|I.m a girl|as a woman|as a mom|my husband|my boyfriend)\b/i;
+
+function extractSpeakerIdentity(scriptDialogue: string, guidance: string): SpeakerIdentity {
+  const corpus = `${scriptDialogue} ${guidance}`.toLowerCase();
+
+  const maleScore = (corpus.match(MALE_MARKERS) || []).length;
+  const femaleScore = (corpus.match(FEMALE_MARKERS) || []).length;
+
+  // Extract relationship context if present
+  let context = "";
+  if (/husband|wife|marriage|married|anniversary/i.test(corpus)) {
+    context = maleScore > femaleScore ? "a husband" : "a wife";
+  } else if (/boyfriend|girlfriend|partner|dating/i.test(corpus)) {
+    context = maleScore > femaleScore ? "a boyfriend" : "a girlfriend";
+  } else if (/dad|father|mom|mother|parent|kid|child/i.test(corpus)) {
+    context = maleScore > femaleScore ? "a father" : "a mother";
+  } else if (/for her|gift.*her|her birthday/i.test(corpus)) {
+    context = "buying a gift for someone special";
+  } else if (/for him|gift.*him|his birthday/i.test(corpus)) {
+    context = "buying a gift for someone special";
+  }
+
+  if (maleScore > femaleScore) {
+    return {
+      gender: "male",
+      descriptor: "a man",
+      context: context || "a man sharing his experience",
+    };
+  }
+  if (femaleScore > maleScore) {
+    return {
+      gender: "female",
+      descriptor: "a woman",
+      context: context || "a woman sharing her experience",
+    };
+  }
+  return {
+    gender: "neutral",
+    descriptor: "a person",
+    context: context || "someone sharing their experience",
+  };
+}
+
+function buildAvatarOptions(productName: string, guidance: string, category: string, speaker: SpeakerIdentity): UgcAvatarOption[] {
+  const genderLabel = speaker.gender === "male" ? "man" : speaker.gender === "female" ? "woman" : "person";
+  const pronoun = speaker.gender === "male" ? "he" : speaker.gender === "female" ? "she" : "they";
+
+  const wardrobeByGender = {
+    male: [
+      "Plain t-shirt or henley, natural hair, no styling — looks like he just grabbed his phone to film.",
+      "Clean button-down or casual jacket, understated, practical grooming.",
+      "Well-fitted basics, relaxed but put-together, confident without trying.",
+    ],
+    female: [
+      "Simple top, minimal makeup, natural hair — looks like she just grabbed her phone to film.",
+      "Structured but approachable layers, minimal jewelry, clean look.",
+      "Put-together, tasteful outfit, effortlessly camera-ready.",
+    ],
+    neutral: [
+      "Simple casual top, no accessories, natural grooming — looks like they grabbed their phone to film.",
+      "Clean, structured layers, understated and approachable.",
+      "Put-together, tasteful, camera-ready but not overdone.",
+    ],
+  };
+
+  const wardrobe = wardrobeByGender[speaker.gender];
+  const contextNote = speaker.context ? ` (${speaker.context})` : "";
+
   return [
     {
       id: "avatar-1",
-      label: "Relatable Everyday",
-      persona: `A normal, relatable person who uses ${productName} in their real life and talks about it naturally.`,
-      wardrobe: "Clean casual top, minimal accessories, natural grooming — looks like they grabbed their phone to film.",
+      label: `Relatable ${genderLabel}`,
+      persona: `A real, relatable ${genderLabel}${contextNote} who uses ${productName} in ${pronoun === "they" ? "their" : speaker.gender === "male" ? "his" : "her"} real life and talks about it naturally.`,
+      wardrobe: wardrobe[0],
       castingRationale: `Feels trustworthy and authentic for ${productName}. Not polished, just real.`,
       voiceStyle: "Warm, natural, conversational — like talking to a friend.",
     },
     {
       id: "avatar-2",
-      label: "Knowledgeable User",
-      persona: `Someone who clearly knows ${category || "the product"} well and shares their honest experience with authority.`,
-      wardrobe: "Structured but approachable — neat layers, clean hair, understated.",
+      label: `Knowledgeable ${genderLabel}`,
+      persona: `A ${genderLabel}${contextNote} who clearly knows ${category || "the product"} well and shares ${pronoun === "they" ? "their" : speaker.gender === "male" ? "his" : "her"} honest experience with authority.`,
+      wardrobe: wardrobe[1],
       castingRationale: "Good when the product needs credibility or the audience is more discerning.",
       voiceStyle: "Clear, confident, measured — not performative.",
     },
     {
       id: "avatar-3",
-      label: "Aspirational",
-      persona: "Someone whose lifestyle makes you want what they have — the product fits naturally into it.",
-      wardrobe: "Put-together, tasteful, camera-ready but not overdone.",
+      label: `Aspirational ${genderLabel}`,
+      persona: `A ${genderLabel}${contextNote} whose lifestyle makes you want what ${pronoun} ${pronoun === "they" ? "have" : "has"} — the product fits naturally into it.`,
+      wardrobe: wardrobe[2],
       castingRationale: "Strong when the product benefits from aspirational positioning or visual appeal.",
       voiceStyle: "Bright, easygoing, naturally engaging.",
     },
@@ -791,7 +869,8 @@ function buildSceneVariations(
   productAppearance: string,
   settings: UgcPlanRequest["settings"],
   category: string,
-  overrides: UgcAnthropicCreativeScene[] = []
+  overrides: UgcAnthropicCreativeScene[] = [],
+  speaker?: SpeakerIdentity,
 ): UgcSceneVariation[] {
   const baseEnvironment = inferEnvironment(script.dialogue, category);
 
@@ -910,8 +989,12 @@ function buildSceneVariations(
       `Product visibility requirement: Keep product immediately readable at glance with clean contrast, practical lighting, unobstructed silhouette.`,
       `Product prominence guidance: The product should be clearly identifiable and on-screen, but integrated into complete lifestyle scene rather than dominating whole frame like catalog hero shot.`,
       `Forbidden mutations: do not change product color, shape, branding, or materials. No one holding a phone.`,
-      // Narrative seed
-      firstLine ? `Narrative seed from opening script line: "${firstLine}". Use only as scene context, not as literal instruction.` : "",
+      // Speaker identity — hard constraint for gender/appearance
+      speaker && speaker.gender !== "neutral"
+        ? `CRITICAL — Speaker identity: The person in this image MUST be ${speaker.descriptor}${speaker.context ? ` (${speaker.context})` : ""}. This is not optional. The ${speaker.gender === "male" ? "male" : "female"} gender presentation must be unmistakable.`
+        : "",
+      // Script context — the dialogue establishes who this person is
+      firstLine ? `Script context: The person is about to say: "${firstLine}". Use this to inform the character's expression and energy.` : "",
     ].filter(Boolean);
 
     return {
@@ -1269,14 +1352,21 @@ function buildFallbackPlan(input: UgcPlanRequest): UgcWorkflowPlan {
       : buildGeneratedScripts(input.script, productName, category, input.knowledge);
 
   const selectedScript = scriptOptions[0];
-  const avatarOptions = buildAvatarOptions(productName, input.script.description, category);
+  // Extract speaker identity from both the script dialogue and guidance
+  const speaker = extractSpeakerIdentity(
+    selectedScript.dialogue,
+    cleanText(input.script.description) + " " + cleanText(input.knowledge)
+  );
+  const avatarOptions = buildAvatarOptions(productName, input.script.description, category, speaker);
   const sceneVariations = buildSceneVariations(
     selectedScript,
     avatarOptions,
     productName,
     productAppearance,
     input.settings,
-    category
+    category,
+    [],
+    speaker,
   );
   const dialogueClips = buildDialogueClips(
     selectedScript,
@@ -1364,6 +1454,11 @@ function buildPlanFromAnthropicCreative(
 
   const selectedScript =
     scriptOptions.find((option) => option.id === cleanText(creative.selectedScriptId)) || scriptOptions[0];
+  // Re-extract speaker identity from the AI-generated script
+  const speaker = extractSpeakerIdentity(
+    selectedScript.dialogue,
+    cleanText(input.script.description) + " " + cleanText(input.knowledge)
+  );
   const sceneVariations = buildSceneVariations(
     selectedScript,
     avatarOptions,
@@ -1371,7 +1466,8 @@ function buildPlanFromAnthropicCreative(
     productAppearance,
     input.settings,
     category,
-    creative.sceneVariations
+    creative.sceneVariations,
+    speaker,
   );
   const dialogueClips = buildDialogueClips(
     selectedScript,
