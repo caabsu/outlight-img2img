@@ -177,7 +177,7 @@ export type UgcWorkflowPlan = {
 export const DEFAULT_UGC_WORKFLOW_SETTINGS: UgcWorkflowSettings = {
   safeMode: "safe",
   dialogueSeconds: 20,
-  clipDurationSeconds: 5,
+  clipDurationSeconds: 7,
   sceneVariationCount: 4,
   bRollClipCount: 4,
   imageModelId: "nanobanana-2",

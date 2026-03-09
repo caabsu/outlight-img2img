@@ -33,9 +33,9 @@ const REMOTE_PLANNER_TIMEOUT_MS = 55000;
 const WORDS_PER_SECOND = 3.0;
 const WORDS_PER_MINUTE = WORDS_PER_SECOND * 60; // 180 WPM
 const SPEECH_PADDING_SECONDS = 0.75; // Breathing room after each clip
-const MIN_DIALOGUE_CLIP_SECONDS = 2;
-const MAX_DIALOGUE_CLIP_SECONDS = 8;
-const MIN_WORDS_PER_BEAT = 5; // Minimum words before merging with neighbor
+const MIN_DIALOGUE_CLIP_SECONDS = 4;
+const MAX_DIALOGUE_CLIP_SECONDS = 10;
+const MIN_WORDS_PER_BEAT = 10; // Minimum words before merging with neighbor — keeps clips substantial
 const SPEECH_BUDGET_RATIO = 0.9; // 90% of target duration for speech
 
 type UgcAnthropicCreativeScript = {
@@ -1742,7 +1742,7 @@ export async function POST(req: Request) {
       settings: {
         safeMode: body.settings?.safeMode === "fast" ? "fast" : "safe",
         dialogueSeconds: clamp(Number(body.settings?.dialogueSeconds) || 20, 5, 60),
-        clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 5, 3, 10),
+        clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 7, 4, 10),
         sceneVariationCount: clamp(Number(body.settings?.sceneVariationCount) || 4, 1, MAX_SCENE_VARIATIONS),
         bRollClipCount: clamp(Number(body.settings?.bRollClipCount) || 4, 1, MAX_BROLL_CLIPS),
         imageModelId: cleanText(body.settings?.imageModelId) || "nanobanana-2",
