@@ -768,8 +768,11 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   );
 
   return frameworks.map((variant, index) => {
-    // Compress if dialogue exceeds word budget (preserves hook/cta, drops filler)
-    const dialogue = compressScript(variant.dialogue, targetWords, productName);
+    // Compress only if dialogue significantly exceeds budget — allow 30% flex for natural flow
+    const flexBudget = Math.round(targetWords * 1.3);
+    const dialogue = countWords(variant.dialogue) > flexBudget
+      ? compressScript(variant.dialogue, flexBudget, productName)
+      : variant.dialogue;
     const estimatedSeconds = estimateDurationSeconds(dialogue, input.totalSeconds);
     return {
       id: makeId("script", index),
@@ -1025,8 +1028,8 @@ function trimToWords(text: string, targetWords: number): string {
   const sentences = splitSentences(text);
   const result: string[] = [];
   let wordCount = 0;
-  // Allow 15% overflow to avoid cutting mid-thought
-  const limit = Math.round(targetWords * 1.15);
+  // Allow 30% overflow — natural flow matters more than exact count
+  const limit = Math.round(targetWords * 1.3);
   for (const sentence of sentences) {
     const words = countWords(sentence);
     if (wordCount + words > limit && result.length > 0) break;
@@ -1738,37 +1741,28 @@ async function tryGeminiPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   if (!process.env.GEMINI_API_KEY) return null;
 
   const hasGuidance = !!cleanText(input.script.description);
-  const guidanceBlock = hasGuidance
-    ? `\n## THE CREATIVE BRIEF — THIS IS YOUR #1 PRIORITY\nThe user's creative direction: "${input.script.description}"\n\nEVERY script MUST be built around this brief. It is not a suggestion — it is the angle, the concept, the world the scripts live in. Interpret it creatively but NEVER ignore it. If the brief says "corner" — every script is about a corner. If it says "morning routine" — every script is set in the morning. The brief defines WHAT the scripts are about. Everything else is HOW.\n\nDo NOT write generic product scripts that could apply to anything. Write scripts that can ONLY exist because of this specific brief.\n`
-    : `\n## NO CREATIVE BRIEF PROVIDED\nMine the product category and knowledge for the strongest emotional angle. Each script should find a different emotional entry point for the product.\n`;
 
-  const prompt = `You are an elite creative strategist for short-form video ads. Your scripts feel like native content — not ads.
-${guidanceBlock}
-PRODUCT & CONTEXT
-- Product: ${JSON.stringify(input.product)}
+  const targetSeconds = input.script.totalSeconds || 20;
+  const targetWords = Math.round(targetSeconds * 3);
+
+  const prompt = `Write 3 short-form video scripts for the product below.${hasGuidance ? `\n\nCREATIVE DIRECTION: "${input.script.description}"\nThis is the angle. Everything flows from this. Every script must be ABOUT this direction. Interpret it creatively but never drift from it.` : `\n\nNo creative direction provided. Find the most specific, interesting angle for this exact product.`}
+
+PRODUCT
+- Name: ${input.product.name}
+- Category: ${input.product.category || "general"}
+- Vendor: ${input.product.vendor || "unknown"}
 - Knowledge: ${input.knowledge || "None"}
-- Duration: ${input.script.totalSeconds || 20}s ≈ ${Math.round((input.script.totalSeconds || 20) * 3)} words
-- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
-- Settings: ${JSON.stringify(input.settings)}
-- Override instructions: ${input.overrideInstructions || "None"}
 
-SCRIPT RULES:
-1. EMOTION-FIRST: Start from what the viewer FEELS. The product answers a feeling they already have.
-2. NATIVE: Pass the "sniff test." No marketing language, no superlatives, no brand voice.
-3. HOOK DIVERSITY — each script MUST use a different hook type:
-   - Script 1: MICRO-STORY — drops into a specific sensory moment
-   - Script 2: CONFESSION — opens with vulnerable honesty
-   - Script 3: QUIET OBSERVATION — anti-sell, matter-of-fact
-4. VOICE: Sentence fragments. Filler words. False starts. Like a voice memo.
-5. CLOSE: End naturally. NEVER: "link in bio", "use my code", "you need this."
-6. Each variation must feel like a DIFFERENT person wrote it.
+CONSTRAINTS
+- Duration: ~${targetSeconds} seconds ≈ ${targetWords} words (3 words/second). Flexible — natural flow matters more than exact count, but stay in the ballpark.
+- ${input.overrideInstructions ? `OVERRIDE: ${input.overrideInstructions}` : ""}
 
-Improve the baseline plan. Keep same JSON shape and array lengths. Preserve IDs. Return only JSON.
+Write scripts that sound like a real person talking into their phone. Each script should be tailored to the creative direction and product. 3 genuinely different approaches — different person, different angle, different energy. No marketing language. No formulas. No call to action at the end.
+
+Keep same JSON shape and array lengths as the baseline. Preserve IDs. Return only JSON. No markdown fences.
 
 BASELINE PLAN
-${JSON.stringify(baseline)}
-
-Return only valid JSON. No markdown fences.`;
+${JSON.stringify(baseline)}`;
 
   try {
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -1787,83 +1781,57 @@ async function tryAnthropicPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan
   if (!process.env.ANTHROPIC_API_KEY) return null;
 
   const hasGuidance = !!cleanText(input.script.description);
-  const guidanceBlock = hasGuidance
-    ? `\n## THE CREATIVE BRIEF — THIS IS YOUR #1 PRIORITY\nThe user's creative direction: "${input.script.description}"\n\nEVERY script MUST be built around this brief. It defines the angle, the concept, and the world the scripts live in. If the brief says "corner" — every script is about filling/transforming a corner. If it says "cozy" — every script is about making something feel cozy. The brief is NOT a suggestion. It is the creative constraint. Interpret it — don't echo it as dialogue — but NEVER ignore it.\n\nDo NOT write generic product scripts. Write scripts that can ONLY exist because of this specific brief.\n`
-    : `\n## NO CREATIVE BRIEF PROVIDED\nMine the product category and knowledge for the strongest emotional angle.\n`;
+  const targetSeconds = input.script.totalSeconds || 20;
+  const targetWords = Math.round(targetSeconds * 3);
 
-  const prompt = `You are an elite creative strategist. Your scripts feel like native content, not ads.
-${guidanceBlock}
-PRODUCT & CONTEXT
-- Product: ${JSON.stringify(input.product)}
-- Knowledge: ${input.knowledge || "None"}
-- Duration: ${input.script.totalSeconds || 20}s ≈ ${Math.round((input.script.totalSeconds || 20) * 3)} words
-- Campaign: ${input.campaignName || "Untitled UGC Workflow"}
-- Override instructions: ${input.overrideInstructions || "None"}
+  const prompt = `Write 3 short-form video scripts for the product below.${hasGuidance ? `\n\nCREATIVE DIRECTION: "${input.script.description}"\nThis is the angle. Everything flows from this. Every script must be ABOUT this direction — not a generic product script with this sprinkled in. If this says "corner" the scripts are about a corner. If it says "morning routine" the scripts happen in the morning. Interpret it creatively but never drift away from it.` : `\n\nNo creative direction was provided. Find the most specific, interesting angle for this exact product. Not generic category talk — something particular to THIS product that would make a real person want to film a video about it.`}
 
-SCRIPT RULES:
-1. EMOTION-FIRST: Start from what the viewer FEELS. The product answers a feeling.
-2. NATIVE: If someone scrolling thinks "this is an ad," you failed.
-3. HOOK DIVERSITY — each script MUST use a different hook type:
-   - Script 1 (${baseline.scriptOptions[0]?.id}): MICRO-STORY — drops into a specific sensory moment
-   - Script 2 (${baseline.scriptOptions[1]?.id}): CONFESSION — opens with vulnerable honesty
-   - Script 3 (${baseline.scriptOptions[2]?.id}): QUIET OBSERVATION — anti-sell, matter-of-fact
-4. VOICE: Sentence fragments. Filler words. Like a voice memo.
-5. CLOSE: End naturally. NEVER CTA language.
-6. Each variation = different person, different energy, different arc.
+PRODUCT
+- Name: ${input.product.name}
+- Category: ${input.product.category || "general"}
+- Vendor: ${input.product.vendor || "unknown"}
+- Appearance: ${input.product.appearanceNotes || "standard product appearance"}
+- Knowledge: ${input.knowledge || "None provided"}
 
-Return only JSON. No markdown fences. Use exact ids and array counts.
+CONSTRAINTS
+- Target duration: ~${targetSeconds} seconds ≈ ${targetWords} words (conversational speech ≈ 3 words/second)
+- This is approximate — natural flow and completeness matter more than hitting an exact number. Stay in the general range but don't cut a good script short to hit a word count.
+- ${input.overrideInstructions ? `OVERRIDE: ${input.overrideInstructions}` : "No additional overrides."}
 
-RETURN THIS EXACT JSON SHAPE
+WHAT I NEED FROM YOU
+Write scripts that sound like a real person talking into their phone — not a copywriter, not a brand, not AI. Each script should:
+- Be tailored specifically to the creative direction and this specific product
+- Sound speakable — sentence fragments, filler words, natural rhythm, varied pacing
+- Open with something that makes someone stop scrolling BEFORE they know it's about a product
+- Let the product enter naturally through experience, not explanation
+- End like a real person — mid-thought, trailing off, a shrug. No call to action.
+- Each of the 3 scripts must feel like a DIFFERENT person wrote it. Different angle, energy, setting, opening move.
+
+DO NOT:
+- Write the same script 3 times with surface-level variations
+- Use marketing language ("game-changer", "obsessed", "you need this", "holy grail")
+- Follow a formula (problem → product → solved) — real content doesn't move in clean arcs
+- Write scripts so generic they could apply to any product in the category
+
+Return only valid JSON. No markdown fences.
+
+JSON SHAPE
 {
-  "productAnalysis": "string — the emotional motivator, not features",
-  "selectedScriptId": "${baseline.selectedScriptId}",
+  "productAnalysis": "string — what makes someone actually WANT this, emotionally",
+  "selectedScriptId": "script-1",
   "scriptOptions": [
-    ${baseline.scriptOptions
-      .map(
-        (option) =>
-          `{ "id": "${option.id}", "title": "string", "rationale": "string — the emotional angle and hook type", "hook": "string", "cta": "string — natural exit", "dialogue": "string — full spoken script about THE BRIEF" }`
-      )
-      .join(",\n    ")}
+    ${[1, 2, 3].map((n) => `{ "id": "script-${n}", "title": "string — short creative title", "rationale": "string — what angle this takes and why it works", "hook": "string — the opening line", "cta": "string — the natural exit line (NOT a call to action)", "dialogue": "string — the full spoken script, ${targetWords} words max" }`).join(",\n    ")}
   ],
   "avatarOptions": [
-    ${baseline.avatarOptions
-      .map(
-        (avatar) =>
-          `{ "id": "${avatar.id}", "label": "string", "persona": "string", "wardrobe": "string", "castingRationale": "string", "voiceStyle": "string" }`
-      )
-      .join(",\n    ")}
+    ${baseline.avatarOptions.map((a) => `{ "id": "${a.id}", "label": "string", "persona": "string", "wardrobe": "string", "castingRationale": "string", "voiceStyle": "string" }`).join(",\n    ")}
   ],
   "sceneVariations": [
-    ${baseline.sceneVariations
-      .map(
-        (scene) =>
-          `{ "id": "${scene.id}", "title": "string", "summary": "string", "environment": "string — specific, lived-in", "avatarId": "avatar-1 | avatar-2 | avatar-3", "camera": "string", "lighting": "string" }`
-      )
-      .join(",\n    ")}
+    ${baseline.sceneVariations.map((s) => `{ "id": "${s.id}", "title": "string", "summary": "string", "environment": "string — specific real place, lived-in details", "avatarId": "avatar-1 | avatar-2 | avatar-3", "camera": "string", "lighting": "string" }`).join(",\n    ")}
   ],
   "bRollImagePlans": [
-    ${baseline.bRollImagePlans
-      .map(
-        (plan) =>
-          `{ "id": "${plan.id}", "title": "string", "objective": "string — which story moment this covers (${plan.storyPhase})", "angle": "string", "lens": "string", "lighting": "string", "withoutHuman": ${plan.withoutHuman} }`
-      )
-      .join(",\n    ")}
+    ${baseline.bRollImagePlans.map((p) => `{ "id": "${p.id}", "title": "string", "objective": "string — what story moment this covers", "angle": "string", "lens": "string", "lighting": "string", "withoutHuman": boolean }`).join(",\n    ")}
   ]
-}
-
-STORY ROLES IN THE SCRIPT:
-Each script beat has a narrative role: hook → problem → product_moment → proof → cta.
-- B-roll shots should cover specific story moments (product_moment gets a close-up reveal, proof gets the "after" state, etc.)
-- Scene variations should each have a distinct expression and pose — not the same person in the same stance repeated.
-
-RULES
-1. Each script MUST reflect the creative brief. Generic scripts = failure.
-2. Dialogue must sound speakable — natural rhythm, easy to say.
-3. SelectedScriptId must match one of the provided script ids.
-4. Scene environments: specific and lived-in, not generic.
-5. B-roll shots must be narrative-matched — each covers a specific story moment, not random angles.
-6. Do not include prompts, beats, dialogue clips, approval gates, architecture, or summary.
-7. Return only valid JSON.`;
+}`;
 
   try {
     const anthropic = new Anthropic({
@@ -1876,7 +1844,7 @@ RULES
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
         max_tokens: 4096,
         system:
-          "You are an elite creative strategist for short-form video. You think emotion-first — every script starts from what the viewer FEELS. Your content passes the sniff test: if someone would think 'this is an ad', you failed. Write scripts that sound like voice memos to friends, not brand copy. Return only valid JSON with ids exactly as provided.",
+          "You are a world-class scriptwriter for short-form video. You write scripts that sound like real people — not copywriters, not brands, not AI. Every script you write is tailored to the specific creative direction and product. You never rely on templates or formulas. You find the most interesting, specific, human angle and write from there. Return only valid JSON.",
         messages: [{ role: "user", content: prompt }],
       },
       {
