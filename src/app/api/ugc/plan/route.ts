@@ -93,12 +93,6 @@ function cleanText(value: string | undefined | null) {
   return (value || "").replace(/\s+/g, " ").trim();
 }
 
-function finishSentence(value: string | undefined | null) {
-  const trimmed = cleanText(value);
-  if (!trimmed) return "";
-  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
-}
-
 function splitSentences(text: string) {
   const normalized = cleanText(text);
   if (!normalized) return [];
@@ -332,59 +326,6 @@ function compressScript(dialogue: string, targetWords: number, productName: stri
   }
 
   return merged.join(" ");
-}
-
-function buildProductLines(knowledge: string, productName: string, category: string): { detail: string; reaction: string; specifics: string } {
-  const k = cleanText(knowledge).toLowerCase();
-  const cat = (category || "").toLowerCase();
-
-  // Extract something real from knowledge if available
-  if (k.length > 20) {
-    const firstSentence = finishSentence(knowledge.slice(0, 120));
-    return {
-      detail: firstSentence,
-      reaction: `That is the part that actually got me — ${firstSentence.toLowerCase().slice(0, 60)}.`,
-      specifics: `The thing nobody talks about is ${firstSentence.toLowerCase().slice(0, 50)}.`,
-    };
-  }
-
-  // Category-specific spoken lines (not instructions — actual dialogue)
-  if (/(skincare|serum|cream|beauty|face|moisturizer|cleanser)/.test(cat))
-    return {
-      detail: `My skin genuinely looks different. Like, I woke up this morning and the texture was just smoother.`,
-      reaction: `I keep touching my face which is gross but it is that soft now.`,
-      specifics: `I have tried so many ${category || "skincare"} things that did nothing. This one I actually noticed.`,
-    };
-  if (/(supplement|vitamin|protein|health|wellness)/.test(cat))
-    return {
-      detail: `I have way more energy in the afternoon. Like, I am not crashing at 3pm anymore.`,
-      reaction: `It sounds dramatic but I genuinely feel a difference on days I skip it.`,
-      specifics: `I am pretty skeptical about ${category || "supplements"} in general so the fact that I kept taking it says something.`,
-    };
-  if (/(tech|app|software|saas|tool|gadget)/.test(cat))
-    return {
-      detail: `It just works the way you think it should. No setup headache, no learning curve.`,
-      reaction: `I keep finding little things it does that save me time and I did not even expect.`,
-      specifics: `I have used a lot of ${category || "tools"} like this and most of them overcomplicate everything. This does not.`,
-    };
-  if (/(food|snack|drink|coffee|tea|beverage)/.test(cat))
-    return {
-      detail: `The taste is actually good. Not like fake-healthy good, genuinely good.`,
-      reaction: `I bought it once thinking it would be mid and now I have it like every day.`,
-      specifics: `Most ${category || "food"} stuff that markets itself as better usually tastes worse. Not this.`,
-    };
-  if (/(fashion|clothing|shoes|wear|outfit|jacket|shirt)/.test(cat))
-    return {
-      detail: `The fit is insane. Like, I tried it on and immediately ordered another color.`,
-      reaction: `People have been asking me where this is from and that never happens.`,
-      specifics: `The quality for the price is actually ridiculous. I expected it to feel cheap and it does not.`,
-    };
-  // Fallback — general product
-  return {
-    detail: `The difference is actually noticeable. It is not one of those things where you are like did it work? You know it worked.`,
-    reaction: `I did not think I would care this much but here I am making a video about it.`,
-    specifics: `I have been through a lot of ${category || "stuff"} like this. Most of it is forgettable. This was not.`,
-  };
 }
 
 function makeId(prefix: string, index: number) {
@@ -649,126 +590,137 @@ function splitDialogueIntoClips(dialogue: string, totalSeconds: number, clipDura
   });
 }
 
-function inferSettingForScript(guidance: string, category: string) {
-  const corpus = `${guidance} ${category}`.toLowerCase();
-  if (/(office|work|desk|startup|founder|meeting|b2b)/.test(corpus)) return { place: "at my desk", room: "office" };
-  if (/(bathroom|skincare|beauty|serum|face|cream|wash)/.test(corpus)) return { place: "at the mirror", room: "bathroom" };
-  if (/(kitchen|cook|coffee|morning|breakfast|supplement|vitamin|drink)/.test(corpus)) return { place: "in the kitchen", room: "kitchen" };
-  if (/(gym|fitness|workout|protein|recovery)/.test(corpus)) return { place: "after my workout", room: "gym" };
-  if (/(bedroom|morning routine|night routine|sleep)/.test(corpus)) return { place: "in my room", room: "bedroom" };
-  if (/(outdoor|walk|nature|garden)/.test(corpus)) return { place: "outside", room: "patio" };
-  return { place: "at home", room: "living room" };
-}
-
 /**
- * Parse the user's creative direction into structured intent.
- * The guidance is a brief — NOT dialogue. We extract the concept,
- * setting, and angle so we can build scripts that interpret the brief
- * rather than parrot it word-for-word.
- */
-function parseGuidanceIntent(guidance: string, productName: string, category: string) {
-  const g = guidance.toLowerCase();
-
-  // Extract setting hints from guidance
-  const settingHints: Record<string, { situation: string; action: string }> = {
-    "corner": { situation: "standing in front of this empty corner", action: "just finished setting it up" },
-    "cozy": { situation: "at home getting everything set up", action: "making this space feel right" },
-    "desk": { situation: "at my desk", action: "reorganizing my setup" },
-    "office": { situation: "at work", action: "just rearranged everything" },
-    "kitchen": { situation: "in the kitchen", action: "putting things together" },
-    "bathroom": { situation: "at the mirror", action: "going through my routine" },
-    "bedroom": { situation: "in my room", action: "switching things up" },
-    "morning": { situation: "just woke up", action: "starting my morning" },
-    "night": { situation: "winding down", action: "doing my night routine" },
-    "gym": { situation: "at the gym", action: "just finished working out" },
-    "outdoor": { situation: "outside", action: "enjoying the weather" },
-    "car": { situation: "in my car", action: "about to head out" },
-    "travel": { situation: "on the go", action: "packing up" },
-    "gift": { situation: "at home", action: "just opened this" },
-    "unbox": { situation: "at home", action: "just got this delivered" },
-  };
-
-  let situation = "";
-  let action = "";
-  for (const [keyword, hint] of Object.entries(settingHints)) {
-    if (g.includes(keyword)) {
-      situation = hint.situation;
-      action = hint.action;
-      break;
-    }
-  }
-
-  // Extract the core concept — what is the angle about?
-  // e.g. "Corner angle. makes the empty corner cozy" → concept is about filling/transforming a space
-  const conceptPatterns: Array<{ test: RegExp; concept: string; problem: string; payoff: string }> = [
-    { test: /(corner|empty|awkward|gap|space|fill)/, concept: "transforming a space", problem: "had this awkward empty space that was bothering me", payoff: "it completely changed the vibe" },
-    { test: /(cozy|warm|comfort|homey|inviting)/, concept: "making things cozy", problem: "wanted to make this space feel more like home", payoff: "it actually feels cozy now" },
-    { test: /(before.?after|transform|change|makeover|glow.?up)/, concept: "a transformation", problem: "it used to look so different", payoff: "look at the difference" },
-    { test: /(problem|solution|fix|solve|issue|struggle)/, concept: "solving a problem", problem: "been dealing with this for a while", payoff: "this actually fixed it" },
-    { test: /(routine|daily|every.?day|habit|ritual)/, concept: "a daily routine", problem: "was looking for something that fits into my day", payoff: "it just slots right in" },
-    { test: /(compare|versus|vs|better|switch|alternative)/, concept: "a comparison", problem: "tried a bunch of other options first", payoff: "this is the one that actually works" },
-    { test: /(cheap|budget|affordable|price|value|worth)/, concept: "value for money", problem: "did not want to spend a fortune", payoff: "the quality for the price is wild" },
-    { test: /(surprise|unexpected|did.?not.?expect|shock)/, concept: "a surprise", problem: "honestly did not expect much", payoff: "but then it actually surprised me" },
-    { test: /(minimal|clean|simple|sleek|modern)/, concept: "keeping it minimal", problem: "wanted something that does not look out of place", payoff: "it fits perfectly" },
-    { test: /(upgrade|level.?up|step.?up|premium|quality)/, concept: "an upgrade", problem: "finally decided to upgrade", payoff: "should have done this sooner" },
-    { test: /(first.?time|just.?got|new|unbox|arrived)/, concept: "a first impression", problem: "just got this and had to talk about it", payoff: "the first impression is strong" },
-    { test: /(aesthetic|look|style|vibe|design|decor)/, concept: "the aesthetic", problem: "was going for a certain look", payoff: "it nailed the vibe" },
-  ];
-
-  let concept = "this product";
-  let problem = `started using ${productName} recently`;
-  let payoff = "it actually delivered";
-
-  for (const pattern of conceptPatterns) {
-    if (pattern.test.test(g)) {
-      concept = pattern.concept;
-      problem = pattern.problem;
-      payoff = pattern.payoff;
-      break;
-    }
-  }
-
-  // If we didn't match a setting from keywords, infer from category
-  if (!situation) {
-    const s = inferSettingForScript(guidance, category);
-    situation = s.place;
-    action = `using ${productName}`;
-  }
-
-  return { situation, action, concept, problem, payoff };
-}
-
-/**
- * Build 3 genuinely different scripts using different hook frameworks,
- * emotional angles, and energy levels. Each script should feel like it
- * came from a different person — not 3 drafts from the same template.
+ * Build 3 heuristic fallback scripts. These are used ONLY when no AI planner is available.
+ * Scripts are assembled from randomized pools so they never repeat the same 3 patterns.
  */
 function buildGeneratedScripts(input: UgcScriptInput, productName: string, category: string, knowledge: string) {
   const guidance = cleanText(input.description) || "";
   const categoryLabel = category || "product";
-  const setting = inferSettingForScript(guidance, category);
-  const lines = buildProductLines(knowledge, productName, category);
   const targetSeconds = input.totalSeconds || 20;
-  const hasGuidance = guidance.length > 0;
   const targetWords = Math.round(targetSeconds * 3);
+  const hasGuidance = guidance.length > 0;
 
-  const intent = hasGuidance
-    ? parseGuidanceIntent(guidance, productName, category)
-    : { situation: setting.place, action: `using ${productName}`, concept: "this product", problem: `started using ${productName} recently`, payoff: "it actually delivered" };
+  // Use timestamp-based seed so each generation is different
+  const seed = Date.now();
+  const pick = <T>(arr: T[], offset: number): T => arr[(seed + offset) % arr.length];
 
-  // Build emotion-specific details based on the intent
-  const emotionDetail = hasGuidance
-    ? buildEmotionFromIntent(intent, productName, categoryLabel)
-    : buildEmotionFromCategory(productName, categoryLabel, lines);
+  // --- Pool of hooks (opening lines) ---
+  const hookPool = hasGuidance ? [
+    `Okay so ${guidance.split(".")[0].toLowerCase().trim()}.`,
+    `I need to tell you about this.`,
+    `This is going to sound weird but hear me out.`,
+    `I was not going to film this.`,
+    `You know what, fine. I will just show you.`,
+    `I have been staring at this for like ten minutes.`,
+    `So this happened.`,
+    `I did not plan on making this video.`,
+    `Can we talk about something for a second?`,
+    `Okay I keep getting asked about this.`,
+    `Nobody told me about this and I am kind of mad.`,
+    `Real quick before I forget.`,
+  ] : [
+    `Okay so I found something.`,
+    `I was not going to talk about this but whatever.`,
+    `You know what actually surprised me this week?`,
+    `I keep meaning to post about this.`,
+    `So here is something weird.`,
+    `Someone asked me about this the other day.`,
+    `I did something I normally would not do.`,
+    `I have to be real about something.`,
+    `Alright fine. Let me just show you.`,
+    `This is not even a review I just wanted to say something.`,
+    `I changed one thing and now everything is different.`,
+    `Can I just say something really quick?`,
+  ];
 
-  // 3 genuinely different frameworks — different hook type, energy, arc
-  const frameworks = buildScriptFrameworks(
-    targetSeconds, targetWords, productName, categoryLabel,
-    intent, emotionDetail, lines, hasGuidance, guidance, setting
-  );
+  // --- Pool of middles (the product experience) ---
+  const middlePool = hasGuidance ? [
+    `I got ${productName} because ${guidance.toLowerCase().trim()}. And like, I set it up and just stood there.`,
+    `${productName} is one of those things where you do not realize what you were missing. ${guidance}.`,
+    `I was dealing with ${guidance.toLowerCase().trim()} and someone mentioned ${productName}. I did not think much of it.`,
+    `The whole ${guidance.toLowerCase().trim()} thing was bugging me. So I tried ${productName}.`,
+    `I got ${productName} specifically for ${guidance.toLowerCase().trim()}. The difference was immediate.`,
+    `${guidance}. That is literally why I got ${productName}. And it just worked.`,
+  ] : [
+    `I got ${productName} maybe a week ago and I keep going back to it.`,
+    `I tried ${productName} because honestly why not. And then something clicked.`,
+    `${productName} is not the kind of thing I normally talk about. But this one got me.`,
+    `I have been using ${productName} for a bit now and I noticed something.`,
+    `Someone recommended ${productName} and I was skeptical. Fair enough. But then.`,
+    `I picked up ${productName} on a whim and the first time I used it I just stopped and went huh.`,
+  ];
 
-  return frameworks.map((variant, index) => {
-    // Compress only if dialogue significantly exceeds budget — allow 30% flex for natural flow
+  // --- Pool of closers (natural exits) ---
+  const closerPool = [
+    `I do not know. Make of that what you will.`,
+    `Anyway. Yeah.`,
+    `That is all. I just wanted to say that.`,
+    `I do not know why I felt the need to share that but here we are.`,
+    `Take it or leave it.`,
+    `Just saying.`,
+    `I am not trying to convince anyone. It is just what happened.`,
+    `Whatever. I like it.`,
+    `That is the whole thing. There is no more to it.`,
+    `Okay I am done. Bye.`,
+    `Do what you want with that.`,
+    `Yeah. So that is that.`,
+  ];
+
+  // --- Pool of titles ---
+  const titlePool = hasGuidance ? [
+    guidance.split(".")[0].trim(),
+    `The ${productName} thing`,
+    `About ${guidance.split(" ").slice(0, 3).join(" ").trim()}`,
+    `What happened with ${productName}`,
+    `${productName} — real talk`,
+    `One thing about ${guidance.split(" ").slice(0, 2).join(" ").trim()}`,
+    `So about that ${categoryLabel}`,
+    `${productName} update`,
+  ] : [
+    `${productName} — first impressions`,
+    `Something about ${productName}`,
+    `The ${categoryLabel} I keep using`,
+    `What I noticed about ${productName}`,
+    `${productName} — just being honest`,
+    `That one ${categoryLabel}`,
+    `About ${productName}`,
+    `${productName} thoughts`,
+  ];
+
+  // Build 3 scripts from different pool positions so they never overlap
+  const scripts: Array<{
+    title: string; rationale: string; hook: string; cta: string; dialogue: string;
+  }> = [];
+
+  for (let i = 0; i < 3; i++) {
+    const hook = pick(hookPool, i * 37);
+    const middle = pick(middlePool, i * 53);
+    const closer = pick(closerPool, i * 71);
+    const title = pick(titlePool, i * 41);
+
+    // Extract a knowledge snippet if available
+    const knowledgeBit = knowledge.length > 20
+      ? ` ${splitSentences(knowledge)[0] || ""}`
+      : "";
+
+    const dialogue = trimToWords(
+      `${hook} ${middle}${knowledgeBit} ${closer}`,
+      targetWords
+    );
+
+    scripts.push({
+      title,
+      rationale: hasGuidance
+        ? `Approach ${i + 1} for "${guidance}"`
+        : `Approach ${i + 1} for ${productName}`,
+      hook: splitSentences(hook)[0] || hook,
+      cta: "",
+      dialogue,
+    });
+  }
+
+  return scripts.map((variant, index) => {
     const flexBudget = Math.round(targetWords * 1.3);
     const dialogue = countWords(variant.dialogue) > flexBudget
       ? compressScript(variant.dialogue, flexBudget, productName)
@@ -785,242 +737,6 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
       beats: buildScriptBeats(dialogue, estimatedSeconds, productName),
     } satisfies UgcScriptOption;
   });
-}
-
-function buildEmotionFromIntent(
-  intent: ReturnType<typeof parseGuidanceIntent>,
-  productName: string,
-  categoryLabel: string
-) {
-  return {
-    vulnerability: `I ${intent.problem} and honestly it was kind of annoying`,
-    microMoment: `I was ${intent.situation} and I looked at it and just went huh`,
-    identityShift: `I did not think I was the kind of person who cared about ${intent.concept} but here we are`,
-    sensoryDetail: `the second I finished ${intent.action} I could feel the difference`,
-    quietPayoff: `${intent.payoff} and I was not expecting that at all`,
-  };
-}
-
-function buildEmotionFromCategory(
-  productName: string,
-  categoryLabel: string,
-  lines: ReturnType<typeof buildProductLines>
-) {
-  return {
-    vulnerability: `I have been burned by ${categoryLabel} before so I almost did not try this`,
-    microMoment: `I was just going about my day and I noticed something was different`,
-    identityShift: `I never thought I would be someone who actually cares about ${categoryLabel} but here I am`,
-    sensoryDetail: lines.detail,
-    quietPayoff: lines.reaction,
-  };
-}
-
-type EmotionDetail = ReturnType<typeof buildEmotionFromIntent>;
-type Intent = ReturnType<typeof parseGuidanceIntent>;
-type Lines = ReturnType<typeof buildProductLines>;
-type Setting = ReturnType<typeof inferSettingForScript>;
-
-function buildScriptFrameworks(
-  targetSeconds: number,
-  targetWords: number,
-  productName: string,
-  categoryLabel: string,
-  intent: Intent,
-  emotion: EmotionDetail,
-  lines: Lines,
-  hasGuidance: boolean,
-  guidance: string,
-  setting: Setting,
-) {
-  // When guidance exists, scripts are FULLY about the guidance angle.
-  // No generic category filler — every line serves the brief.
-  // When no guidance, use category/product to drive the angle.
-
-  if (hasGuidance) {
-    return buildGuidanceDrivenFrameworks(targetSeconds, targetWords, productName, intent, guidance);
-  }
-  return buildCategoryDrivenFrameworks(targetSeconds, targetWords, productName, categoryLabel, lines, emotion, setting);
-}
-
-/**
- * Guidance-driven scripts: the guidance angle dominates EVERY line.
- * No generic product/category filler — the entire script is about the concept.
- */
-function buildGuidanceDrivenFrameworks(
-  targetSeconds: number,
-  targetWords: number,
-  productName: string,
-  intent: Intent,
-  guidance: string,
-) {
-  // Short scripts (<=15s)
-  if (targetSeconds <= 15) {
-    return [
-      {
-        title: `The ${intent.concept} moment`,
-        rationale: `Micro-story — "${guidance}" as a moment the person is living right now.`,
-        hook: `Wait.`,
-        cta: ``,
-        dialogue: trimToWords(`Wait. Look at this. I ${intent.problem} and I just put ${productName} right here. ${intent.payoff}. Like, I am ${intent.situation} right now looking at it.`, targetWords),
-      },
-      {
-        title: `Honest take`,
-        rationale: `Confession — "${guidance}" as something they were not sure about until it worked.`,
-        hook: `Okay real talk.`,
-        cta: ``,
-        dialogue: trimToWords(`Okay real talk. I ${intent.problem} and I did not think ${productName} would actually help. But I am ${intent.situation} and ${intent.payoff}. That is it.`, targetWords),
-      },
-      {
-        title: `No big deal`,
-        rationale: `Quiet observation — "${guidance}" stated matter-of-factly with no excitement.`,
-        hook: `So.`,
-        cta: ``,
-        dialogue: trimToWords(`So. I ${intent.problem}. Got ${productName}. Put it ${intent.situation}. ${intent.payoff}. I do not know why I am surprised.`, targetWords),
-      },
-    ];
-  }
-
-  // Medium scripts (<=25s)
-  if (targetSeconds <= 25) {
-    return [
-      {
-        title: `The ${intent.concept} moment`,
-        rationale: `Micro-story — "${guidance}" as a specific scene with sensory detail and emotional arc.`,
-        hook: `I was ${intent.situation} the other day and something happened.`,
-        cta: ``,
-        dialogue: trimToWords(`I was ${intent.situation} the other day and something happened. I ${intent.problem}. Like it was just sitting there bothering me. So I got ${productName} and I was ${intent.action}. And I stepped back and ${intent.payoff}. I keep going back to look at it.`, targetWords),
-      },
-      {
-        title: `The honest version`,
-        rationale: `Confession — admits "${guidance}" was a bigger deal than expected.`,
-        hook: `I am going to be honest about something.`,
-        cta: ``,
-        dialogue: trimToWords(`I am going to be honest about something. I ${intent.problem} and it was driving me crazy. I tried a few things and nothing worked. Then I got ${productName} and I was ${intent.action}. And ${intent.payoff}. I did not expect to care this much but here I am ${intent.situation} just staring at it.`, targetWords),
-      },
-      {
-        title: `No hype`,
-        rationale: `Anti-sell — "${guidance}" presented with zero enthusiasm, just facts.`,
-        hook: `This is not a big thing.`,
-        cta: ``,
-        dialogue: trimToWords(`This is not a big thing. I ${intent.problem}. I got ${productName}. I was ${intent.action} and now I am ${intent.situation}. ${intent.payoff}. It is not life-changing or whatever. But yeah, it works. Do what you want with that.`, targetWords),
-      },
-    ];
-  }
-
-  // Long scripts (25s+)
-  return [
-    {
-      title: `The ${intent.concept} story`,
-      rationale: `Full micro-story — "${guidance}" as a scene you walk into, with emotional buildup and payoff.`,
-      hook: `Okay so I need to talk about something.`,
-      cta: ``,
-      dialogue: trimToWords(`Okay so I need to talk about something. I was ${intent.situation} and I ${intent.problem}. It was one of those things that just bugged me every time I looked at it. I tried a couple of things and nothing really did anything. Then someone mentioned ${productName} and I was like fine, whatever. So I was ${intent.action} and I stepped back and ${intent.payoff}. Like I just stood there for a second. The whole feel of being ${intent.situation} is different now. I did not think I would care this much about ${intent.concept} but here I am making a video about it.`, targetWords),
-    },
-    {
-      title: `The honest version`,
-      rationale: `Confession — opens with vulnerability about "${guidance}", builds to a genuine realization.`,
-      hook: `I am going to be real with you.`,
-      cta: ``,
-      dialogue: trimToWords(`I am going to be real with you. I ${intent.problem} and I was kind of embarrassed about how much it bothered me. Like who cares right? But I do, apparently. So I got ${productName} and honestly I was not expecting much. I was ${intent.action} and then I was ${intent.situation} just looking at it. And ${intent.payoff}. It sounds stupid but it actually makes me feel better about the whole space now. I am not going to tell you what to do. But yeah, that is what happened.`, targetWords),
-    },
-    {
-      title: `No hype, just this`,
-      rationale: `Anti-sell — matter-of-fact about "${guidance}" with zero enthusiasm, just honest observations.`,
-      hook: `I do not usually talk about stuff like this.`,
-      cta: ``,
-      dialogue: trimToWords(`I do not usually talk about stuff like this. But I ${intent.problem} and it had been bugging me for a while. Not like a huge deal, just one of those things. I ended up getting ${productName}. I was ${intent.action} and now I am ${intent.situation}. ${intent.payoff}. It is not going to change your life. But the thing is, every time I walk by it now it just looks right. And I think that is kind of the whole point. Do what you want with that information.`, targetWords),
-    },
-  ];
-}
-
-/**
- * Category-driven scripts: when no guidance is provided, use the product
- * category and knowledge to create scripts from different emotional angles.
- */
-function buildCategoryDrivenFrameworks(
-  targetSeconds: number,
-  targetWords: number,
-  productName: string,
-  categoryLabel: string,
-  lines: Lines,
-  emotion: EmotionDetail,
-  setting: Setting,
-) {
-  if (targetSeconds <= 15) {
-    return [
-      {
-        title: "Caught mid-action",
-        rationale: `High energy — camera catches them mid-activity with ${productName}.`,
-        hook: `Wait wait wait.`,
-        cta: ``,
-        dialogue: trimToWords(`Wait wait wait. I am ${setting.place} right now and I just noticed something. ${lines.detail} I got ${productName} like a week ago and yeah. ${lines.reaction}`, targetWords),
-      },
-      {
-        title: "Honest take",
-        rationale: `Vulnerable opening about ${categoryLabel} — quiet admission that builds trust.`,
-        hook: `Okay I was not going to post this.`,
-        cta: ``,
-        dialogue: trimToWords(`Okay I was not going to post this. ${emotion.vulnerability}. But ${productName}? ${lines.detail} That is literally it.`, targetWords),
-      },
-      {
-        title: "Just noticed",
-        rationale: `Anti-sell energy. No excitement, just an honest observation about ${productName}.`,
-        hook: `Hm.`,
-        cta: ``,
-        dialogue: trimToWords(`Hm. So I have had ${productName} for a bit now. ${lines.detail} I do not know. ${lines.reaction}`, targetWords),
-      },
-    ];
-  }
-
-  if (targetSeconds <= 25) {
-    return [
-      {
-        title: "The moment",
-        rationale: `Micro-story — opens with a specific moment ${setting.place} that pulls the viewer in.`,
-        hook: `I was ${setting.place} the other day and something happened.`,
-        cta: ``,
-        dialogue: trimToWords(`I was ${setting.place} the other day and something happened. ${emotion.vulnerability}. So I tried ${productName} and honestly? ${lines.detail} ${lines.reaction} I keep thinking about it.`, targetWords),
-      },
-      {
-        title: "The contradiction",
-        rationale: `Pattern interrupt — says something unexpected about ${categoryLabel}.`,
-        hook: `Everyone is wrong about ${categoryLabel}.`,
-        cta: ``,
-        dialogue: trimToWords(`Everyone is wrong about ${categoryLabel}. Like, the whole conversation around it is off. ${emotion.identityShift}. Got ${productName} and ${lines.detail} ${lines.reaction} I am not making a whole thing out of this, it just actually works.`, targetWords),
-      },
-      {
-        title: "No big deal",
-        rationale: `Deliberately understated — almost reluctant to share. Builds trust through anti-sell.`,
-        hook: `So.`,
-        cta: ``,
-        dialogue: trimToWords(`So. This is not a big moment or anything. ${emotion.vulnerability}. I ended up with ${productName}. ${lines.detail} It is not life-changing. But ${lines.reaction} And that is kind of the whole point.`, targetWords),
-      },
-    ];
-  }
-
-  return [
-    {
-      title: "The moment I noticed",
-      rationale: `Full micro-story — drops into a sensory moment ${setting.place}, builds to emotional payoff.`,
-      hook: `Okay so I need to talk about something.`,
-      cta: ``,
-      dialogue: trimToWords(`Okay so I need to talk about something. I was ${setting.place} and ${emotion.vulnerability}. I had tried a couple of things before and nothing really did it. Then I got ${productName}. ${lines.detail} And I just stood there for a second like wait. ${lines.reaction} ${emotion.identityShift}. I do not know, I just wanted to share that.`, targetWords),
-    },
-    {
-      title: "The honest version",
-      rationale: `Confession — opens with honesty about ${categoryLabel}, builds real trust.`,
-      hook: `I am going to be honest about something.`,
-      cta: ``,
-      dialogue: trimToWords(`I am going to be honest about something. ${emotion.vulnerability}. Like genuinely, most ${categoryLabel} stuff just sits there and you forget about it. But somebody told me about ${productName} and I was like fine whatever. ${lines.detail} And then ${lines.reaction} ${lines.specifics} I am not going to sit here and tell you what to do. But yeah. That happened.`, targetWords),
-    },
-    {
-      title: "No hype, just this",
-      rationale: `Anti-sell energy throughout. Deliberately low-key, builds trust by NOT trying to convince.`,
-      hook: `I do not really do this.`,
-      cta: ``,
-      dialogue: trimToWords(`I do not really do this. Talk about things I buy. It feels weird. But I have had ${productName} for a while now and ${emotion.microMoment}. ${lines.detail} It is not going to change your life or whatever. But ${lines.reaction} ${emotion.identityShift}. I do not know. Do what you want with that.`, targetWords),
-    },
-  ];
 }
 
 /** Trim dialogue to approximately the target word count, cutting at sentence boundaries. */
