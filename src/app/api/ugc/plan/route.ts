@@ -33,7 +33,7 @@ const REMOTE_PLANNER_TIMEOUT_MS = 55000;
 const WORDS_PER_SECOND = 3.0;
 const WORDS_PER_MINUTE = WORDS_PER_SECOND * 60; // 180 WPM
 const SPEECH_PADDING_SECONDS = 0.75; // Breathing room after each clip
-const MIN_DIALOGUE_CLIP_SECONDS = 4;
+const MIN_DIALOGUE_CLIP_SECONDS = 7;
 const MAX_DIALOGUE_CLIP_SECONDS = 10;
 const MIN_WORDS_PER_BEAT = 10; // Minimum words before merging with neighbor — keeps clips substantial
 const SPEECH_BUDGET_RATIO = 0.9; // 90% of target duration for speech
@@ -1316,7 +1316,7 @@ function buildArchitecture(promptPack: UgcAgentPromptPack, safeMode: UgcPlanRequ
     notes: [
       "The lead ad agent handles script writing, casting, scene continuity, and the talking-head clip plan.",
       "The coverage agent stays separate so alternate angles and empty-scene cutaways can diverge without breaking the talking-head continuity.",
-      "Dialogue rendering is image-to-video only, using the approved base scene as the continuity anchor for every 5-second batch with spoken audio enabled.",
+      "Dialogue rendering is image-to-video only, using the approved base scene as the continuity anchor for every 7–10 second batch with spoken audio enabled.",
       safeMode === "safe"
         ? "Safe mode inserts blocking approvals between planning, scene choice, talking clips, and coverage."
         : "Fast mode removes blocking approvals and executes the workflow sequentially.",
@@ -1742,7 +1742,7 @@ export async function POST(req: Request) {
       settings: {
         safeMode: body.settings?.safeMode === "fast" ? "fast" : "safe",
         dialogueSeconds: clamp(Number(body.settings?.dialogueSeconds) || 20, 5, 60),
-        clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 7, 4, 10),
+        clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 7, 7, 10),
         sceneVariationCount: clamp(Number(body.settings?.sceneVariationCount) || 4, 1, MAX_SCENE_VARIATIONS),
         bRollClipCount: clamp(Number(body.settings?.bRollClipCount) || 4, 1, MAX_BROLL_CLIPS),
         imageModelId: cleanText(body.settings?.imageModelId) || "nanobanana-2",
@@ -1750,7 +1750,7 @@ export async function POST(req: Request) {
         imageAspectRatio: "9:16",
         imageResolution: "2K",
         videoAspectRatio: "9:16",
-        videoDurationSeconds: clamp(Number(body.settings?.videoDurationSeconds) || 5, 3, 10),
+        videoDurationSeconds: clamp(Number(body.settings?.videoDurationSeconds) || 7, 3, 10),
         videoSound: body.settings?.videoSound === undefined ? true : Boolean(body.settings?.videoSound),
       },
       promptPack: {

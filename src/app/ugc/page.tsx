@@ -79,7 +79,7 @@ const PRESET_OPTIONS = [
     settings: {
       safeMode: "fast" as UgcSafeMode,
       dialogueSeconds: 15,
-      clipDurationSeconds: 5,
+      clipDurationSeconds: 7,
       sceneVariationCount: 3,
       bRollClipCount: 3,
     },
@@ -91,7 +91,7 @@ const PRESET_OPTIONS = [
     settings: {
       safeMode: "safe" as UgcSafeMode,
       dialogueSeconds: 20,
-      clipDurationSeconds: 5,
+      clipDurationSeconds: 7,
       sceneVariationCount: 4,
       bRollClipCount: 4,
     },
@@ -103,7 +103,7 @@ const PRESET_OPTIONS = [
     settings: {
       safeMode: "safe" as UgcSafeMode,
       dialogueSeconds: 25,
-      clipDurationSeconds: 5,
+      clipDurationSeconds: 7,
       sceneVariationCount: 5,
       bRollClipCount: 5,
     },
@@ -2028,22 +2028,23 @@ export default function UgcStudioPage() {
                 {showAdvanced ? (
                   <div className="mt-3 grid gap-4 rounded-xl border border-slate-800 bg-slate-900/40 p-4 sm:grid-cols-2 lg:grid-cols-4">
                     <div>
-                      <div className="mb-2 text-xs font-semibold text-slate-400">Duration</div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {[15, 20, 25, 30].map((seconds) => (
-                          <button
-                            key={seconds}
-                            onClick={() => setSettings((c) => ({ ...c, dialogueSeconds: seconds }))}
-                            className={cn(
-                              "rounded-lg border px-2 py-2 text-xs font-semibold transition",
-                              settings.dialogueSeconds === seconds
-                                ? "border-white/20 bg-white text-slate-950"
-                                : "border-slate-800 text-slate-400 hover:border-slate-600"
-                            )}
-                          >
-                            {seconds}s
-                          </button>
-                        ))}
+                      <div className="mb-2 flex items-center justify-between text-xs font-semibold text-slate-400">
+                        <span>Duration</span>
+                        <span className="text-white">{settings.dialogueSeconds}s</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={5}
+                        max={60}
+                        step={1}
+                        value={settings.dialogueSeconds}
+                        onChange={(e) => setSettings((c) => ({ ...c, dialogueSeconds: Number(e.target.value) }))}
+                        className="w-full accent-white"
+                      />
+                      <div className="mt-1 flex justify-between text-[10px] text-slate-500">
+                        <span>5s</span>
+                        <span>30s</span>
+                        <span>60s</span>
                       </div>
                     </div>
                     <div>

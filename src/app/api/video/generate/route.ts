@@ -351,7 +351,7 @@ export async function POST(req: Request) {
       provider = "kling",
       model,
       prompt,
-      duration = "5",
+      duration = "7",
       aspect_ratio,
       // Kling 3.0 specific
       image_urls,
@@ -373,7 +373,7 @@ export async function POST(req: Request) {
       const klingInput: Record<string, any> = {
         prompt,
         sound: sound ?? false,
-        duration: String(Math.max(3, Math.min(15, Number(duration) || 5))),
+        duration: String(Math.max(3, Math.min(15, Number(duration) || 7))),
         mode: kling_mode || "pro",
         multi_shots: false,
       };
