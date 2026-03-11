@@ -607,7 +607,7 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
 
   // --- Pool of hooks (opening lines) ---
   const hookPool = hasGuidance ? [
-    `Okay so ${guidance.split(".")[0].toLowerCase().trim()}.`,
+    `Okay so let me tell you about this.`,
     `I need to tell you about this.`,
     `This is going to sound weird but hear me out.`,
     `I was not going to film this.`,
@@ -635,13 +635,15 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
   ];
 
   // --- Pool of middles (the product experience) ---
+  // NOTE: Never embed the guidance/creative direction text literally in dialogue.
+  // The guidance is a direction for the scriptwriter, not words for the speaker.
   const middlePool = hasGuidance ? [
-    `I got ${productName} because ${guidance.toLowerCase().trim()}. And like, I set it up and just stood there.`,
-    `${productName} is one of those things where you do not realize what you were missing. ${guidance}.`,
-    `I was dealing with ${guidance.toLowerCase().trim()} and someone mentioned ${productName}. I did not think much of it.`,
-    `The whole ${guidance.toLowerCase().trim()} thing was bugging me. So I tried ${productName}.`,
-    `I got ${productName} specifically for ${guidance.toLowerCase().trim()}. The difference was immediate.`,
-    `${guidance}. That is literally why I got ${productName}. And it just worked.`,
+    `I got ${productName} and like, I set it up and just stood there.`,
+    `${productName} is one of those things where you do not realize what you were missing.`,
+    `Someone mentioned ${productName} to me. I did not think much of it at first.`,
+    `I tried ${productName} and honestly the difference was kind of immediate.`,
+    `I was not expecting much from ${productName}. But then I set it up and something just clicked.`,
+    `I got ${productName} and it just worked. Like, that was it. It just worked.`,
   ] : [
     `I got ${productName} maybe a week ago and I keep going back to it.`,
     `I tried ${productName} because honestly why not. And then something clicked.`,
@@ -669,14 +671,14 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
 
   // --- Pool of titles ---
   const titlePool = hasGuidance ? [
-    guidance.split(".")[0].trim(),
     `The ${productName} thing`,
-    `About ${guidance.split(" ").slice(0, 3).join(" ").trim()}`,
     `What happened with ${productName}`,
     `${productName} — real talk`,
-    `One thing about ${guidance.split(" ").slice(0, 2).join(" ").trim()}`,
     `So about that ${categoryLabel}`,
     `${productName} update`,
+    `One thing about ${productName}`,
+    `Why I got ${productName}`,
+    `${productName} — honest take`,
   ] : [
     `${productName} — first impressions`,
     `Something about ${productName}`,
@@ -686,6 +688,30 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
     `That one ${categoryLabel}`,
     `About ${productName}`,
     `${productName} thoughts`,
+  ];
+
+  // --- Pool of expansion lines (filler for longer scripts, keeps natural feel) ---
+  const expansionPool = [
+    `Like I am not exaggerating.`,
+    `I keep coming back to it and I do not even know why.`,
+    `It is one of those things that just sits there and does its job.`,
+    `And the thing is, I am picky. I return almost everything.`,
+    `My friend asked me about it the other day and I was like yeah actually get one.`,
+    `I moved it around the room a few times trying to find the right spot. Turns out every spot worked.`,
+    `It is not flashy. It is not trying to impress you. It just works.`,
+    `I showed it to my roommate and they immediately wanted one.`,
+    `Honestly I forgot I even had it for a few days because it just blended in so well.`,
+    `And then you notice it and you are like oh right. That thing is actually really good.`,
+    `I have tried like three or four things in this category and this is the one that stayed.`,
+    `I do not usually talk about stuff like this but I mean come on.`,
+    `The first day I kind of ignored it. By the third day I could not imagine not having it.`,
+    `It sounds boring when I describe it but in person it is a completely different experience.`,
+    `You know when something just makes your space feel more put together? That is what this does.`,
+    `I was scrolling looking for something basic and this one just caught my eye. Glad it did.`,
+    `I think what got me is how easy it was to set up. Literally took like two minutes.`,
+    `And it is not even that expensive which is the crazy part.`,
+    `I keep looking at it and being like why did I wait so long to get this.`,
+    `My whole vibe in here changed and all I did was add this one thing.`,
   ];
 
   // Build 3 scripts from different pool positions so they never overlap
@@ -704,16 +730,33 @@ function buildGeneratedScripts(input: UgcScriptInput, productName: string, categ
       ? ` ${splitSentences(knowledge)[0] || ""}`
       : "";
 
+    // Build core, then expand to fill target duration
+    const coreParts = [hook, middle];
+    if (knowledgeBit.trim()) coreParts.push(knowledgeBit.trim());
+
+    // Add expansion lines until we approach target word count
+    let currentWords = coreParts.reduce((sum, p) => sum + countWords(p), 0) + countWords(closer);
+    const usedExpansionIndices = new Set<number>();
+    let expansionOffset = i * 29;
+    while (currentWords < targetWords * 0.85 && usedExpansionIndices.size < expansionPool.length) {
+      const idx = (seed + expansionOffset) % expansionPool.length;
+      expansionOffset += 13;
+      if (usedExpansionIndices.has(idx)) continue;
+      usedExpansionIndices.add(idx);
+      coreParts.push(expansionPool[idx]);
+      currentWords += countWords(expansionPool[idx]);
+    }
+
+    coreParts.push(closer);
+
     const dialogue = trimToWords(
-      `${hook} ${middle}${knowledgeBit} ${closer}`,
+      coreParts.join(" "),
       targetWords
     );
 
     scripts.push({
       title,
-      rationale: hasGuidance
-        ? `Approach ${i + 1} for "${guidance}"`
-        : `Approach ${i + 1} for ${productName}`,
+      rationale: `Approach ${i + 1} for ${productName}`,
       hook: splitSentences(hook)[0] || hook,
       cta: "",
       dialogue,
@@ -1557,7 +1600,7 @@ async function tryGeminiPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan) {
   const targetSeconds = input.script.totalSeconds || 20;
   const targetWords = Math.round(targetSeconds * 3);
 
-  const prompt = `Write 3 short-form video scripts for the product below.${hasGuidance ? `\n\nCREATIVE DIRECTION: "${input.script.description}"\nThis is the angle. Everything flows from this. Every script must be ABOUT this direction. Interpret it creatively but never drift from it.` : `\n\nNo creative direction provided. Find the most specific, interesting angle for this exact product.`}
+  const prompt = `Write 3 short-form video scripts for the product below.${hasGuidance ? `\n\nCREATIVE DIRECTION (for you, the writer — NOT to be used in the script): "${input.script.description}"\nThis is the angle/vibe to guide your writing. The scripts should be INSPIRED BY this direction — but NEVER copy, paste, or quote the creative direction text into the script dialogue. The speaker in the video does not know about the creative direction. They are just a real person talking about a product experience.` : `\n\nNo creative direction provided. Find the most specific, interesting angle for this exact product.`}
 
 PRODUCT
 - Name: ${input.product.name}
@@ -1566,14 +1609,16 @@ PRODUCT
 - Knowledge: ${input.knowledge || "None"}
 
 CONSTRAINTS
-- Duration: ~${targetSeconds} seconds ≈ ${targetWords} words (3 words/second). Flexible — natural flow matters more than exact count, but stay in the ballpark.
+- Duration: ~${targetSeconds} seconds ≈ ${targetWords} words (3 words/second). THIS IS CRITICAL — each script must actually be long enough to fill ~${targetSeconds} seconds when spoken aloud. Count your words. A ${targetSeconds}-second script needs roughly ${targetWords} words. Do not write short scripts.
 - ${input.overrideInstructions ? `OVERRIDE: ${input.overrideInstructions}` : ""}
 
-Write scripts that sound like a real person talking into their phone. Each script should be tailored to the creative direction and product. 3 genuinely different approaches — different person, different angle, different energy. No marketing language. No formulas. No call to action at the end.
+Write scripts that sound like a real person talking into their phone. Each script should be inspired by the creative direction but never quote it literally. 3 genuinely different approaches — different person, different angle, different energy. No marketing language. No formulas. No call to action at the end.
+
+IMPORTANT: Write completely fresh scripts. The baseline below is ONLY for JSON structure reference — ignore its script content entirely.
 
 Keep same JSON shape and array lengths as the baseline. Preserve IDs. Return only JSON. No markdown fences.
 
-BASELINE PLAN
+BASELINE PLAN (structure reference only)
 ${JSON.stringify(baseline)}`;
 
   try {
@@ -1596,7 +1641,7 @@ async function tryAnthropicPlan(input: UgcPlanRequest, baseline: UgcWorkflowPlan
   const targetSeconds = input.script.totalSeconds || 20;
   const targetWords = Math.round(targetSeconds * 3);
 
-  const prompt = `Write 3 short-form video scripts for the product below.${hasGuidance ? `\n\nCREATIVE DIRECTION: "${input.script.description}"\nThis is the angle. Everything flows from this. Every script must be ABOUT this direction — not a generic product script with this sprinkled in. If this says "corner" the scripts are about a corner. If it says "morning routine" the scripts happen in the morning. Interpret it creatively but never drift away from it.` : `\n\nNo creative direction was provided. Find the most specific, interesting angle for this exact product. Not generic category talk — something particular to THIS product that would make a real person want to film a video about it.`}
+  const prompt = `Write 3 short-form video scripts for the product below.${hasGuidance ? `\n\nCREATIVE DIRECTION (for you, the writer — NOT words for the speaker): "${input.script.description}"\nThis is the angle/vibe to guide your writing. The scripts should be ABOUT this direction — if it says "corner" the scripts are about a corner, if it says "morning routine" they happen in the morning. But NEVER copy, paste, or quote the creative direction text into the dialogue. The speaker does not know these instructions exist. They are just a real person talking about their experience with a product.` : `\n\nNo creative direction was provided. Find the most specific, interesting angle for this exact product. Not generic category talk — something particular to THIS product that would make a real person want to film a video about it.`}
 
 PRODUCT
 - Name: ${input.product.name}
@@ -1607,23 +1652,26 @@ PRODUCT
 
 CONSTRAINTS
 - Target duration: ~${targetSeconds} seconds ≈ ${targetWords} words (conversational speech ≈ 3 words/second)
-- This is approximate — natural flow and completeness matter more than hitting an exact number. Stay in the general range but don't cut a good script short to hit a word count.
+- THIS IS CRITICAL — each script must actually be long enough to fill ~${targetSeconds} seconds when spoken aloud. Count your words. A ${targetSeconds}-second script needs roughly ${targetWords} words. Do not write short scripts.
 - ${input.overrideInstructions ? `OVERRIDE: ${input.overrideInstructions}` : "No additional overrides."}
 
 WHAT I NEED FROM YOU
 Write scripts that sound like a real person talking into their phone — not a copywriter, not a brand, not AI. Each script should:
-- Be tailored specifically to the creative direction and this specific product
+- Be inspired by the creative direction but NEVER quote it or use it as dialogue
 - Sound speakable — sentence fragments, filler words, natural rhythm, varied pacing
 - Open with something that makes someone stop scrolling BEFORE they know it's about a product
 - Let the product enter naturally through experience, not explanation
 - End like a real person — mid-thought, trailing off, a shrug. No call to action.
 - Each of the 3 scripts must feel like a DIFFERENT person wrote it. Different angle, energy, setting, opening move.
+- Be approximately ${targetWords} words long. This is a ${targetSeconds}-second video. Fill the time.
 
 DO NOT:
+- Copy or paste the creative direction text into the script dialogue
 - Write the same script 3 times with surface-level variations
 - Use marketing language ("game-changer", "obsessed", "you need this", "holy grail")
 - Follow a formula (problem → product → solved) — real content doesn't move in clean arcs
 - Write scripts so generic they could apply to any product in the category
+- Write scripts shorter than ${Math.round(targetWords * 0.7)} words
 
 Return only valid JSON. No markdown fences.
 
@@ -1632,7 +1680,7 @@ JSON SHAPE
   "productAnalysis": "string — what makes someone actually WANT this, emotionally",
   "selectedScriptId": "script-1",
   "scriptOptions": [
-    ${[1, 2, 3].map((n) => `{ "id": "script-${n}", "title": "string — short creative title", "rationale": "string — what angle this takes and why it works", "hook": "string — the opening line", "cta": "string — the natural exit line (NOT a call to action)", "dialogue": "string — the full spoken script, ${targetWords} words max" }`).join(",\n    ")}
+    ${[1, 2, 3].map((n) => `{ "id": "script-${n}", "title": "string — short creative title (do NOT use the creative direction text here)", "rationale": "string — what angle this takes and why it works", "hook": "string — the opening line", "cta": "string — the natural exit line (NOT a call to action)", "dialogue": "string — the full spoken script, approximately ${targetWords} words (NOT shorter than ${Math.round(targetWords * 0.7)} words). NEVER include the creative direction text in the dialogue." }`).join(",\n    ")}
   ],
   "avatarOptions": [
     ${baseline.avatarOptions.map((a) => `{ "id": "${a.id}", "label": "string", "persona": "string", "wardrobe": "string", "castingRationale": "string", "voiceStyle": "string" }`).join(",\n    ")}
