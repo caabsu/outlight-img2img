@@ -434,6 +434,7 @@ function FeedbackSection({
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let sawComplete = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1745,6 +1746,7 @@ export default function AdStudioPage() {
                 }));
                 break;
               case "complete":
+                sawComplete = true;
                 updateCampaign(campaignId, (c) => ({
                   ...c,
                   status: "done",
@@ -1757,8 +1759,26 @@ export default function AdStudioPage() {
         }
       }
 
-      // If stream ended but status still running, mark done
-      updateCampaign(campaignId, (c) => (c.status === "running" ? { ...c, status: "done" } : c));
+      // A clean run must emit a complete event. If the stream closes mid-run, surface it as an error instead
+      // of silently marking the campaign done with empty image slots.
+      updateCampaign(campaignId, (c) => {
+        if (c.status !== "running") return c;
+        if (sawComplete) return { ...c, status: "done" };
+        return {
+          ...c,
+          status: "error",
+          logEntries: [
+            ...c.logEntries,
+            {
+              type: "error" as const,
+              message: c.progress.total > 0 && c.progress.done < c.progress.total
+                ? "Generation stream ended before all images were returned. Retry with fewer ads or lower speed."
+                : "Generation stream ended unexpectedly before completion.",
+              timestamp: Date.now(),
+            },
+          ],
+        };
+      });
     } catch (err: any) {
       if (err.name === "AbortError") {
         updateCampaign(campaignId, (c) => ({
