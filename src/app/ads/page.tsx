@@ -10,7 +10,7 @@ import {
   deserializeAdCampaign,
   type AdStudioSession,
 } from "@/lib/session-storage";
-import type { AdConcept, AdImage, LogEntry, AdFeedbackSubmission } from "@/lib/ad-types";
+import type { AdConcept, AdImage, LogEntry, AdFeedbackSubmission, AdWorkflowMode } from "@/lib/ad-types";
 
 /* ========================= TYPES ========================= */
 
@@ -39,13 +39,17 @@ type AdCampaign = {
   id: string;
   name: string;
   startedAt: number;
+  mode: AdWorkflowMode;
   theme: string;
+  adaptationBrief: string;
   modelId: string;
   quantity: number;
   speed: number;
   aspectRatios: string[];
   productId: string;
   productName: string;
+  sourceAdUrl: string | null;
+  diversity: "tight" | "balanced" | "exploratory";
   modelOptions: Record<string, string>;
   status: AgentStatus;
   concepts: AdConcept[];
@@ -56,6 +60,8 @@ type AdCampaign = {
   selectedImages: Set<string>;
   controller: AbortController | null;
 };
+
+const AD_COPY_RATIO = "variation";
 
 const MAX_CAMPAIGNS = 10;
 
@@ -189,6 +195,9 @@ function AgentLog({
     "Learning:": "Learning",
     "Prompt diagnosis:": "Diagnosis",
     "Analysis:": "Analysis",
+    "Structure:": "Structure",
+    "Offer:": "Offer",
+    "Brief:": "Brief",
   };
 
   return (
@@ -604,6 +613,7 @@ function buildImageFilename(
 }
 
 function ResultsGrid({
+  workflowMode,
   concepts,
   images,
   aspectRatios,
@@ -619,6 +629,7 @@ function ResultsGrid({
   onFeedbackSubmit,
   campaignDone,
 }: {
+  workflowMode: AdWorkflowMode;
   concepts: AdConcept[];
   images: AdImage[];
   aspectRatios: string[];
@@ -640,6 +651,7 @@ function ResultsGrid({
     <div className="space-y-4">
       {concepts.map((concept, ci) => {
         const conceptImages = images.filter((img) => img.conceptIndex === ci);
+        const cardLabel = workflowMode === "ad-copy" ? "Variation" : "Concept";
 
         return (
           <div
@@ -649,7 +661,7 @@ function ResultsGrid({
             <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-700/50">
               <div className="flex items-center justify-between">
                 <h4 className="font-semibold text-slate-900 dark:text-white text-sm">
-                  Concept {ci + 1}: {concept.name}
+                  {cardLabel} {ci + 1}: {concept.name}
                 </h4>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{concept.description}</p>
@@ -672,20 +684,27 @@ function ResultsGrid({
               <div className="flex gap-4 items-start">
                 {aspectRatios.map((ratio) => {
                   const img = conceptImages.find((im) => im.ratio === ratio);
-                  const isVertical = ratio === "9:16";
-                  const aspectClass = isVertical ? "aspect-[9/16]" : "aspect-square";
                   const imgKey = `${ci}-${ratio}`;
                   const isSelected = selectedImages.has(imgKey);
+                  const isAdCopy = workflowMode === "ad-copy";
+                  const isVertical = ratio === "9:16";
+                  const mediaShellClass = isAdCopy
+                    ? "w-56 min-h-[280px]"
+                    : `${isVertical ? "w-36 aspect-[9/16]" : "w-48 aspect-square"}`;
 
                   return (
                     <div key={ratio} className="flex flex-col items-center gap-2">
                       <div className="relative group">
                         <div
-                          className={`${aspectClass} ${isVertical ? "w-36" : "w-48"} rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition ${isSelected ? "ring-2 ring-indigo-500" : ""}`}
+                          className={`${mediaShellClass} rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 cursor-pointer hover:ring-2 hover:ring-indigo-500 transition ${isSelected ? "ring-2 ring-indigo-500" : ""}`}
                           onClick={() => img && onImageClick(img)}
                         >
                           {img ? (
-                            <img src={img.url} alt={`${concept.name} ${ratio}`} className="w-full h-full object-cover" />
+                            <img
+                              src={img.url}
+                              alt={`${concept.name} ${ratio}`}
+                              className={isAdCopy ? "w-full h-full object-contain bg-white dark:bg-slate-900" : "w-full h-full object-cover"}
+                            />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <svg className="animate-spin h-5 w-5 text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -711,7 +730,9 @@ function ResultsGrid({
                           </button>
                         )}
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{ratio}</span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        {workflowMode === "ad-copy" ? "Edited ad" : ratio}
+                      </span>
                     </div>
                   );
                 })}
@@ -1164,8 +1185,14 @@ export default function AdStudioPage() {
   const [profileRestored, setProfileRestored] = useState(false);
 
   // Inputs
+  const [workflowMode, setWorkflowMode] = useState<AdWorkflowMode>("campaign");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [theme, setTheme] = useState("");
+  const [adaptationBrief, setAdaptationBrief] = useState("");
+  const [sourceAdUrl, setSourceAdUrl] = useState<string | null>(null);
+  const [sourceAdUploading, setSourceAdUploading] = useState(false);
+  const [sourceAdError, setSourceAdError] = useState<string | null>(null);
+  const [diversity, setDiversity] = useState<"tight" | "balanced" | "exploratory">("balanced");
   const [modelId, setModelId] = useState("nanobanana-3-pro");
   const [quantity, setQuantity] = useState(3);
   const [speed, setSpeed] = useState(3);
@@ -1200,13 +1227,18 @@ export default function AdStudioPage() {
   const [sessionRestored, setSessionRestored] = useState(false);
   const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
   const [downloading, setDownloading] = useState(false);
+  const sourceAdInputRef = useRef<HTMLInputElement>(null);
 
   const selectedModel = getModelById(modelId);
   const maxSpeed = selectedModel?.maxConcurrency || 5;
-  const activeRatios = includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
+  const activeRatios = workflowMode === "ad-copy"
+    ? [AD_COPY_RATIO]
+    : includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
 
   // canLaunch: no longer blocked by running status (parallel campaigns allowed)
-  const canLaunch = selectedProduct && theme.trim() && activeProfileId;
+  const canLaunch = workflowMode === "ad-copy"
+    ? selectedProduct && sourceAdUrl && activeProfileId
+    : selectedProduct && theme.trim() && activeProfileId;
 
   // Auto-switch to results tab when first image arrives on active campaign
   useEffect(() => {
@@ -1214,6 +1246,14 @@ export default function AdStudioPage() {
       setRightTab("results");
     }
   }, [images.length]);
+
+  useEffect(() => {
+    if (workflowMode === "ad-copy" && modelId === "nanobanana-3-pro") {
+      setModelId("nanobanana-2");
+      setModelOptions({});
+      setSpeed((current) => Math.min(current, getModelById("nanobanana-2")?.maxConcurrency || 5));
+    }
+  }, [workflowMode, modelId]);
 
   // --- Campaign update helper ---
   const updateCampaign = useCallback(
@@ -1323,19 +1363,38 @@ export default function AdStudioPage() {
     const session: AdStudioSession = {
       version: 2,
       savedAt: Date.now(),
+      workflowMode,
       theme,
+      adaptationBrief,
       modelId,
       quantity,
       speed,
       aspectRatios: includeBothRatios ? { "1:1": true, "9:16": true } : { [singleRatio]: true },
       includeBothRatios,
       selectedProductId: selectedProduct?.id || null,
+      sourceAdUrl,
+      diversity,
       modelOptions,
       campaigns: campaigns.map((c) => serializeAdCampaign(c)),
       activeCampaignId,
     };
     debouncedSaveAdSession(session);
-  }, [theme, modelId, quantity, speed, includeBothRatios, singleRatio, selectedProduct, modelOptions, campaigns, activeCampaignId]);
+  }, [
+    workflowMode,
+    theme,
+    adaptationBrief,
+    modelId,
+    quantity,
+    speed,
+    includeBothRatios,
+    singleRatio,
+    selectedProduct,
+    sourceAdUrl,
+    diversity,
+    modelOptions,
+    campaigns,
+    activeCampaignId,
+  ]);
 
   useEffect(() => {
     if (sessionRestored) saveSession();
@@ -1385,7 +1444,11 @@ export default function AdStudioPage() {
   useEffect(() => {
     const session = loadAdStudioSession();
     if (session) {
+      setWorkflowMode(session.workflowMode || "campaign");
       setTheme(session.theme || "");
+      setAdaptationBrief(session.adaptationBrief || "");
+      setSourceAdUrl(session.sourceAdUrl || null);
+      setDiversity(session.diversity || "balanced");
       setModelId(session.modelId || "nanobanana-3-pro");
       setQuantity(session.quantity || 3);
       setSpeed(session.speed || 3);
@@ -1474,24 +1537,66 @@ export default function AdStudioPage() {
     }
   }
 
+  async function handleSourceAdFile(file: File) {
+    setSourceAdUploading(true);
+    setSourceAdError(null);
+    try {
+      const formData = new FormData();
+      formData.append("files", file);
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Upload failed");
+      const nextUrl = Array.isArray(json.urls) ? json.urls[0] : null;
+      if (!nextUrl) throw new Error("Upload returned no image URL");
+      setSourceAdUrl(nextUrl);
+    } catch (err) {
+      console.error("Source ad upload failed:", err);
+      setSourceAdError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setSourceAdUploading(false);
+      if (sourceAdInputRef.current) {
+        sourceAdInputRef.current.value = "";
+      }
+    }
+  }
+
   // --- runCampaignSSE (extracted, scoped to a campaign) ---
   async function runCampaignSSE(campaign: AdCampaign) {
     const campaignId = campaign.id;
 
     try {
-      const res = await fetch("/api/ads/generate", {
+      const endpoint = campaign.mode === "ad-copy" ? "/api/ads/copy" : "/api/ads/generate";
+      const payload =
+        campaign.mode === "ad-copy"
+          ? {
+              modelId: campaign.modelId,
+              quantity: campaign.quantity,
+              sourceAdUrl: campaign.sourceAdUrl,
+              adaptationBrief: campaign.adaptationBrief,
+              diversity: campaign.diversity,
+              productId: campaign.productId,
+              profileId: activeProfileId,
+              concurrency: campaign.speed,
+              modelOptions: Object.keys(campaign.modelOptions).length > 0 ? campaign.modelOptions : undefined,
+            }
+          : {
+              modelId: campaign.modelId,
+              quantity: campaign.quantity,
+              theme: campaign.theme,
+              productId: campaign.productId,
+              aspectRatios: campaign.aspectRatios,
+              profileId: activeProfileId,
+              concurrency: campaign.speed,
+              modelOptions: Object.keys(campaign.modelOptions).length > 0 ? campaign.modelOptions : undefined,
+            };
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelId: campaign.modelId,
-          quantity: campaign.quantity,
-          theme: campaign.theme,
-          productId: campaign.productId,
-          aspectRatios: campaign.aspectRatios,
-          profileId: activeProfileId,
-          concurrency: campaign.speed,
-          modelOptions: Object.keys(campaign.modelOptions).length > 0 ? campaign.modelOptions : undefined,
-        }),
+        body: JSON.stringify(payload),
         signal: campaign.controller?.signal,
       });
 
@@ -1614,17 +1719,22 @@ export default function AdStudioPage() {
 
     campaignCountRef.current += 1;
     const ctrl = new AbortController();
+    const isAdCopy = workflowMode === "ad-copy";
     const newCampaign: AdCampaign = {
       id: crypto.randomUUID(),
-      name: `Campaign #${campaignCountRef.current}`,
+      name: `${isAdCopy ? "Ad Copy" : "Campaign"} #${campaignCountRef.current}`,
       startedAt: Date.now(),
+      mode: workflowMode,
       theme,
+      adaptationBrief,
       modelId,
       quantity,
       speed,
       aspectRatios: [...activeRatios],
       productId: selectedProduct!.id,
       productName: selectedProduct!.name,
+      sourceAdUrl,
+      diversity,
       modelOptions: { ...modelOptions },
       status: "running",
       concepts: [],
@@ -1707,7 +1817,7 @@ export default function AdStudioPage() {
             <div>
               <h1 className="text-lg font-bold text-slate-900 dark:text-white">Ad Studio</h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                AI-powered creative campaigns with Claude
+                AI-powered campaigns and ad remixes
               </p>
             </div>
             <button
@@ -1722,24 +1832,139 @@ export default function AdStudioPage() {
             </button>
           </div>
 
-          {/* Creative Theme (HERO) */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              Creative Theme
+              Workflow
             </label>
-            <div className="relative">
-              <textarea
-                value={theme}
-                onChange={(e) => setTheme(e.target.value)}
-                placeholder="Describe your creative vision... e.g., 'Minimalist Scandinavian winter — muted earth tones, soft morning light through frosted glass, raw linen textures, quiet luxury'"
-                className="w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400 resize-none transition-all"
-                rows={5}
-              />
-              <div className="absolute bottom-2 right-3 text-[10px] text-slate-400">
-                {theme.length}
-              </div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { id: "campaign", label: "Campaign", detail: "Theme to concepts" },
+                { id: "ad-copy", label: "Ad Copy", detail: "Reference ad variations" },
+              ] as const).map((mode) => (
+                <button
+                  key={mode.id}
+                  onClick={() => setWorkflowMode(mode.id)}
+                  className={`rounded-xl border px-3 py-2.5 text-left transition ${
+                    workflowMode === mode.id
+                      ? "border-indigo-500 bg-indigo-50 text-indigo-900 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200"
+                      : "border-slate-200 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+                  }`}
+                >
+                  <div className="text-sm font-semibold">{mode.label}</div>
+                  <div className="text-[11px] opacity-75">{mode.detail}</div>
+                </button>
+              ))}
             </div>
           </div>
+
+          {workflowMode === "campaign" ? (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                Creative Theme
+              </label>
+              <div className="relative">
+                <textarea
+                  value={theme}
+                  onChange={(e) => setTheme(e.target.value)}
+                  placeholder="Describe your creative vision... e.g., 'Minimalist Scandinavian winter, muted earth tones, soft morning light through frosted glass, raw linen textures, quiet luxury'"
+                  className="w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400 resize-none transition-all"
+                  rows={5}
+                />
+                <div className="absolute bottom-2 right-3 text-[10px] text-slate-400">
+                  {theme.length}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  Reference Ad
+                </label>
+                <input
+                  ref={sourceAdInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) void handleSourceAdFile(file);
+                  }}
+                />
+                {sourceAdUrl ? (
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-900">
+                      <img src={sourceAdUrl} alt="Reference ad" className="h-full w-full object-contain" />
+                    </div>
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <span className="text-xs text-slate-500 dark:text-slate-400">Competitor/source ad ready</span>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => sourceAdInputRef.current?.click()}
+                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400"
+                        >
+                          Replace
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSourceAdUrl(null);
+                            setSourceAdError(null);
+                          }}
+                          className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => sourceAdInputRef.current?.click()}
+                    disabled={sourceAdUploading}
+                    className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 transition hover:border-indigo-400 hover:text-indigo-500 dark:border-slate-600 dark:text-slate-400"
+                  >
+                    {sourceAdUploading ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Uploading reference ad...
+                      </>
+                    ) : (
+                      <>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                          <path fillRule="evenodd" d="M1 4.25A2.25 2.25 0 013.25 2h13.5A2.25 2.25 0 0119 4.25v11.5A2.25 2.25 0 0116.75 18H3.25A2.25 2.25 0 011 15.75V4.25zm3.86 8.47a.75.75 0 00.98-.1l2.61-3.13 1.92 2.29a.75.75 0 001.12.03l2.84-3.31 2.04 2.24a.75.75 0 101.11-1.01l-2.61-2.87a.75.75 0 00-1.13.02l-2.83 3.31-1.92-2.29a.75.75 0 00-1.15 0l-3.18 3.82a.75.75 0 00.1 1.1z" clipRule="evenodd" />
+                        </svg>
+                        Upload competitor ad image
+                      </>
+                    )}
+                  </button>
+                )}
+                {sourceAdError && (
+                  <p className="mt-2 text-xs text-red-600 dark:text-red-400">{sourceAdError}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  Adaptation Brief
+                </label>
+                <div className="relative">
+                  <textarea
+                    value={adaptationBrief}
+                    onChange={(e) => setAdaptationBrief(e.target.value)}
+                    placeholder="Optional. Example: keep the same structure, swap in our lamp, headline 'Softer light. Better room.', subhead around warm ambient glow, CTA 'Shop Now'."
+                    className="w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400 resize-none transition-all"
+                    rows={4}
+                  />
+                  <div className="absolute bottom-2 right-3 text-[10px] text-slate-400">
+                    {adaptationBrief.length}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Product Selector */}
           <div>
@@ -1790,9 +2015,11 @@ export default function AdStudioPage() {
             )}
           </div>
 
-          {/* Concepts — Prominent number stepper */}
+          {/* Quantity — Prominent number stepper */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Concepts</label>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
+              {workflowMode === "ad-copy" ? "Variations" : "Concepts"}
+            </label>
             <div className="flex items-center justify-center gap-4">
               <button
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
@@ -1863,6 +2090,18 @@ export default function AdStudioPage() {
                 )}
               </div>
 
+              {workflowMode === "ad-copy" && (
+                <select
+                  value={diversity}
+                  onChange={(e) => setDiversity(e.target.value as "tight" | "balanced" | "exploratory")}
+                  className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                >
+                  <option value="tight">Diversity: Tight</option>
+                  <option value="balanced">Diversity: Balanced</option>
+                  <option value="exploratory">Diversity: Exploratory</option>
+                </select>
+              )}
+
               {/* Speed / Concurrency */}
               <div className="flex items-center gap-3">
                 <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">Speed</span>
@@ -1879,48 +2118,49 @@ export default function AdStudioPage() {
             </div>
           </div>
 
-          {/* Formats — Toggle switch + pill selector */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Formats</label>
-            <div className="space-y-3">
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="text-sm text-slate-700 dark:text-slate-300">Include both 1:1 and 9:16</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={includeBothRatios}
-                  onClick={() => setIncludeBothRatios((v) => !v)}
-                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                    includeBothRatios ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      includeBothRatios ? "translate-x-5" : "translate-x-0"
+          {workflowMode === "campaign" && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Formats</label>
+              <div className="space-y-3">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <span className="text-sm text-slate-700 dark:text-slate-300">Include both 1:1 and 9:16</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={includeBothRatios}
+                    onClick={() => setIncludeBothRatios((v) => !v)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                      includeBothRatios ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
                     }`}
-                  />
-                </button>
-              </label>
-
-              {!includeBothRatios && (
-                <div className="flex gap-2">
-                  {(["1:1", "9:16"] as const).map((ratio) => (
-                    <button
-                      key={ratio}
-                      onClick={() => setSingleRatio(ratio)}
-                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition ${
-                        singleRatio === ratio
-                          ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300"
-                          : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        includeBothRatios ? "translate-x-5" : "translate-x-0"
                       }`}
-                    >
-                      {ratio}
-                    </button>
-                  ))}
-                </div>
-              )}
+                    />
+                  </button>
+                </label>
+
+                {!includeBothRatios && (
+                  <div className="flex gap-2">
+                    {(["1:1", "9:16"] as const).map((ratio) => (
+                      <button
+                        key={ratio}
+                        onClick={() => setSingleRatio(ratio)}
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+                          singleRatio === ratio
+                            ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300"
+                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
+                        }`}
+                      >
+                        {ratio}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Launch Button (always available) */}
           <div className="pt-1">
@@ -1932,7 +2172,7 @@ export default function AdStudioPage() {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
               </svg>
-              Launch Campaign
+              {workflowMode === "ad-copy" ? "Generate Variations" : "Launch Campaign"}
             </button>
 
             {/* Cancel button for active running campaign */}
@@ -1952,7 +2192,9 @@ export default function AdStudioPage() {
           {/* Image count summary */}
           {canLaunch && (
             <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
-              {quantity} concept{quantity > 1 ? "s" : ""} &times; {activeRatios.length} format{activeRatios.length > 1 ? "s" : ""} = {totalImages} image{totalImages > 1 ? "s" : ""} @ {speed}x speed
+              {workflowMode === "ad-copy"
+                ? `${quantity} variation${quantity > 1 ? "s" : ""} @ ${speed}x speed`
+                : `${quantity} concept${quantity > 1 ? "s" : ""} × ${activeRatios.length} format${activeRatios.length > 1 ? "s" : ""} = ${totalImages} image${totalImages > 1 ? "s" : ""} @ ${speed}x speed`}
             </div>
           )}
 
@@ -2091,7 +2333,9 @@ export default function AdStudioPage() {
                     </div>
                     <h3 className="text-base font-semibold text-slate-900 dark:text-white mb-1">Ready to create</h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
-                      Enter a creative theme, select a product, and launch your campaign. Claude will analyze your product, ideate concepts, and generate images automatically.
+                      {workflowMode === "ad-copy"
+                        ? "Upload a competitor ad, select your product, and generate tailored variations. The system will analyze the original ad structure, plan new copy directions, and edit against the reference."
+                        : "Enter a creative theme, select a product, and launch your campaign. Claude will analyze your product, ideate concepts, and generate images automatically."}
                     </p>
                   </div>
                 )}
@@ -2107,6 +2351,7 @@ export default function AdStudioPage() {
                 )}
 
                 <ResultsGrid
+                  workflowMode={activeCampaign?.mode || workflowMode}
                   concepts={concepts}
                   images={images}
                   aspectRatios={activeCampaign?.aspectRatios || activeRatios}
@@ -2116,7 +2361,11 @@ export default function AdStudioPage() {
                   productName={activeCampaign?.productName || selectedProduct?.name || "ad"}
                   productId={activeCampaign?.productId || selectedProduct?.id || ""}
                   profileId={activeProfileId || ""}
-                  theme={activeCampaign?.theme || theme}
+                  theme={
+                    activeCampaign?.mode === "ad-copy"
+                      ? activeCampaign?.adaptationBrief || adaptationBrief
+                      : activeCampaign?.theme || theme
+                  }
                   modelId={activeCampaign?.modelId || modelId}
                   feedbackRatings={feedbackRatings}
                   onFeedbackSubmit={handleFeedbackSubmit}

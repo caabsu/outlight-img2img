@@ -273,13 +273,17 @@ export type SerializedAdCampaign = {
   id: string;
   name: string;
   startedAt: number;
+  mode?: "campaign" | "ad-copy";
   theme: string;
+  adaptationBrief?: string;
   modelId: string;
   quantity: number;
   speed: number;
   aspectRatios: string[];
   productId: string;
   productName: string;
+  sourceAdUrl?: string | null;
+  diversity?: "tight" | "balanced" | "exploratory";
   modelOptions: Record<string, string>;
   status: "idle" | "done" | "error" | "cancelled";
   concepts: Array<{ name: string; description: string; headline?: string; tagline?: string; prompts: Record<string, string> }>;
@@ -313,13 +317,17 @@ type AdStudioSessionV1 = {
 export type AdStudioSession = {
   version: 2;
   savedAt: number;
+  workflowMode?: "campaign" | "ad-copy";
   theme: string;
+  adaptationBrief?: string;
   modelId: string;
   quantity: number;
   speed: number;
   aspectRatios: Record<string, boolean>;
   includeBothRatios: boolean;
   selectedProductId: string | null;
+  sourceAdUrl?: string | null;
+  diversity?: "tight" | "balanced" | "exploratory";
   modelOptions: Record<string, string>;
   campaigns: SerializedAdCampaign[];
   activeCampaignId: string | null;
@@ -337,13 +345,17 @@ export function serializeAdCampaign(campaign: any): SerializedAdCampaign {
     id: campaign.id,
     name: campaign.name,
     startedAt: campaign.startedAt,
+    mode: campaign.mode || "campaign",
     theme: campaign.theme || "",
+    adaptationBrief: campaign.adaptationBrief || "",
     modelId: campaign.modelId || "",
     quantity: campaign.quantity || 3,
     speed: campaign.speed || 3,
     aspectRatios: campaign.aspectRatios || [],
     productId: campaign.productId || "",
     productName: campaign.productName || "",
+    sourceAdUrl: campaign.sourceAdUrl || null,
+    diversity: campaign.diversity || "balanced",
     modelOptions: campaign.modelOptions || {},
     status: campaign.status === "running" ? "cancelled" : campaign.status,
     concepts: campaign.concepts || [],
@@ -358,6 +370,10 @@ export function serializeAdCampaign(campaign: any): SerializedAdCampaign {
 export function deserializeAdCampaign(data: SerializedAdCampaign): any {
   return {
     ...data,
+    mode: data.mode || "campaign",
+    adaptationBrief: data.adaptationBrief || "",
+    sourceAdUrl: data.sourceAdUrl || null,
+    diversity: data.diversity || "balanced",
     selectedImages: new Set(data.selectedImages || []),
     controller: null,
   };
@@ -381,13 +397,17 @@ export function loadAdStudioSession(): AdStudioSession | null {
         id: crypto.randomUUID(),
         name: "Campaign #1",
         startedAt: v1.savedAt || Date.now(),
+        mode: "campaign",
         theme: v1.theme || "",
+        adaptationBrief: "",
         modelId: v1.modelId || "",
         quantity: v1.quantity || 3,
         speed: v1.speed || 3,
         aspectRatios: ratioKeys.length > 0 ? ratioKeys : ["1:1", "9:16"],
         productId: v1.selectedProductId || "",
         productName: "", // Will be filled when products load
+        sourceAdUrl: null,
+        diversity: "balanced",
         modelOptions: v1.modelOptions || {},
         status: v1.lastCampaign.status || "done",
         concepts: v1.lastCampaign.concepts || [],
@@ -401,13 +421,17 @@ export function loadAdStudioSession(): AdStudioSession | null {
     return {
       version: 2,
       savedAt: v1.savedAt || Date.now(),
+      workflowMode: "campaign",
       theme: v1.theme || "",
+      adaptationBrief: "",
       modelId: v1.modelId || "",
       quantity: v1.quantity || 3,
       speed: v1.speed || 3,
       aspectRatios: v1.aspectRatios || {},
       includeBothRatios: v1.includeBothRatios ?? true,
       selectedProductId: v1.selectedProductId || null,
+      sourceAdUrl: null,
+      diversity: "balanced",
       modelOptions: v1.modelOptions || {},
       campaigns,
       activeCampaignId: campaigns[0]?.id || null,

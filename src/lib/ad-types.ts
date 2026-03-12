@@ -9,6 +9,16 @@ export type AdConcept = {
   prompts: Record<string, string>; // { "1:1": "...", "9:16": "..." }
 };
 
+export type AdWorkflowMode = "campaign" | "ad-copy";
+
+export type AdSourceAnalysis = {
+  identifiedAd: string;
+  structure: string;
+  offerStrategy: string;
+  visualSystem: string;
+  adaptationStrategy: string;
+};
+
 export type AdImage = {
   conceptIndex: number;
   ratio: string;
