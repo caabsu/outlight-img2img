@@ -22,6 +22,7 @@ type AdGenerateRequest = {
   modelOptions?: {
     quality?: string;
     resolution?: string;
+    size?: string;
   };
 };
 
@@ -324,12 +325,16 @@ async function callGenerateAPI(
     options.image_size = modelOptions.resolution;
   }
   if (modelId === "gpt-1.5") {
-    const sizeMap: Record<string, string> = {
-      "1:1": "1024x1024",
-      "9:16": "1024x1536",
-      "16:9": "1536x1024",
-    };
-    options.gpt_size = sizeMap[aspectRatio] || "auto";
+    if (modelOptions?.size) {
+      options.gpt_size = modelOptions.size;
+    } else {
+      const sizeMap: Record<string, string> = {
+        "1:1": "1024x1024",
+        "9:16": "1024x1536",
+        "16:9": "1536x1024",
+      };
+      options.gpt_size = sizeMap[aspectRatio] || "auto";
+    }
   }
 
   const body = {

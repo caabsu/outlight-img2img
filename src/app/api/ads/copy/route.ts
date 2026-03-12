@@ -32,6 +32,7 @@ type AdCopyGenerateRequest = {
   modelOptions?: {
     quality?: string;
     resolution?: string;
+    size?: string;
   };
 };
 
@@ -360,6 +361,7 @@ async function callGenerateAPI({
 
   if (modelOptions?.quality) options.quality = modelOptions.quality;
   if (modelOptions?.resolution) options.image_size = modelOptions.resolution;
+  if (modelOptions?.size) options.gpt_size = modelOptions.size;
 
   const res = await fetch(`${origin}/api/generate`, {
     method: "POST",

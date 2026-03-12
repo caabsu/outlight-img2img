@@ -2064,13 +2064,13 @@ export default function AdStudioPage() {
                 ))}
               </select>
 
-              {/* Quality + Resolution inline */}
-              <div className="flex gap-2">
+              {/* Model-specific output controls */}
+              <div className="flex flex-wrap gap-2">
                 {selectedModel?.qualityOptions && (
                   <select
                     value={modelOptions.quality || selectedModel.qualityOptions[0]}
                     onChange={(e) => setModelOptions((prev) => ({ ...prev, quality: e.target.value }))}
-                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="min-w-[120px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     {selectedModel.qualityOptions.map((q) => (
                       <option key={q} value={q}>Quality: {q}</option>
@@ -2081,10 +2081,21 @@ export default function AdStudioPage() {
                   <select
                     value={modelOptions.resolution || selectedModel.resolutionOptions[0]}
                     onChange={(e) => setModelOptions((prev) => ({ ...prev, resolution: e.target.value }))}
-                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    className="min-w-[120px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     {selectedModel.resolutionOptions.map((r) => (
-                      <option key={r} value={r}>Res: {r}</option>
+                      <option key={r} value={r}>Output: {r}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedModel?.sizeOptions && (
+                  <select
+                    value={modelOptions.size || selectedModel.sizeOptions[0]}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, size: e.target.value }))}
+                    className="min-w-[140px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {selectedModel.sizeOptions.map((size) => (
+                      <option key={size} value={size}>Size: {size}</option>
                     ))}
                   </select>
                 )}
