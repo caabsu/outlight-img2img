@@ -9,7 +9,7 @@ export type AdConcept = {
   prompts: Record<string, string>; // { "1:1": "...", "9:16": "..." }
 };
 
-export type AdWorkflowMode = "campaign" | "ad-copy";
+export type AdWorkflowMode = "campaign" | "ad-copy" | "bulk-copy";
 
 export type AdSourceAnalysis = {
   identifiedAd: string;

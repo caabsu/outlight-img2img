@@ -49,6 +49,7 @@ type AdCampaign = {
   productId: string;
   productName: string;
   sourceAdUrl: string | null;
+  sourceAdUrls: string[];
   diversity: "tight" | "balanced" | "exploratory";
   modelOptions: Record<string, string>;
   status: AgentStatus;
@@ -60,8 +61,6 @@ type AdCampaign = {
   selectedImages: Set<string>;
   controller: AbortController | null;
 };
-
-const AD_COPY_RATIO = "variation";
 
 const MAX_CAMPAIGNS = 10;
 
@@ -651,7 +650,7 @@ function ResultsGrid({
     <div className="space-y-4">
       {concepts.map((concept, ci) => {
         const conceptImages = images.filter((img) => img.conceptIndex === ci);
-        const cardLabel = workflowMode === "ad-copy" ? "Variation" : "Concept";
+        const cardLabel = workflowMode === "campaign" ? "Concept" : "Variation";
 
         return (
           <div
@@ -686,7 +685,7 @@ function ResultsGrid({
                   const img = conceptImages.find((im) => im.ratio === ratio);
                   const imgKey = `${ci}-${ratio}`;
                   const isSelected = selectedImages.has(imgKey);
-                  const isAdCopy = workflowMode === "ad-copy";
+                  const isAdCopy = workflowMode !== "campaign";
                   const isVertical = ratio === "9:16";
                   const mediaShellClass = isAdCopy
                     ? "w-56 min-h-[280px]"
@@ -730,9 +729,7 @@ function ResultsGrid({
                           </button>
                         )}
                       </div>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                        {workflowMode === "ad-copy" ? "Edited ad" : ratio}
-                      </span>
+                      <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">{ratio}</span>
                     </div>
                   );
                 })}
@@ -1189,7 +1186,7 @@ export default function AdStudioPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [theme, setTheme] = useState("");
   const [adaptationBrief, setAdaptationBrief] = useState("");
-  const [sourceAdUrl, setSourceAdUrl] = useState<string | null>(null);
+  const [sourceAdUrls, setSourceAdUrls] = useState<string[]>([]);
   const [sourceAdUploading, setSourceAdUploading] = useState(false);
   const [sourceAdError, setSourceAdError] = useState<string | null>(null);
   const [diversity, setDiversity] = useState<"tight" | "balanced" | "exploratory">("balanced");
@@ -1231,13 +1228,11 @@ export default function AdStudioPage() {
 
   const selectedModel = getModelById(modelId);
   const maxSpeed = selectedModel?.maxConcurrency || 5;
-  const activeRatios = workflowMode === "ad-copy"
-    ? [AD_COPY_RATIO]
-    : includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
+  const activeRatios = includeBothRatios ? ["1:1", "9:16"] : [singleRatio];
 
   // canLaunch: no longer blocked by running status (parallel campaigns allowed)
-  const canLaunch = workflowMode === "ad-copy"
-    ? selectedProduct && sourceAdUrl && activeProfileId
+  const canLaunch = workflowMode !== "campaign"
+    ? selectedProduct && sourceAdUrls.length > 0 && activeProfileId
     : selectedProduct && theme.trim() && activeProfileId;
 
   // Auto-switch to results tab when first image arrives on active campaign
@@ -1248,7 +1243,7 @@ export default function AdStudioPage() {
   }, [images.length]);
 
   useEffect(() => {
-    if (workflowMode === "ad-copy" && modelId === "nanobanana-3-pro") {
+    if ((workflowMode === "ad-copy" || workflowMode === "bulk-copy") && modelId === "nanobanana-3-pro") {
       setModelId("nanobanana-2");
       setModelOptions({});
       setSpeed((current) => Math.min(current, getModelById("nanobanana-2")?.maxConcurrency || 5));
@@ -1372,7 +1367,8 @@ export default function AdStudioPage() {
       aspectRatios: includeBothRatios ? { "1:1": true, "9:16": true } : { [singleRatio]: true },
       includeBothRatios,
       selectedProductId: selectedProduct?.id || null,
-      sourceAdUrl,
+      sourceAdUrl: sourceAdUrls[0] || null,
+      sourceAdUrls,
       diversity,
       modelOptions,
       campaigns: campaigns.map((c) => serializeAdCampaign(c)),
@@ -1389,7 +1385,7 @@ export default function AdStudioPage() {
     includeBothRatios,
     singleRatio,
     selectedProduct,
-    sourceAdUrl,
+    sourceAdUrls,
     diversity,
     modelOptions,
     campaigns,
@@ -1447,7 +1443,13 @@ export default function AdStudioPage() {
       setWorkflowMode(session.workflowMode || "campaign");
       setTheme(session.theme || "");
       setAdaptationBrief(session.adaptationBrief || "");
-      setSourceAdUrl(session.sourceAdUrl || null);
+      setSourceAdUrls(
+        session.sourceAdUrls && session.sourceAdUrls.length > 0
+          ? session.sourceAdUrls
+          : session.sourceAdUrl
+            ? [session.sourceAdUrl]
+            : []
+      );
       setDiversity(session.diversity || "balanced");
       setModelId(session.modelId || "nanobanana-3-pro");
       setQuantity(session.quantity || 3);
@@ -1537,21 +1539,28 @@ export default function AdStudioPage() {
     }
   }
 
-  async function handleSourceAdFile(file: File) {
+  async function handleSourceAdFiles(files: File[]) {
+    if (files.length === 0) return;
     setSourceAdUploading(true);
     setSourceAdError(null);
     try {
       const formData = new FormData();
-      formData.append("files", file);
+      for (const file of files) {
+        formData.append("files", file);
+      }
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json.error || "Upload failed");
-      const nextUrl = Array.isArray(json.urls) ? json.urls[0] : null;
-      if (!nextUrl) throw new Error("Upload returned no image URL");
-      setSourceAdUrl(nextUrl);
+      const nextUrls = Array.isArray(json.urls) ? json.urls.filter((url: unknown) => typeof url === "string") : [];
+      if (nextUrls.length === 0) throw new Error("Upload returned no image URL");
+      setSourceAdUrls((prev) =>
+        workflowMode === "bulk-copy"
+          ? [...prev, ...nextUrls]
+          : [nextUrls[0]]
+      );
     } catch (err) {
       console.error("Source ad upload failed:", err);
       setSourceAdError(err instanceof Error ? err.message : "Upload failed");
@@ -1568,13 +1577,16 @@ export default function AdStudioPage() {
     const campaignId = campaign.id;
 
     try {
-      const endpoint = campaign.mode === "ad-copy" ? "/api/ads/copy" : "/api/ads/generate";
+      const endpoint = campaign.mode !== "campaign" ? "/api/ads/copy" : "/api/ads/generate";
       const payload =
-        campaign.mode === "ad-copy"
+        campaign.mode !== "campaign"
           ? {
               modelId: campaign.modelId,
               quantity: campaign.quantity,
+              aspectRatios: campaign.aspectRatios,
+              workflowMode: campaign.mode,
               sourceAdUrl: campaign.sourceAdUrl,
+              sourceAdUrls: campaign.sourceAdUrls,
               adaptationBrief: campaign.adaptationBrief,
               diversity: campaign.diversity,
               productId: campaign.productId,
@@ -1719,10 +1731,10 @@ export default function AdStudioPage() {
 
     campaignCountRef.current += 1;
     const ctrl = new AbortController();
-    const isAdCopy = workflowMode === "ad-copy";
+    const isRemixMode = workflowMode !== "campaign";
     const newCampaign: AdCampaign = {
       id: crypto.randomUUID(),
-      name: `${isAdCopy ? "Ad Copy" : "Campaign"} #${campaignCountRef.current}`,
+      name: `${isRemixMode ? workflowMode === "bulk-copy" ? "Bulk Copy" : "Ad Copy" : "Campaign"} #${campaignCountRef.current}`,
       startedAt: Date.now(),
       mode: workflowMode,
       theme,
@@ -1733,7 +1745,8 @@ export default function AdStudioPage() {
       aspectRatios: [...activeRatios],
       productId: selectedProduct!.id,
       productName: selectedProduct!.name,
-      sourceAdUrl,
+      sourceAdUrl: sourceAdUrls[0] || null,
+      sourceAdUrls: [...sourceAdUrls],
       diversity,
       modelOptions: { ...modelOptions },
       status: "running",
@@ -1839,11 +1852,17 @@ export default function AdStudioPage() {
             <div className="grid grid-cols-2 gap-2">
               {([
                 { id: "campaign", label: "Campaign", detail: "Theme to concepts" },
-                { id: "ad-copy", label: "Ad Copy", detail: "Reference ad variations" },
+                { id: "ad-copy", label: "Ad Copy", detail: "Single reference ad" },
+                { id: "bulk-copy", label: "Bulk Copy", detail: "Many reference ads" },
               ] as const).map((mode) => (
                 <button
                   key={mode.id}
-                  onClick={() => setWorkflowMode(mode.id)}
+                  onClick={() => {
+                    setWorkflowMode(mode.id);
+                    if (mode.id === "ad-copy") {
+                      setSourceAdUrls((prev) => (prev.length > 0 ? [prev[0]] : prev));
+                    }
+                  }}
                   className={`rounded-xl border px-3 py-2.5 text-left transition ${
                     workflowMode === mode.id
                       ? "border-indigo-500 bg-indigo-50 text-indigo-900 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200"
@@ -1879,44 +1898,90 @@ export default function AdStudioPage() {
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                  Reference Ad
+                  {workflowMode === "bulk-copy" ? "Reference Ads" : "Reference Ad"}
                 </label>
                 <input
                   ref={sourceAdInputRef}
                   type="file"
+                  multiple={workflowMode === "bulk-copy"}
                   accept="image/png,image/jpeg,image/webp"
                   className="hidden"
                   onChange={(e) => {
-                    const file = e.target.files?.[0];
-                    if (file) void handleSourceAdFile(file);
+                    const files = Array.from(e.target.files || []);
+                    if (files.length > 0) void handleSourceAdFiles(files);
                   }}
                 />
-                {sourceAdUrl ? (
-                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
-                    <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-900">
-                      <img src={sourceAdUrl} alt="Reference ad" className="h-full w-full object-contain" />
-                    </div>
-                    <div className="flex items-center justify-between px-3 py-2">
-                      <span className="text-xs text-slate-500 dark:text-slate-400">Competitor/source ad ready</span>
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => sourceAdInputRef.current?.click()}
-                          className="text-xs font-medium text-indigo-600 dark:text-indigo-400"
-                        >
-                          Replace
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSourceAdUrl(null);
-                            setSourceAdError(null);
-                          }}
-                          className="text-xs font-medium text-slate-500 dark:text-slate-400"
-                        >
-                          Clear
-                        </button>
+                {sourceAdUrls.length > 0 ? (
+                  workflowMode === "bulk-copy" ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-2">
+                        {sourceAdUrls.map((url, index) => (
+                          <div key={url} className="relative overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+                            <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-900">
+                              <img src={url} alt={`Reference ad ${index + 1}`} className="h-full w-full object-contain" />
+                            </div>
+                            <div className="flex items-center justify-between px-2 py-1.5">
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400">Ad {index + 1}</span>
+                              <button
+                                onClick={() => setSourceAdUrls((prev) => prev.filter((_, i) => i !== index))}
+                                className="text-[10px] font-medium text-slate-500 dark:text-slate-400"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {sourceAdUrls.length} reference ad{sourceAdUrls.length > 1 ? "s" : ""} ready
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => sourceAdInputRef.current?.click()}
+                            className="text-xs font-medium text-indigo-600 dark:text-indigo-400"
+                          >
+                            Add more
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSourceAdUrls([]);
+                              setSourceAdError(null);
+                            }}
+                            className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                          >
+                            Clear all
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="aspect-[4/5] bg-slate-100 dark:bg-slate-900">
+                        <img src={sourceAdUrls[0]} alt="Reference ad" className="h-full w-full object-contain" />
+                      </div>
+                      <div className="flex items-center justify-between px-3 py-2">
+                        <span className="text-xs text-slate-500 dark:text-slate-400">Competitor/source ad ready</span>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => sourceAdInputRef.current?.click()}
+                            className="text-xs font-medium text-indigo-600 dark:text-indigo-400"
+                          >
+                            Replace
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSourceAdUrls([]);
+                              setSourceAdError(null);
+                            }}
+                            className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 ) : (
                   <button
                     onClick={() => sourceAdInputRef.current?.click()}
@@ -1936,7 +2001,7 @@ export default function AdStudioPage() {
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
                           <path fillRule="evenodd" d="M1 4.25A2.25 2.25 0 013.25 2h13.5A2.25 2.25 0 0119 4.25v11.5A2.25 2.25 0 0116.75 18H3.25A2.25 2.25 0 011 15.75V4.25zm3.86 8.47a.75.75 0 00.98-.1l2.61-3.13 1.92 2.29a.75.75 0 001.12.03l2.84-3.31 2.04 2.24a.75.75 0 101.11-1.01l-2.61-2.87a.75.75 0 00-1.13.02l-2.83 3.31-1.92-2.29a.75.75 0 00-1.15 0l-3.18 3.82a.75.75 0 00.1 1.1z" clipRule="evenodd" />
                         </svg>
-                        Upload competitor ad image
+                        {workflowMode === "bulk-copy" ? "Upload competitor ad images" : "Upload competitor ad image"}
                       </>
                     )}
                   </button>
@@ -1954,7 +2019,9 @@ export default function AdStudioPage() {
                   <textarea
                     value={adaptationBrief}
                     onChange={(e) => setAdaptationBrief(e.target.value)}
-                    placeholder="Optional. Example: keep the same structure, swap in our lamp, headline 'Softer light. Better room.', subhead around warm ambient glow, CTA 'Shop Now'."
+                    placeholder={workflowMode === "bulk-copy"
+                      ? "Optional. Default behavior removes competitor logos/branding, swaps in our product, and rewrites the copy. Add extra rules here if needed."
+                      : "Optional. Example: keep the same structure, swap in our lamp, headline 'Softer light. Better room.', subhead around warm ambient glow, CTA 'Shop Now'."}
                     className="w-full bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400 resize-none transition-all"
                     rows={4}
                   />
@@ -2018,7 +2085,7 @@ export default function AdStudioPage() {
           {/* Quantity — Prominent number stepper */}
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-              {workflowMode === "ad-copy" ? "Variations" : "Concepts"}
+              {workflowMode === "campaign" ? "Concepts" : workflowMode === "bulk-copy" ? "Variations Per Ad" : "Variations"}
             </label>
             <div className="flex items-center justify-center gap-4">
               <button
@@ -2101,7 +2168,7 @@ export default function AdStudioPage() {
                 )}
               </div>
 
-              {workflowMode === "ad-copy" && (
+              {workflowMode !== "campaign" && (
                 <select
                   value={diversity}
                   onChange={(e) => setDiversity(e.target.value as "tight" | "balanced" | "exploratory")}
@@ -2129,49 +2196,47 @@ export default function AdStudioPage() {
             </div>
           </div>
 
-          {workflowMode === "campaign" && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Formats</label>
-              <div className="space-y-3">
-                <label className="flex items-center justify-between cursor-pointer">
-                  <span className="text-sm text-slate-700 dark:text-slate-300">Include both 1:1 and 9:16</span>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={includeBothRatios}
-                    onClick={() => setIncludeBothRatios((v) => !v)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
-                      includeBothRatios ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">Formats</label>
+            <div className="space-y-3">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-sm text-slate-700 dark:text-slate-300">Include both 1:1 and 9:16</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={includeBothRatios}
+                  onClick={() => setIncludeBothRatios((v) => !v)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 ${
+                    includeBothRatios ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      includeBothRatios ? "translate-x-5" : "translate-x-0"
                     }`}
-                  >
-                    <span
-                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                        includeBothRatios ? "translate-x-5" : "translate-x-0"
-                      }`}
-                    />
-                  </button>
-                </label>
+                  />
+                </button>
+              </label>
 
-                {!includeBothRatios && (
-                  <div className="flex gap-2">
-                    {(["1:1", "9:16"] as const).map((ratio) => (
-                      <button
-                        key={ratio}
-                        onClick={() => setSingleRatio(ratio)}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition ${
-                          singleRatio === ratio
-                            ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300"
-                            : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
-                        }`}
-                      >
-                        {ratio}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {!includeBothRatios && (
+                <div className="flex gap-2">
+                  {(["1:1", "9:16"] as const).map((ratio) => (
+                    <button
+                      key={ratio}
+                      onClick={() => setSingleRatio(ratio)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium border transition ${
+                        singleRatio === ratio
+                          ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-600 text-indigo-700 dark:text-indigo-300"
+                          : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-600"
+                      }`}
+                    >
+                      {ratio}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </div>
 
           {/* Launch Button (always available) */}
           <div className="pt-1">
@@ -2183,7 +2248,7 @@ export default function AdStudioPage() {
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
                 <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
               </svg>
-              {workflowMode === "ad-copy" ? "Generate Variations" : "Launch Campaign"}
+              {workflowMode === "campaign" ? "Launch Campaign" : workflowMode === "bulk-copy" ? "Run Bulk Copy" : "Generate Variations"}
             </button>
 
             {/* Cancel button for active running campaign */}
@@ -2204,7 +2269,9 @@ export default function AdStudioPage() {
           {canLaunch && (
             <div className="text-xs text-slate-500 dark:text-slate-400 text-center">
               {workflowMode === "ad-copy"
-                ? `${quantity} variation${quantity > 1 ? "s" : ""} @ ${speed}x speed`
+                ? `${quantity} variation${quantity > 1 ? "s" : ""} × ${activeRatios.length} format${activeRatios.length > 1 ? "s" : ""} = ${totalImages} image${totalImages > 1 ? "s" : ""} @ ${speed}x speed`
+                : workflowMode === "bulk-copy"
+                  ? `${sourceAdUrls.length} ad${sourceAdUrls.length > 1 ? "s" : ""} × ${quantity} variation${quantity > 1 ? "s" : ""} × ${activeRatios.length} format${activeRatios.length > 1 ? "s" : ""} = ${sourceAdUrls.length * totalImages} image${sourceAdUrls.length * totalImages !== 1 ? "s" : ""} @ ${speed}x speed`
                 : `${quantity} concept${quantity > 1 ? "s" : ""} × ${activeRatios.length} format${activeRatios.length > 1 ? "s" : ""} = ${totalImages} image${totalImages > 1 ? "s" : ""} @ ${speed}x speed`}
             </div>
           )}
@@ -2346,6 +2413,8 @@ export default function AdStudioPage() {
                     <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md">
                       {workflowMode === "ad-copy"
                         ? "Upload a competitor ad, select your product, and generate tailored variations. The system will analyze the original ad structure, plan new copy directions, and edit against the reference."
+                        : workflowMode === "bulk-copy"
+                          ? "Upload multiple competitor ads, select your product, and run bulk replacements. The system will remove non-brand logos where needed, tailor the copy, and generate remixed ads across the full batch."
                         : "Enter a creative theme, select a product, and launch your campaign. Claude will analyze your product, ideate concepts, and generate images automatically."}
                     </p>
                   </div>
@@ -2373,7 +2442,7 @@ export default function AdStudioPage() {
                   productId={activeCampaign?.productId || selectedProduct?.id || ""}
                   profileId={activeProfileId || ""}
                   theme={
-                    activeCampaign?.mode === "ad-copy"
+                    activeCampaign?.mode !== "campaign"
                       ? activeCampaign?.adaptationBrief || adaptationBrief
                       : activeCampaign?.theme || theme
                   }

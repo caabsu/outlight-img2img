@@ -21,9 +21,12 @@ type Product = {
 };
 
 type AdCopyGenerateRequest = {
+  workflowMode?: "ad-copy" | "bulk-copy";
   modelId: string;
   quantity: number;
-  sourceAdUrl: string;
+  aspectRatios?: string[];
+  sourceAdUrl?: string;
+  sourceAdUrls?: string[];
   adaptationBrief?: string;
   diversity?: "tight" | "balanced" | "exploratory";
   productId: string;
@@ -210,6 +213,7 @@ The "editPrompt" field is for an image-edit model. It must:
 - Refer to the first image as the layout/style reference and the second image as the product reference.
 - Explicitly instruct the model to replace the featured product with the product from the product reference image.
 - Explicitly instruct the model to change the text overlay to the new copy for that variation.
+- Remove, replace, or neutralize any competitor logos, brand marks, product names, or branded packaging cues that do not belong to our product.
 - Preserve the overall ad composition, hierarchy, and readability.
 - Be concrete, visual, and operational.
 
@@ -243,18 +247,24 @@ function buildDiversityDirective(diversity: NonNullable<AdCopyGenerateRequest["d
   return "Create noticeable but controlled diversity. The variations should feel distinct in marketing angle and execution while still clearly tracing back to the reference ad.";
 }
 
+function buildDefaultAdaptationBrief(product: Product) {
+  return `Remove any competitor brand logos, product names, packaging labels, or brand-identifying marks. Replace the featured product with ${product.name}. Rewrite headlines, supporting text, CTAs, offer copy, and badges so the ad feels native to our product and use case while keeping the original layout logic.`;
+}
+
 async function callAIForAdCopyPlan({
   product,
   quantity,
   sourceAdUrl,
   adaptationBrief,
   diversity,
+  sourceLabel,
 }: {
   product: Product;
   quantity: number;
   sourceAdUrl: string;
   adaptationBrief: string;
   diversity: NonNullable<AdCopyGenerateRequest["diversity"]>;
+  sourceLabel: string;
 }): Promise<AdCopyPlan> {
   const anthropic = new Anthropic();
   const [sourceAdImage, productImage] = await Promise.all([
@@ -272,14 +282,16 @@ OUR PRODUCT:
 - Price: ${priceNote}
 
 ADAPTATION BRIEF:
-${adaptationBrief || "No extra brief provided. Infer a strong ecommerce angle from the product and the source ad."}
+${adaptationBrief || buildDefaultAdaptationBrief(product)}
 
 REQUIRED OUTPUT:
+- Treat this as ${sourceLabel}.
 - Generate exactly ${quantity} ad variations.
 - ${buildDiversityDirective(diversity)}
 - Keep each variation practical for image editing from the source ad.
 - Make the new copy specific and ad-ready.
-- Treat the source ad as the structural reference and the product image as the swap-in product reference.`;
+- Treat the source ad as the structural reference and the product image as the swap-in product reference.
+- Remove competitor branding by default even if the brief does not explicitly say so.`;
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-5-20250929",
@@ -343,6 +355,7 @@ async function callGenerateAPI({
   modelId,
   profileId,
   prompt,
+  aspectRatio,
   sourceAdUrl,
   productImageUrl,
   modelOptions,
@@ -351,6 +364,7 @@ async function callGenerateAPI({
   modelId: string;
   profileId: string;
   prompt: string;
+  aspectRatio: string;
   sourceAdUrl: string;
   productImageUrl: string;
   modelOptions?: AdCopyGenerateRequest["modelOptions"];
@@ -359,9 +373,19 @@ async function callGenerateAPI({
   const modelDef = getModelById(modelId);
   if (!modelDef) throw new Error(`Unknown model: ${modelId}`);
 
+  if (modelDef.aspectRatioOptions) options.aspect_ratio = aspectRatio;
   if (modelOptions?.quality) options.quality = modelOptions.quality;
   if (modelOptions?.resolution) options.image_size = modelOptions.resolution;
-  if (modelOptions?.size) options.gpt_size = modelOptions.size;
+  if (modelOptions?.size) {
+    options.gpt_size = modelOptions.size;
+  } else if (modelId === "gpt-1.5") {
+    const sizeMap: Record<string, string> = {
+      "1:1": "1024x1024",
+      "9:16": "1024x1536",
+      "16:9": "1536x1024",
+    };
+    options.gpt_size = sizeMap[aspectRatio] || "auto";
+  }
 
   const res = await fetch(`${origin}/api/generate`, {
     method: "POST",
@@ -389,9 +413,12 @@ async function callGenerateAPI({
 export async function POST(req: Request) {
   const body = (await req.json()) as AdCopyGenerateRequest;
   const {
+    workflowMode = "ad-copy",
     modelId,
     quantity,
+    aspectRatios,
     sourceAdUrl,
+    sourceAdUrls,
     adaptationBrief = "",
     diversity = "balanced",
     productId,
@@ -400,7 +427,12 @@ export async function POST(req: Request) {
     modelOptions,
   } = body;
 
-  if (!modelId || !productId || !profileId || !sourceAdUrl) {
+  const normalizedSourceUrls = [
+    ...(Array.isArray(sourceAdUrls) ? sourceAdUrls : []),
+    ...(sourceAdUrl ? [sourceAdUrl] : []),
+  ].filter((url, index, arr): url is string => typeof url === "string" && url.trim().length > 0 && arr.indexOf(url) === index);
+
+  if (!modelId || !productId || !profileId || normalizedSourceUrls.length === 0) {
     return new Response(JSON.stringify({ error: "Missing required fields" }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
@@ -409,6 +441,11 @@ export async function POST(req: Request) {
 
   const safeQuantity = Math.max(1, Math.min(10, quantity || 3));
   const safeDiversity = ["tight", "balanced", "exploratory"].includes(diversity) ? diversity : "balanced";
+  const safeRatios = (aspectRatios?.length ? aspectRatios : ["1:1"]).filter((ratio) =>
+    ["1:1", "9:16"].includes(ratio)
+  );
+  if (safeRatios.length === 0) safeRatios.push("1:1");
+  const isBulk = workflowMode === "bulk-copy" || normalizedSourceUrls.length > 1;
   const origin = new URL(req.url).origin;
 
   const encoder = new TextEncoder();
@@ -423,57 +460,100 @@ export async function POST(req: Request) {
       };
 
       try {
-        send({ type: "phase", phase: "analyze", message: "Reading source ad and product reference..." });
+        send({
+          type: "phase",
+          phase: "analyze",
+          message: isBulk ? "Reading source ads and product reference..." : "Reading source ad and product reference...",
+        });
 
         const product = await fetchProduct(productId);
+        const effectiveBrief = adaptationBrief.trim() || buildDefaultAdaptationBrief(product);
+
         send({ type: "thought", message: `Product: ${product.name} (${product.shopify_product_type || "product"})` });
+        send({ type: "thought", message: `Source ads: ${normalizedSourceUrls.length}` });
         send({ type: "thought", message: `Variation count: ${safeQuantity}` });
+        send({ type: "thought", message: `Formats: ${safeRatios.join(", ")}` });
         send({ type: "thought", message: `Diversity: ${safeDiversity}` });
-        if (adaptationBrief.trim()) {
-          send({ type: "thought", message: `Brief: ${adaptationBrief.trim()}` });
-        }
+        send({ type: "thought", message: `Brief: ${effectiveBrief}` });
 
         send({ type: "action", message: "Preparing reference images for the selected model..." });
-        const [hostedSourceAdUrl, hostedProductImageUrl] = await Promise.all([
-          ensureHostedReference(origin, sourceAdUrl),
-          ensureHostedReference(origin, product.image_url),
-        ]);
+        const hostedProductImageUrl = await ensureHostedReference(origin, product.image_url);
+        const hostedSourceAdUrls = await Promise.all(
+          normalizedSourceUrls.map((url) => ensureHostedReference(origin, url))
+        );
 
-        send({ type: "action", message: "Analyzing the uploaded ad's structure and offer mechanics..." });
-        const plan = await callAIForAdCopyPlan({
-          product,
-          quantity: safeQuantity,
-          sourceAdUrl,
-          adaptationBrief,
-          diversity: safeDiversity,
+        const plans: Array<{ sourceIndex: number; hostedSourceUrl: string; plan: AdCopyPlan }> = [];
+        let conceptCursor = 0;
+
+        send({
+          type: "phase",
+          phase: "craft",
+          message: isBulk ? `Planning remixes for ${normalizedSourceUrls.length} source ads...` : "Planning ad-copy variations...",
         });
 
-        send({ type: "thought", message: `Analysis: ${plan.analysis.identifiedAd}` });
-        send({ type: "thought", message: `Structure: ${plan.analysis.structure}` });
-        send({ type: "thought", message: `Offer: ${plan.analysis.offerStrategy}` });
-        send({ type: "thought", message: `Style direction: ${plan.analysis.visualSystem}` });
-        send({ type: "thought", message: `Creative rationale: ${plan.analysis.adaptationStrategy}` });
+        for (const [sourceIndex, sourceUrl] of normalizedSourceUrls.entries()) {
+          const sourceLabel = isBulk ? `source ad ${sourceIndex + 1} of ${normalizedSourceUrls.length}` : "the uploaded source ad";
+          send({ type: "action", message: `Analyzing ${sourceLabel}...` });
 
-        send({ type: "phase", phase: "craft", message: "Planning ad-copy variations..." });
-        plan.variations.forEach((variation, index) => {
-          const concept: AdConcept = {
-            name: variation.name,
-            description: variation.description,
-            headline: variation.headline,
-            tagline: variation.tagline,
-            prompts: { variation: variation.editPrompt },
-          };
-          send({ type: "concept", index, concept });
-          send({ type: "action", message: `Variation ${index + 1}: "${variation.name}" — ${variation.description}` });
+          const plan = await callAIForAdCopyPlan({
+            product,
+            quantity: safeQuantity,
+            sourceAdUrl: sourceUrl,
+            adaptationBrief: effectiveBrief,
+            diversity: safeDiversity,
+            sourceLabel,
+          });
+
+          plans.push({ sourceIndex, hostedSourceUrl: hostedSourceAdUrls[sourceIndex], plan });
+
+          send({ type: "thought", message: `Analysis: Ad ${sourceIndex + 1} — ${plan.analysis.identifiedAd}` });
+          send({ type: "thought", message: `Structure: ${plan.analysis.structure}` });
+          send({ type: "thought", message: `Offer: ${plan.analysis.offerStrategy}` });
+          send({ type: "thought", message: `Style direction: ${plan.analysis.visualSystem}` });
+          send({ type: "thought", message: `Creative rationale: ${plan.analysis.adaptationStrategy}` });
+
+          plan.variations.forEach((variation, variationIndex) => {
+            const conceptIndex = conceptCursor++;
+            const concept: AdConcept = {
+              name: isBulk ? `Ad ${sourceIndex + 1} · ${variation.name}` : variation.name,
+              description: isBulk
+                ? `Source ad ${sourceIndex + 1}: ${variation.description}`
+                : variation.description,
+              headline: variation.headline,
+              tagline: variation.tagline,
+              prompts: Object.fromEntries(safeRatios.map((ratio) => [ratio, variation.editPrompt])),
+            };
+            send({ type: "concept", index: conceptIndex, concept });
+            send({
+              type: "action",
+              message: `${isBulk ? `Ad ${sourceIndex + 1}` : "Variation"} ${variationIndex + 1}: "${variation.name}" — ${variation.description}`,
+            });
+          });
+        }
+
+        const totalImages = plans.reduce((sum, entry) => sum + entry.plan.variations.length * safeRatios.length, 0);
+        send({
+          type: "phase",
+          phase: "generate",
+          message: isBulk ? `Generating ${totalImages} bulk-copy outputs...` : `Generating ${totalImages} ad variations...`,
         });
 
-        send({ type: "phase", phase: "generate", message: `Generating ${plan.variations.length} ad variations...` });
-
-        const tasks = plan.variations.map((variation, index) => ({
-          index,
-          prompt: variation.editPrompt,
-          name: variation.name,
-        }));
+        const tasks = plans.flatMap((entry) =>
+          entry.plan.variations.flatMap((variation, variationIndex) => {
+            const conceptIndex =
+              plans
+                .slice(0, entry.sourceIndex)
+                .reduce((sum, planEntry) => sum + planEntry.plan.variations.length, 0) + variationIndex;
+            return safeRatios.map((ratio) => ({
+              conceptIndex,
+              sourceIndex: entry.sourceIndex,
+              ratio,
+              prompt: variation.editPrompt,
+              name: isBulk ? `Ad ${entry.sourceIndex + 1} · ${variation.name}` : variation.name,
+              hostedSourceUrl: entry.hostedSourceUrl,
+            }));
+          })
+        );
 
         const modelMax = getModelById(modelId)?.maxConcurrency || 3;
         const maxConcurrency = concurrency ? Math.min(Math.max(1, concurrency), modelMax) : modelMax;
@@ -496,15 +576,16 @@ export async function POST(req: Request) {
                   modelId,
                   profileId,
                   prompt: task.prompt,
-                  sourceAdUrl: hostedSourceAdUrl,
+                  aspectRatio: task.ratio,
+                  sourceAdUrl: task.hostedSourceUrl,
                   productImageUrl: hostedProductImageUrl,
                   modelOptions,
                 });
 
                 send({
                   type: "image",
-                  conceptIndex: task.index,
-                  ratio: "variation",
+                  conceptIndex: task.conceptIndex,
+                  ratio: task.ratio,
                   url: imageUrl,
                   prompt: task.prompt,
                 });
@@ -521,7 +602,7 @@ export async function POST(req: Request) {
                   continue;
                 }
                 failCount++;
-                send({ type: "error", message: err?.message || `Failed to generate ${task.name}`, conceptIndex: task.index });
+                send({ type: "error", message: err?.message || `Failed to generate ${task.name}`, conceptIndex: task.conceptIndex });
               }
             }
 
@@ -535,12 +616,12 @@ export async function POST(req: Request) {
         send({
           type: "phase",
           phase: "complete",
-          message: `Ad-copy run complete: ${successCount} generated, ${failCount} failed`,
+          message: `${isBulk ? "Bulk copy" : "Ad-copy"} run complete: ${successCount} generated, ${failCount} failed`,
         });
         send({
           type: "complete",
           summary: {
-            analysis: plan.analysis,
+            analyses: plans.map((entry) => ({ sourceIndex: entry.sourceIndex, analysis: entry.plan.analysis })),
             totalImages: tasks.length,
             successCount,
             failCount,

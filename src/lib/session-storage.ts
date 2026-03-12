@@ -273,7 +273,7 @@ export type SerializedAdCampaign = {
   id: string;
   name: string;
   startedAt: number;
-  mode?: "campaign" | "ad-copy";
+  mode?: "campaign" | "ad-copy" | "bulk-copy";
   theme: string;
   adaptationBrief?: string;
   modelId: string;
@@ -283,6 +283,7 @@ export type SerializedAdCampaign = {
   productId: string;
   productName: string;
   sourceAdUrl?: string | null;
+  sourceAdUrls?: string[];
   diversity?: "tight" | "balanced" | "exploratory";
   modelOptions: Record<string, string>;
   status: "idle" | "done" | "error" | "cancelled";
@@ -317,7 +318,7 @@ type AdStudioSessionV1 = {
 export type AdStudioSession = {
   version: 2;
   savedAt: number;
-  workflowMode?: "campaign" | "ad-copy";
+  workflowMode?: "campaign" | "ad-copy" | "bulk-copy";
   theme: string;
   adaptationBrief?: string;
   modelId: string;
@@ -327,6 +328,7 @@ export type AdStudioSession = {
   includeBothRatios: boolean;
   selectedProductId: string | null;
   sourceAdUrl?: string | null;
+  sourceAdUrls?: string[];
   diversity?: "tight" | "balanced" | "exploratory";
   modelOptions: Record<string, string>;
   campaigns: SerializedAdCampaign[];
@@ -355,6 +357,7 @@ export function serializeAdCampaign(campaign: any): SerializedAdCampaign {
     productId: campaign.productId || "",
     productName: campaign.productName || "",
     sourceAdUrl: campaign.sourceAdUrl || null,
+    sourceAdUrls: campaign.sourceAdUrls || (campaign.sourceAdUrl ? [campaign.sourceAdUrl] : []),
     diversity: campaign.diversity || "balanced",
     modelOptions: campaign.modelOptions || {},
     status: campaign.status === "running" ? "cancelled" : campaign.status,
@@ -373,6 +376,7 @@ export function deserializeAdCampaign(data: SerializedAdCampaign): any {
     mode: data.mode || "campaign",
     adaptationBrief: data.adaptationBrief || "",
     sourceAdUrl: data.sourceAdUrl || null,
+    sourceAdUrls: data.sourceAdUrls || (data.sourceAdUrl ? [data.sourceAdUrl] : []),
     diversity: data.diversity || "balanced",
     selectedImages: new Set(data.selectedImages || []),
     controller: null,
@@ -407,6 +411,7 @@ export function loadAdStudioSession(): AdStudioSession | null {
         productId: v1.selectedProductId || "",
         productName: "", // Will be filled when products load
         sourceAdUrl: null,
+        sourceAdUrls: [],
         diversity: "balanced",
         modelOptions: v1.modelOptions || {},
         status: v1.lastCampaign.status || "done",
@@ -431,6 +436,7 @@ export function loadAdStudioSession(): AdStudioSession | null {
       includeBothRatios: v1.includeBothRatios ?? true,
       selectedProductId: v1.selectedProductId || null,
       sourceAdUrl: null,
+      sourceAdUrls: [],
       diversity: "balanced",
       modelOptions: v1.modelOptions || {},
       campaigns,
