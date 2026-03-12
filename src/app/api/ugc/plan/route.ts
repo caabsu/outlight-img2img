@@ -27,7 +27,7 @@ import {
 
 const MAX_SCENE_VARIATIONS = 8;
 const MAX_BROLL_CLIPS = 8;
-const REMOTE_PLANNER_TIMEOUT_MS = 55000;
+const REMOTE_PLANNER_TIMEOUT_MS = 110000;
 // Speech rate — 170 WPM from AIUGC-master, ≈ 2.83 wps.
 // Adjusted to 3.0 for TikTok/Reels pacing (slightly faster than standard speech).
 const WORDS_PER_SECOND = 3.0;
