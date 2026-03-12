@@ -1165,7 +1165,11 @@ function buildBrollImagePlans(
   });
 }
 
-/** Build a specific, context-aware prompt for each B-roll image based on its story role and beat. */
+/**
+ * Build a natural, reference-image-aware prompt for each B-roll image.
+ * The prompt assumes the model receives the base scene image as a reference
+ * and guides it to produce a variation — not a completely new scene.
+ */
 function buildBrollImagePrompt(opts: {
   aspectRatio: string;
   resolution: string;
@@ -1180,33 +1184,24 @@ function buildBrollImagePrompt(opts: {
   beatContext: string;
   objective: string;
 }): string {
-  const humanDirective = opts.withoutHuman
-    ? "No person in frame — product and environment only."
-    : "A person can be partially visible (hands, silhouette) but product is the focus.";
+  const noHuman = opts.withoutHuman ? " No person visible." : "";
 
-  // Each story phase gets a fundamentally different visual approach
+  // All prompts start from the reference image and describe a variation
   const phasePrompts: Record<UgcStoryRole, string> = {
-    hook: `${opts.aspectRatio} ${opts.resolution} establishing shot of ${opts.environment}. The space feels lived-in and real. ${opts.productName} (${opts.productAppearance}) is visible but not centered — it's part of the environment. Wide angle, natural ambient lighting. ${humanDirective} The mood is candid, like a photo someone took of their space.`,
+    hook: `Same room as the reference image, pulled back to a wide angle showing more of the space. ${opts.productName} is visible but small in the frame. Natural ambient light, lived-in feel.${noHuman}`,
 
-    problem: `${opts.aspectRatio} ${opts.resolution} photo of the space WITHOUT ${opts.productName} — or the empty spot where it would go. ${opts.environment}, but something feels missing or incomplete. ${opts.angle}. ${opts.lighting}. ${humanDirective} This is the "before" — the space looks fine but unremarkable.`,
+    problem: `Same room as the reference image but the product is absent — the empty corner or surface where it would normally sit. The space feels bare and unremarkable without it. Same lighting, same angle.${noHuman}`,
 
-    product_moment: `${opts.aspectRatio} ${opts.resolution} close-up of ${opts.productName} (${opts.productAppearance}) in ${opts.environment}. ${opts.angle}. Tight framing that shows texture, material, and craftsmanship. The product is in its real position, naturally placed — not staged on a white background. ${opts.lighting}. ${humanDirective}`,
+    product_moment: `Close-up of ${opts.productName} from the reference image. Tight crop showing texture, material, and finish. Same room, same surface, same light — just much closer. ${opts.angle}.${noHuman}`,
 
-    proof: `${opts.aspectRatio} ${opts.resolution} photo of ${opts.environment} with ${opts.productName} (${opts.productAppearance}) clearly transforming the space. The "after" shot — the difference is visible. ${opts.angle}. ${opts.lighting}. ${humanDirective} The space feels elevated, intentional.`,
+    proof: `Same space as the reference image with ${opts.productName} in place. Slightly warmer light. The room feels more intentional, more put-together. ${opts.angle}.${noHuman}`,
 
-    cta: `${opts.aspectRatio} ${opts.resolution} detail shot of ${opts.productName} (${opts.productAppearance}). Macro-level detail — texture, finish, subtle design choices. Shot from an unexpected angle. ${opts.lighting}. ${humanDirective} The kind of shot that makes you want to reach out and touch it.`,
+    cta: `Macro detail of ${opts.productName} from the reference image — surface texture, material edge, a design detail you'd only notice up close. Shallow depth of field, ${opts.lighting}.${noHuman}`,
 
-    support: `${opts.aspectRatio} ${opts.resolution} photo of ${opts.productName} (${opts.productAppearance}) from ${opts.angle} in ${opts.environment}. ${opts.lighting}. ${humanDirective} A fresh perspective that shows the product differently from the main scene.`,
+    support: `Same room as the reference image, ${opts.angle}. Different perspective from the main shot — vary the distance and height. Same lighting and mood.${noHuman}`,
   };
 
-  let prompt = phasePrompts[opts.storyPhase] || phasePrompts.support;
-
-  // Append beat context for extra specificity if available
-  if (opts.beatContext) {
-    prompt += ` This shot covers the moment: "${opts.beatContext.slice(0, 80)}".`;
-  }
-
-  return prompt;
+  return phasePrompts[opts.storyPhase] || phasePrompts.support;
 }
 
 /**
@@ -1263,24 +1258,22 @@ function matchBrollToBeats(
   ];
 
   for (const [i, beat] of beats.entries()) {
-    const beatSnippet = beat.text.slice(0, 80);
-
     // Vary the angle based on the beat index to avoid repetition
     const getAngle = (pool: string[]) => pool[i % pool.length];
 
-    // Generate contextual shots based on story role AND beat content
+    // Generate contextual shots based on story role
     switch (beat.storyRole) {
       case "hook":
         shots.push({
           title: "Scene establish",
-          objective: `Set the scene for "${beatSnippet}" — the viewer sees the space before the person starts talking`,
+          objective: "Wide establishing shot — the full space and environment",
           storyPhase: beat.storyRole,
           coversBeatId: beat.id,
           angle: getAngle(wideAngles),
           lens: "wide",
-          lighting: "natural ambient, the room as it actually looks",
+          lighting: "natural ambient",
           withoutHuman: true,
-          beatText: beat.text,
+          beatText: "",
           priority: 2,
         });
         break;
@@ -1288,44 +1281,44 @@ function matchBrollToBeats(
       case "problem":
         shots.push({
           title: "The before",
-          objective: `Show what "${beatSnippet}" looks like — the empty space, the gap, the thing that's missing`,
+          objective: "The space without the product — empty, incomplete",
           storyPhase: beat.storyRole,
           coversBeatId: beat.id,
-          angle: "the space without the product — empty, incomplete, or unremarkable",
+          angle: "the empty spot where the product would go",
           lens: "natural",
-          lighting: "slightly flat or dim, reflecting the 'before' state",
+          lighting: "slightly flat, cooler",
           withoutHuman: true,
-          beatText: beat.text,
+          beatText: "",
           priority: 3,
         });
         break;
 
       case "product_moment":
         shots.push({
-          title: "Product hero",
-          objective: `The product enters the story at "${beatSnippet}" — this is the reveal`,
+          title: "Product close-up",
+          objective: "Tight shot of the product — texture, material, detail",
           storyPhase: beat.storyRole,
           coversBeatId: beat.id,
           angle: getAngle(closeAngles),
           lens: "close",
-          lighting: "the product catches light naturally, slightly warmer than surroundings",
+          lighting: "natural, slightly warm",
           withoutHuman: false,
-          beatText: beat.text,
+          beatText: "",
           priority: 5,
         });
         break;
 
       case "proof":
         shots.push({
-          title: "The difference",
-          objective: `Show the result of "${beatSnippet}" — the space transformed, the visible change`,
+          title: "The after",
+          objective: "The space with the product — transformed, elevated",
           storyPhase: beat.storyRole,
           coversBeatId: beat.id,
           angle: getAngle(mediumAngles),
           lens: "medium",
-          lighting: "warmer, elevated — the space feels better now",
+          lighting: "warmer, the space feels better",
           withoutHuman: true,
-          beatText: beat.text,
+          beatText: "",
           priority: 4,
         });
         break;
@@ -1333,14 +1326,14 @@ function matchBrollToBeats(
       case "cta":
         shots.push({
           title: "Product texture",
-          objective: `Detail shot during "${beatSnippet}" — the craft, material, finish up close`,
+          objective: "Macro detail — surface, finish, craftsmanship",
           storyPhase: beat.storyRole,
           coversBeatId: beat.id,
-          angle: "macro detail — surface texture, material edge, subtle design element",
+          angle: "macro detail, surface texture",
           lens: "macro",
-          lighting: "raking light to reveal texture and dimension",
+          lighting: "raking light for dimension",
           withoutHuman: true,
-          beatText: beat.text,
+          beatText: "",
           priority: 1,
         });
         break;
@@ -1348,14 +1341,14 @@ function matchBrollToBeats(
       default:
         shots.push({
           title: "Fresh angle",
-          objective: `Alternative perspective for "${beatSnippet}"`,
+          objective: "Alternative perspective of the product in the space",
           storyPhase: beat.storyRole,
           coversBeatId: beat.id,
           angle: getAngle([...mediumAngles, ...closeAngles]),
           lens: "natural",
           lighting: "match the base scene",
           withoutHuman: true,
-          beatText: beat.text,
+          beatText: "",
           priority: 0,
         });
     }
