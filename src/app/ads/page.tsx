@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
 import { MODEL_LIST, getModelById } from "@/lib/models";
 import {
   loadAdStudioSession,
@@ -11,6 +12,17 @@ import {
   type AdStudioSession,
 } from "@/lib/session-storage";
 import type { AdConcept, AdImage, LogEntry, AdFeedbackSubmission, AdWorkflowMode } from "@/lib/ad-types";
+
+let _supabaseClient: ReturnType<typeof createClient> | null = null;
+function getSupabaseClient() {
+  if (!_supabaseClient) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!url || !key) throw new Error("Supabase credentials not configured");
+    _supabaseClient = createClient(url, key);
+  }
+  return _supabaseClient;
+}
 
 /* ========================= TYPES ========================= */
 
@@ -1539,28 +1551,85 @@ export default function AdStudioPage() {
     }
   }
 
+  function normalizeMimeType(value: string | null | undefined): string {
+    const normalized = (value || "").split(";")[0].trim().toLowerCase();
+    if (normalized === "image/jpg") return "image/jpeg";
+    return normalized;
+  }
+
+  async function uploadSourceAdFile(file: File): Promise<string> {
+    const normalizedMime = normalizeMimeType(file.type) || "application/octet-stream";
+    const supportedMimes = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+    if (!supportedMimes.has(normalizedMime)) {
+      const formData = new FormData();
+      formData.append("files", file);
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json.error || "Upload failed");
+      const url = Array.isArray(json.urls) ? json.urls[0] : null;
+      if (!url || typeof url !== "string") throw new Error("Upload returned no image URL");
+      return url;
+    }
+
+    const extMap: Record<string, string> = {
+      "image/png": "png",
+      "image/jpeg": "jpg",
+      "image/webp": "webp",
+    };
+    const ext = extMap[normalizedMime] || "png";
+    const filename = `${crypto.randomUUID()}.${ext}`;
+    const filePath = `uploads/${filename}`;
+
+    const { error: uploadError } = await getSupabaseClient().storage
+      .from("reference-images")
+      .upload(filePath, file, {
+        contentType: normalizedMime,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      throw new Error(uploadError.message || "Upload failed");
+    }
+
+    const { data: urlData } = getSupabaseClient()
+      .storage
+      .from("reference-images")
+      .getPublicUrl(filePath);
+
+    if (!urlData?.publicUrl) {
+      throw new Error("Failed to get public URL");
+    }
+
+    return urlData.publicUrl;
+  }
+
   async function handleSourceAdFiles(files: File[]) {
     if (files.length === 0) return;
     setSourceAdUploading(true);
     setSourceAdError(null);
     try {
-      const formData = new FormData();
-      for (const file of files) {
-        formData.append("files", file);
+      const settled = await Promise.allSettled(files.map((file) => uploadSourceAdFile(file)));
+      const nextUrls = settled
+        .filter((result): result is PromiseFulfilledResult<string> => result.status === "fulfilled")
+        .map((result) => result.value);
+      const failures = settled
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason instanceof Error ? result.reason.message : "Upload failed");
+
+      if (nextUrls.length === 0) {
+        throw new Error(failures[0] || "Upload failed");
       }
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json.error || "Upload failed");
-      const nextUrls = Array.isArray(json.urls) ? json.urls.filter((url: unknown) => typeof url === "string") : [];
-      if (nextUrls.length === 0) throw new Error("Upload returned no image URL");
+
       setSourceAdUrls((prev) =>
         workflowMode === "bulk-copy"
-          ? [...prev, ...nextUrls]
+          ? [...prev, ...nextUrls.filter((url) => !prev.includes(url))]
           : [nextUrls[0]]
       );
+
+      if (failures.length > 0) {
+        setSourceAdError(`${failures.length} file${failures.length > 1 ? "s" : ""} failed to upload`);
+      }
     } catch (err) {
       console.error("Source ad upload failed:", err);
       setSourceAdError(err instanceof Error ? err.message : "Upload failed");
