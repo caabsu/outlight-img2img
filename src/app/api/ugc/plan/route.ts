@@ -1928,7 +1928,7 @@ export async function POST(req: Request) {
       },
       settings: {
         safeMode: body.settings?.safeMode === "fast" ? "fast" : "safe",
-        dialogueSeconds: clamp(Number(body.settings?.dialogueSeconds) || 20, 5, 60),
+        dialogueSeconds: clamp(Number(body.settings?.dialogueSeconds) || 35, 5, 60),
         clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 7, 4, 10),
         sceneVariationCount: clamp(Number(body.settings?.sceneVariationCount) || 4, 1, MAX_SCENE_VARIATIONS),
         bRollClipCount: clamp(Number(body.settings?.bRollClipCount) || 4, 1, MAX_BROLL_CLIPS),

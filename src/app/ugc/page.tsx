@@ -90,7 +90,7 @@ const PRESET_OPTIONS = [
     description: "Default setup for a clean first pass.",
     settings: {
       safeMode: "safe" as UgcSafeMode,
-      dialogueSeconds: 20,
+      dialogueSeconds: 35,
       clipDurationSeconds: 7,
       sceneVariationCount: 4,
       bRollClipCount: 4,
@@ -102,7 +102,7 @@ const PRESET_OPTIONS = [
     description: "More options, review at each step.",
     settings: {
       safeMode: "safe" as UgcSafeMode,
-      dialogueSeconds: 25,
+      dialogueSeconds: 45,
       clipDurationSeconds: 7,
       sceneVariationCount: 5,
       bRollClipCount: 5,

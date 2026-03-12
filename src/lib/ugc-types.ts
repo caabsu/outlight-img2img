@@ -176,7 +176,7 @@ export type UgcWorkflowPlan = {
 
 export const DEFAULT_UGC_WORKFLOW_SETTINGS: UgcWorkflowSettings = {
   safeMode: "safe",
-  dialogueSeconds: 20,
+  dialogueSeconds: 35,
   clipDurationSeconds: 7,
   sceneVariationCount: 4,
   bRollClipCount: 4,
