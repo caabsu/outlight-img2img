@@ -1702,9 +1702,9 @@ JSON SHAPE
     const response = await anthropic.messages.create(
       {
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6",
-        max_tokens: 4096,
+        max_tokens: 8192,
         system:
-          "You are a world-class scriptwriter for short-form video. You write scripts that sound like real people — not copywriters, not brands, not AI. Every script you write is tailored to the specific creative direction and product. You never rely on templates or formulas. You find the most interesting, specific, human angle and write from there. Return only valid JSON.",
+          "You are a world-class scriptwriter for short-form video. You write scripts that sound like real people — not copywriters, not brands, not AI. Every script you write is deeply shaped by the creative direction — if the direction mentions a specific setting, scenario, or vibe, your scripts must be about that exact thing. But the creative direction is YOUR instructions — never paste it into the dialogue. The speaker doesn't know the creative direction exists. You find the most interesting, specific, human angle and write from there. Scripts must match the requested word count / duration. Return only valid JSON.",
         messages: [{ role: "user", content: prompt }],
       },
       {
@@ -1713,10 +1713,21 @@ JSON SHAPE
     );
 
     const textBlock = response.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") return null;
+    if (!textBlock || textBlock.type !== "text") {
+      console.error("[UGC Anthropic] No text block in response");
+      return null;
+    }
 
     const parsed = extractJsonObject(textBlock.text);
-    return hasAnthropicCreativeShape(parsed) ? buildPlanFromAnthropicCreative(input, baseline, parsed) : null;
+    if (!parsed) {
+      console.error("[UGC Anthropic] Failed to parse JSON from response");
+      return null;
+    }
+    if (!hasAnthropicCreativeShape(parsed)) {
+      console.error("[UGC Anthropic] Shape validation failed. Keys:", Object.keys(parsed), "scriptOptions:", Array.isArray(parsed.scriptOptions) ? parsed.scriptOptions.length : "missing", "avatarOptions:", Array.isArray(parsed.avatarOptions) ? parsed.avatarOptions.length : "missing", "sceneVariations:", Array.isArray(parsed.sceneVariations) ? parsed.sceneVariations.length : "missing", "bRollImagePlans:", Array.isArray(parsed.bRollImagePlans) ? parsed.bRollImagePlans.length : "missing");
+      return null;
+    }
+    return buildPlanFromAnthropicCreative(input, baseline, parsed);
   } catch (error) {
     console.error("UGC Anthropic plan error:", error);
     return null;
@@ -1821,6 +1832,8 @@ export async function POST(req: Request) {
           ? "gemini"
           : "heuristic";
 
+    console.log(`[UGC] Planner source: ${plannerSource}, creative direction: "${cleanText(input.script.description) || "(none)"}"`);
+
     const refined =
       plannerSource === "anthropic"
         ? await withPlannerTimeout("UGC Anthropic planner", () => tryAnthropicPlan(input, baseline))
@@ -1831,6 +1844,7 @@ export async function POST(req: Request) {
             : null;
 
     const source = refined ? plannerSource : "heuristic";
+    console.log(`[UGC] Final source: ${source}, refined: ${refined ? "yes" : "no (using heuristic fallback)"}`);
 
     return NextResponse.json({
       plan: refined || baseline,
