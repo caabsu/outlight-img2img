@@ -33,7 +33,7 @@ const REMOTE_PLANNER_TIMEOUT_MS = 110000;
 const WORDS_PER_SECOND = 3.0;
 const WORDS_PER_MINUTE = WORDS_PER_SECOND * 60; // 180 WPM
 const SPEECH_PADDING_SECONDS = 0.75; // Breathing room after each clip
-const MIN_DIALOGUE_CLIP_SECONDS = 7;
+const MIN_DIALOGUE_CLIP_SECONDS = 4;
 const MAX_DIALOGUE_CLIP_SECONDS = 10;
 const MIN_WORDS_PER_BEAT = 10; // Minimum words before merging with neighbor — keeps clips substantial
 const SPEECH_BUDGET_RATIO = 0.9; // 90% of target duration for speech
@@ -1097,7 +1097,7 @@ function buildDialogueClips(
       objective: storyRole,
       movement,
       camera: "natural",
-      prompt: `${segment.durationSeconds}-second ${settings.videoAspectRatio} video from the base scene image. The person says this EXACT line naturally: "${segment.text}". Natural motion, ${movement}. The scene comes to life from the image — same person, same room, same lighting. Spoken audio with synced mouth movement.`,
+      prompt: `${segment.durationSeconds}-second ${settings.videoAspectRatio} video from the base scene image. The person starts speaking IMMEDIATELY from the very first frame — no pause, no delay, no silent intro. They say this EXACT line naturally: "${segment.text}". Natural motion, ${movement}. The scene comes to life from the image — same person, same room, same lighting. Spoken audio with synced mouth movement from frame one.`,
     };
   });
 }
@@ -1801,7 +1801,7 @@ export async function POST(req: Request) {
       settings: {
         safeMode: body.settings?.safeMode === "fast" ? "fast" : "safe",
         dialogueSeconds: clamp(Number(body.settings?.dialogueSeconds) || 20, 5, 60),
-        clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 7, 7, 10),
+        clipDurationSeconds: clamp(Number(body.settings?.clipDurationSeconds) || 7, 4, 10),
         sceneVariationCount: clamp(Number(body.settings?.sceneVariationCount) || 4, 1, MAX_SCENE_VARIATIONS),
         bRollClipCount: clamp(Number(body.settings?.bRollClipCount) || 4, 1, MAX_BROLL_CLIPS),
         imageModelId: cleanText(body.settings?.imageModelId) || "nanobanana-2",
