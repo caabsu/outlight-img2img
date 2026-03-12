@@ -80,6 +80,45 @@ function parseDataUrl(url: string): { mime: string; base64: string } | null {
   return { mime: match[1] || "image/png", base64: match[2] || "" };
 }
 
+function normalizeMimeType(value: string | null | undefined): string {
+  const normalized = (value || "").split(";")[0].trim().toLowerCase();
+  if (normalized === "image/jpg") return "image/jpeg";
+  return normalized;
+}
+
+async function normalizeAnthropicImage(
+  buffer: Buffer,
+  fallbackMime: string
+): Promise<{ mime: string; base64: string }> {
+  const sharp = (await import("sharp")).default;
+  const supportedMimes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+  const formatToMime: Record<string, string> = {
+    png: "image/png",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    webp: "image/webp",
+    gif: "image/gif",
+  };
+
+  try {
+    const metadata = await sharp(buffer).metadata();
+    const detectedMime = formatToMime[(metadata.format || "").toLowerCase()];
+    if (detectedMime) {
+      return { mime: detectedMime, base64: buffer.toString("base64") };
+    }
+  } catch {
+    // Fall back to header/url-derived mime below.
+  }
+
+  const normalizedFallback = normalizeMimeType(fallbackMime);
+  if (supportedMimes.has(normalizedFallback)) {
+    return { mime: normalizedFallback, base64: buffer.toString("base64") };
+  }
+
+  const transcoded = await sharp(buffer).png().toBuffer();
+  return { mime: "image/png", base64: transcoded.toString("base64") };
+}
+
 function isSupabaseReferenceImageUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
@@ -114,7 +153,10 @@ async function ensureHostedReference(origin: string, url: string): Promise<strin
 
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
   const parsed = parseDataUrl(url);
-  if (parsed) return parsed;
+  if (parsed) {
+    const buffer = Buffer.from(parsed.base64, "base64");
+    return await normalizeAnthropicImage(buffer, parsed.mime);
+  }
 
   const res = await fetch(url, {
     redirect: "follow",
@@ -130,7 +172,7 @@ async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: 
   }
 
   const buffer = Buffer.from(await res.arrayBuffer());
-  let mime = res.headers.get("content-type") || "image/png";
+  let mime = normalizeMimeType(res.headers.get("content-type")) || "image/png";
   if (!mime.startsWith("image/")) {
     if (/\.(png)(\?|$)/i.test(url)) mime = "image/png";
     else if (/\.(jpe?g)(\?|$)/i.test(url)) mime = "image/jpeg";
@@ -138,7 +180,7 @@ async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: 
     else mime = "image/png";
   }
 
-  return { mime, base64: buffer.toString("base64") };
+  return await normalizeAnthropicImage(buffer, mime);
 }
 
 const AD_COPY_SYSTEM_PROMPT = `You are an ecommerce ad-remix creative director.
