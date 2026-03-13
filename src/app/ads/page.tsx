@@ -597,6 +597,20 @@ function buildImageFilename(
   return `${safeName}_${dateStr}_concept-${conceptIndex + 1}_${ratioStr}.png`;
 }
 
+function parseSelectedImageKey(key: string): { conceptIndex: number; ratio: string } | null {
+  const separatorIndex = key.indexOf("-");
+  if (separatorIndex === -1) return null;
+
+  const conceptIndex = Number.parseInt(key.slice(0, separatorIndex), 10);
+  const ratio = key.slice(separatorIndex + 1);
+
+  if (Number.isNaN(conceptIndex) || !ratio) {
+    return null;
+  }
+
+  return { conceptIndex, ratio };
+}
+
 function ResultsGrid({
   workflowMode,
   concepts,
@@ -1247,6 +1261,7 @@ export default function AdStudioPage() {
   const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
   const [visibleConceptCount, setVisibleConceptCount] = useState(RESULTS_PAGE_SIZE);
   const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const sourceAdInputRef = useRef<HTMLInputElement>(null);
   const sessionCampaignsRestoredRef = useRef(false);
 
@@ -1269,6 +1284,10 @@ export default function AdStudioPage() {
   useEffect(() => {
     setVisibleConceptCount(RESULTS_PAGE_SIZE);
   }, [activeCampaignId]);
+
+  useEffect(() => {
+    setDownloadError(null);
+  }, [activeCampaignId, selectedImages.size]);
 
   useEffect(() => {
     if ((workflowMode === "ad-copy" || workflowMode === "bulk-copy") && modelId === "nanobanana-3-pro") {
@@ -1312,20 +1331,36 @@ export default function AdStudioPage() {
 
   // Download selected images
   async function downloadSelected() {
-    if (selectedImages.size === 0 || !selectedProduct) return;
+    if (selectedImages.size === 0) return;
+
+    const downloadProductName = activeCampaign?.productName || selectedProduct?.name || "ad";
+
+    async function fetchDownloadBlob(url: string): Promise<Blob> {
+      const response = await fetch(`/api/download-image?url=${encodeURIComponent(url)}`);
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || "Image download failed");
+      }
+      return response.blob();
+    }
+
     setDownloading(true);
+    setDownloadError(null);
     const dateStr = new Date().toISOString().slice(0, 16).replace(/[T:]/g, "-");
 
     try {
       if (selectedImages.size === 1) {
         const key = Array.from(selectedImages)[0];
-        const [ciStr, ratio] = key.split("-");
-        const ci = parseInt(ciStr);
-        const img = images.find((im) => im.conceptIndex === ci && im.ratio === (ratio === "9" ? "9:16" : "1:1"));
-        if (!img) return;
-        const filename = buildImageFilename(selectedProduct.name, ci, img.ratio, dateStr);
-        const response = await fetch(img.url);
-        const blob = await response.blob();
+        const parsedKey = parseSelectedImageKey(key);
+        if (!parsedKey) {
+          throw new Error("Selected image reference was invalid");
+        }
+        const img = images.find((im) => im.conceptIndex === parsedKey.conceptIndex && im.ratio === parsedKey.ratio);
+        if (!img) {
+          throw new Error("Selected image could not be found");
+        }
+        const filename = buildImageFilename(downloadProductName, parsedKey.conceptIndex, img.ratio, dateStr);
+        const blob = await fetchDownloadBlob(img.url);
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -1337,26 +1372,33 @@ export default function AdStudioPage() {
       } else {
         const JSZip = (await import("jszip")).default;
         const zip = new JSZip();
+        let addedCount = 0;
 
         for (const key of selectedImages) {
-          const parts = key.split("-");
-          const ci = parseInt(parts[0]);
-          const ratioKey = parts.slice(1).join("-");
-          const ratio = ratioKey === "9:16" ? "9:16" : ratioKey === "1:1" ? "1:1" : ratioKey;
-          const img = images.find((im) => im.conceptIndex === ci && im.ratio === ratio);
+          const parsedKey = parseSelectedImageKey(key);
+          if (!parsedKey) continue;
+
+          const img = images.find(
+            (im) => im.conceptIndex === parsedKey.conceptIndex && im.ratio === parsedKey.ratio
+          );
           if (!img) continue;
-          const filename = buildImageFilename(selectedProduct.name, ci, img.ratio, dateStr);
+
+          const filename = buildImageFilename(downloadProductName, parsedKey.conceptIndex, img.ratio, dateStr);
           try {
-            const response = await fetch(img.url);
-            const blob = await response.blob();
+            const blob = await fetchDownloadBlob(img.url);
             zip.file(filename, blob);
+            addedCount += 1;
           } catch {
             // Skip failed downloads
           }
         }
 
+        if (addedCount === 0) {
+          throw new Error("No selected images could be downloaded");
+        }
+
         const zipBlob = await zip.generateAsync({ type: "blob" });
-        const safeName = selectedProduct.name.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+        const safeName = downloadProductName.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
         const url = URL.createObjectURL(zipBlob);
         const a = document.createElement("a");
         a.href = url;
@@ -1368,6 +1410,7 @@ export default function AdStudioPage() {
       }
     } catch (err) {
       console.error("Download failed:", err);
+      setDownloadError(err instanceof Error ? err.message : "Download failed");
     } finally {
       setDownloading(false);
     }
@@ -2234,6 +2277,9 @@ export default function AdStudioPage() {
                     <>
                       <span className="text-xs text-slate-400">|</span>
                       <span className="text-xs text-slate-500 dark:text-slate-400">{selectedImages.size} selected</span>
+                      {downloadError && (
+                        <span className="text-xs text-red-500 dark:text-red-400">{downloadError}</span>
+                      )}
                       <button
                         onClick={downloadSelected}
                         disabled={downloading}
