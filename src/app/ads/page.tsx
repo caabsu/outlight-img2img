@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 import { MODEL_LIST, getModelById } from "@/lib/models";
@@ -22,6 +22,13 @@ function getSupabaseClient() {
     _supabaseClient = createClient(url, key);
   }
   return _supabaseClient;
+}
+
+const MAX_LIVE_LOG_ENTRIES = 300;
+const RESULTS_PAGE_SIZE = 24;
+
+function trimLiveLogEntries(entries: LogEntry[]): LogEntry[] {
+  return entries.length > MAX_LIVE_LOG_ENTRIES ? entries.slice(-MAX_LIVE_LOG_ENTRIES) : entries;
 }
 
 /* ========================= TYPES ========================= */
@@ -640,6 +647,8 @@ function ResultsGrid({
   feedbackRatings,
   onFeedbackSubmit,
   campaignDone,
+  visibleCount,
+  onLoadMore,
 }: {
   workflowMode: AdWorkflowMode;
   concepts: AdConcept[];
@@ -656,14 +665,27 @@ function ResultsGrid({
   feedbackRatings: Record<number, number>;
   onFeedbackSubmit: (conceptIndex: number, rating: number) => void;
   campaignDone: boolean;
+  visibleCount: number;
+  onLoadMore: () => void;
 }) {
+  const imagesByConcept = useMemo(() => {
+    const grouped = new Map<number, Map<string, AdImage>>();
+    for (const image of images) {
+      const conceptImages = grouped.get(image.conceptIndex) || new Map<string, AdImage>();
+      conceptImages.set(image.ratio, image);
+      grouped.set(image.conceptIndex, conceptImages);
+    }
+    return grouped;
+  }, [images]);
   if (concepts.length === 0) return null;
+  const visibleConcepts = concepts.slice(0, visibleCount);
+  const hasMore = concepts.length > visibleConcepts.length;
 
   return (
     <div className="space-y-4">
-      {concepts.map((concept, ci) => {
-        const conceptImages = images.filter((img) => img.conceptIndex === ci);
+      {visibleConcepts.map((concept, ci) => {
         const cardLabel = workflowMode === "campaign" ? "Concept" : "Variation";
+        const conceptImages = imagesByConcept.get(ci);
 
         return (
           <div
@@ -695,7 +717,7 @@ function ResultsGrid({
             <div className="p-4">
               <div className="flex gap-4 items-start">
                 {aspectRatios.map((ratio) => {
-                  const img = conceptImages.find((im) => im.ratio === ratio);
+                  const img = conceptImages?.get(ratio);
                   const imgKey = `${ci}-${ratio}`;
                   const isSelected = selectedImages.has(imgKey);
                   const isAdCopy = workflowMode !== "campaign";
@@ -768,6 +790,16 @@ function ResultsGrid({
           </div>
         );
       })}
+      {hasMore && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={onLoadMore}
+            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-700"
+          >
+            Load {Math.min(RESULTS_PAGE_SIZE, concepts.length - visibleConcepts.length)} more
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -923,6 +955,7 @@ function KnowledgePanel({
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let sawComplete = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1229,6 +1262,10 @@ export default function AdStudioPage() {
   const progress = activeCampaign?.progress || { done: 0, total: 0 };
   const feedbackRatings: Record<number, number> = activeCampaign?.feedbackRatings || {};
   const selectedImages: Set<string> = activeCampaign?.selectedImages || new Set();
+  const deferredLogEntries = useDeferredValue(logEntries);
+  const deferredConcepts = useDeferredValue(concepts);
+  const deferredImages = useDeferredValue(images);
+  const hasRunningCampaign = campaigns.some((campaign) => campaign.status === "running");
 
   // UI
   const [expandedImage, setExpandedImage] = useState<AdImage | null>(null);
@@ -1236,6 +1273,7 @@ export default function AdStudioPage() {
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
   const [rightTab, setRightTab] = useState<"activity" | "results">("activity");
+  const [visibleConceptCount, setVisibleConceptCount] = useState(RESULTS_PAGE_SIZE);
   const [downloading, setDownloading] = useState(false);
   const sourceAdInputRef = useRef<HTMLInputElement>(null);
 
@@ -1256,6 +1294,10 @@ export default function AdStudioPage() {
   }, [images.length]);
 
   useEffect(() => {
+    setVisibleConceptCount(RESULTS_PAGE_SIZE);
+  }, [activeCampaignId]);
+
+  useEffect(() => {
     if ((workflowMode === "ad-copy" || workflowMode === "bulk-copy") && modelId === "nanobanana-3-pro") {
       setModelId("nanobanana-2");
       setModelOptions({});
@@ -1269,6 +1311,25 @@ export default function AdStudioPage() {
       setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? updater(c) : c)));
     },
     []
+  );
+
+  const scheduleCampaignUpdate = useCallback(
+    (campaignId: string, updater: (c: AdCampaign) => AdCampaign) => {
+      startTransition(() => {
+        updateCampaign(campaignId, updater);
+      });
+    },
+    [updateCampaign]
+  );
+
+  const appendCampaignLog = useCallback(
+    (campaignId: string, entry: LogEntry) => {
+      scheduleCampaignUpdate(campaignId, (c) => ({
+        ...c,
+        logEntries: trimLiveLogEntries([...c.logEntries, entry]),
+      }));
+    },
+    [scheduleCampaignUpdate]
   );
 
   // Toggle image selection (scoped to active campaign)
@@ -1406,8 +1467,9 @@ export default function AdStudioPage() {
   ]);
 
   useEffect(() => {
-    if (sessionRestored) saveSession();
-  }, [sessionRestored, saveSession]);
+    if (!sessionRestored || hasRunningCampaign) return;
+    saveSession();
+  }, [hasRunningCampaign, sessionRestored, saveSession]);
 
   // Bootstrap
   useEffect(() => {
@@ -1690,6 +1752,7 @@ export default function AdStudioPage() {
       const reader = res.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let sawComplete = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -1704,50 +1767,55 @@ export default function AdStudioPage() {
             const event = JSON.parse(line.slice(6));
             switch (event.type) {
               case "phase":
-                updateCampaign(campaignId, (c) => ({
-                  ...c,
-                  logEntries: [...c.logEntries, { type: "phase", phase: event.phase, message: event.message, timestamp: Date.now() }],
-                }));
+                appendCampaignLog(campaignId, {
+                  type: "phase",
+                  phase: event.phase,
+                  message: event.message,
+                  timestamp: Date.now(),
+                });
                 break;
               case "thought":
-                updateCampaign(campaignId, (c) => ({
-                  ...c,
-                  logEntries: [...c.logEntries, { type: "thought", message: event.message, timestamp: Date.now() }],
-                }));
+                appendCampaignLog(campaignId, {
+                  type: "thought",
+                  message: event.message,
+                  timestamp: Date.now(),
+                });
                 break;
               case "action":
-                updateCampaign(campaignId, (c) => ({
-                  ...c,
-                  logEntries: [...c.logEntries, { type: "action", message: event.message, timestamp: Date.now() }],
-                }));
+                appendCampaignLog(campaignId, {
+                  type: "action",
+                  message: event.message,
+                  timestamp: Date.now(),
+                });
                 break;
               case "concept":
-                updateCampaign(campaignId, (c) => ({
+                scheduleCampaignUpdate(campaignId, (c) => ({
                   ...c,
                   concepts: [...c.concepts, event.concept],
                 }));
                 break;
               case "image":
-                updateCampaign(campaignId, (c) => ({
+                scheduleCampaignUpdate(campaignId, (c) => ({
                   ...c,
                   images: [...c.images, { conceptIndex: event.conceptIndex, ratio: event.ratio, url: event.url, prompt: event.prompt }],
                 }));
                 break;
               case "progress":
-                updateCampaign(campaignId, (c) => ({
+                scheduleCampaignUpdate(campaignId, (c) => ({
                   ...c,
                   progress: { done: event.done, total: event.total },
                 }));
                 break;
               case "error":
-                updateCampaign(campaignId, (c) => ({
-                  ...c,
-                  logEntries: [...c.logEntries, { type: "error", message: event.message, timestamp: Date.now() }],
-                }));
+                appendCampaignLog(campaignId, {
+                  type: "error",
+                  message: event.message,
+                  timestamp: Date.now(),
+                });
                 break;
               case "complete":
                 sawComplete = true;
-                updateCampaign(campaignId, (c) => ({
+                scheduleCampaignUpdate(campaignId, (c) => ({
                   ...c,
                   status: "done",
                 }));
@@ -1761,13 +1829,13 @@ export default function AdStudioPage() {
 
       // A clean run must emit a complete event. If the stream closes mid-run, surface it as an error instead
       // of silently marking the campaign done with empty image slots.
-      updateCampaign(campaignId, (c) => {
+      scheduleCampaignUpdate(campaignId, (c) => {
         if (c.status !== "running") return c;
         if (sawComplete) return { ...c, status: "done" };
         return {
           ...c,
           status: "error",
-          logEntries: [
+          logEntries: trimLiveLogEntries([
             ...c.logEntries,
             {
               type: "error" as const,
@@ -1776,27 +1844,27 @@ export default function AdStudioPage() {
                 : "Generation stream ended unexpectedly before completion.",
               timestamp: Date.now(),
             },
-          ],
+          ]),
         };
       });
     } catch (err: any) {
       if (err.name === "AbortError") {
-        updateCampaign(campaignId, (c) => ({
+        scheduleCampaignUpdate(campaignId, (c) => ({
           ...c,
           status: "cancelled",
-          logEntries: [
+          logEntries: trimLiveLogEntries([
             ...c.logEntries,
             { type: "phase" as const, phase: "cancelled", message: "Campaign cancelled by user", timestamp: Date.now() },
-          ],
+          ]),
         }));
       } else {
-        updateCampaign(campaignId, (c) => ({
+        scheduleCampaignUpdate(campaignId, (c) => ({
           ...c,
           status: "error",
-          logEntries: [
+          logEntries: trimLiveLogEntries([
             ...c.logEntries,
             { type: "error" as const, message: err.message || "Unknown error", timestamp: Date.now() },
-          ],
+          ]),
         }));
       }
     }
@@ -2434,7 +2502,7 @@ export default function AdStudioPage() {
           {/* Activity tab */}
           {rightTab === "activity" && (
             <div className="h-full">
-              <AgentLog entries={logEntries} progress={progress} status={status} />
+              <AgentLog entries={deferredLogEntries} progress={progress} status={status} />
             </div>
           )}
 
@@ -2442,7 +2510,7 @@ export default function AdStudioPage() {
           {rightTab === "results" && (
             <div className="h-full flex flex-col overflow-hidden">
               {/* Selection toolbar */}
-              {images.length > 0 && (
+              {deferredImages.length > 0 && (
                 <div className="flex items-center gap-3 px-6 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shrink-0">
                   <button
                     onClick={toggleSelectAll}
@@ -2521,8 +2589,8 @@ export default function AdStudioPage() {
 
                 <ResultsGrid
                   workflowMode={activeCampaign?.mode || workflowMode}
-                  concepts={concepts}
-                  images={images}
+                  concepts={deferredConcepts}
+                  images={deferredImages}
                   aspectRatios={activeCampaign?.aspectRatios || activeRatios}
                   selectedImages={selectedImages}
                   onToggleSelect={toggleSelect}
@@ -2539,6 +2607,8 @@ export default function AdStudioPage() {
                   feedbackRatings={feedbackRatings}
                   onFeedbackSubmit={handleFeedbackSubmit}
                   campaignDone={status === "done"}
+                  visibleCount={visibleConceptCount}
+                  onLoadMore={() => setVisibleConceptCount((count) => count + RESULTS_PAGE_SIZE)}
                 />
               </div>
             </div>
