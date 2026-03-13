@@ -611,6 +611,26 @@ function parseSelectedImageKey(key: string): { conceptIndex: number; ratio: stri
   return { conceptIndex, ratio };
 }
 
+function ensureUniqueFilename(filename: string, usedFilenames: Set<string>): string {
+  if (!usedFilenames.has(filename)) {
+    usedFilenames.add(filename);
+    return filename;
+  }
+
+  const extensionIndex = filename.lastIndexOf(".");
+  const baseName = extensionIndex === -1 ? filename : filename.slice(0, extensionIndex);
+  const extension = extensionIndex === -1 ? "" : filename.slice(extensionIndex);
+  let suffix = 2;
+
+  while (usedFilenames.has(`${baseName}_${suffix}${extension}`)) {
+    suffix += 1;
+  }
+
+  const uniqueFilename = `${baseName}_${suffix}${extension}`;
+  usedFilenames.add(uniqueFilename);
+  return uniqueFilename;
+}
+
 function ResultsGrid({
   workflowMode,
   concepts,
@@ -1373,6 +1393,7 @@ export default function AdStudioPage() {
         const JSZip = (await import("jszip")).default;
         const zip = new JSZip();
         let addedCount = 0;
+        const usedFilenames = new Set<string>();
 
         for (const key of selectedImages) {
           const parsedKey = parseSelectedImageKey(key);
@@ -1383,7 +1404,10 @@ export default function AdStudioPage() {
           );
           if (!img) continue;
 
-          const filename = buildImageFilename(downloadProductName, parsedKey.conceptIndex, img.ratio, dateStr);
+          const filename = ensureUniqueFilename(
+            buildImageFilename(downloadProductName, parsedKey.conceptIndex, img.ratio, dateStr),
+            usedFilenames
+          );
           try {
             const blob = await fetchDownloadBlob(img.url);
             zip.file(filename, blob);
