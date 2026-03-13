@@ -1,8 +1,10 @@
 "use client";
 
-import { startTransition, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import { useAdStudio } from "@/components/providers/ad-studio-provider";
+import type { AdCampaign, AgentStatus } from "@/lib/ad-campaign-types";
 import { MODEL_LIST, getModelById } from "@/lib/models";
 import {
   loadAdStudioSession,
@@ -24,12 +26,7 @@ function getSupabaseClient() {
   return _supabaseClient;
 }
 
-const MAX_LIVE_LOG_ENTRIES = 300;
 const RESULTS_PAGE_SIZE = 24;
-
-function trimLiveLogEntries(entries: LogEntry[]): LogEntry[] {
-  return entries.length > MAX_LIVE_LOG_ENTRIES ? entries.slice(-MAX_LIVE_LOG_ENTRIES) : entries;
-}
 
 /* ========================= TYPES ========================= */
 
@@ -51,37 +48,6 @@ type Profile = {
   role: string;
   client_id?: string;
 };
-
-type AgentStatus = "idle" | "running" | "done" | "error" | "cancelled";
-
-type AdCampaign = {
-  id: string;
-  name: string;
-  startedAt: number;
-  mode: AdWorkflowMode;
-  theme: string;
-  adaptationBrief: string;
-  modelId: string;
-  quantity: number;
-  speed: number;
-  aspectRatios: string[];
-  productId: string;
-  productName: string;
-  sourceAdUrl: string | null;
-  sourceAdUrls: string[];
-  diversity: "tight" | "balanced" | "exploratory";
-  modelOptions: Record<string, string>;
-  status: AgentStatus;
-  concepts: AdConcept[];
-  images: AdImage[];
-  logEntries: LogEntry[];
-  progress: { done: number; total: number };
-  feedbackRatings: Record<number, number>;
-  selectedImages: Set<string>;
-  controller: AbortController | null;
-};
-
-const MAX_CAMPAIGNS = 10;
 
 /* ========================= PRODUCT SELECTOR MODAL ========================= */
 
@@ -1214,6 +1180,18 @@ function CampaignHistoryPanel({
 
 export default function AdStudioPage() {
   const router = useRouter();
+  const {
+    campaigns,
+    activeCampaignId,
+    hasRunningCampaign,
+    setActiveCampaignId,
+    updateCampaign,
+    launchCampaign,
+    cancelCampaign,
+    deleteCampaign,
+    clearAllCampaigns,
+    restoreCampaignState,
+  } = useAdStudio();
 
   // Data
   const [products, setProducts] = useState<Product[]>([]);
@@ -1243,11 +1221,6 @@ export default function AdStudioPage() {
   const [singleRatio, setSingleRatio] = useState<"1:1" | "9:16">("1:1");
   const [modelOptions, setModelOptions] = useState<Record<string, string>>({});
 
-  // Multi-campaign state
-  const [campaigns, setCampaigns] = useState<AdCampaign[]>([]);
-  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
-  const campaignCountRef = useRef(0);
-
   // Derive active campaign
   const activeCampaign = useMemo(
     () => campaigns.find((c) => c.id === activeCampaignId) || null,
@@ -1265,7 +1238,6 @@ export default function AdStudioPage() {
   const deferredLogEntries = useDeferredValue(logEntries);
   const deferredConcepts = useDeferredValue(concepts);
   const deferredImages = useDeferredValue(images);
-  const hasRunningCampaign = campaigns.some((campaign) => campaign.status === "running");
 
   // UI
   const [expandedImage, setExpandedImage] = useState<AdImage | null>(null);
@@ -1276,6 +1248,7 @@ export default function AdStudioPage() {
   const [visibleConceptCount, setVisibleConceptCount] = useState(RESULTS_PAGE_SIZE);
   const [downloading, setDownloading] = useState(false);
   const sourceAdInputRef = useRef<HTMLInputElement>(null);
+  const sessionCampaignsRestoredRef = useRef(false);
 
   const selectedModel = getModelById(modelId);
   const maxSpeed = selectedModel?.maxConcurrency || 5;
@@ -1304,33 +1277,6 @@ export default function AdStudioPage() {
       setSpeed((current) => Math.min(current, getModelById("nanobanana-2")?.maxConcurrency || 5));
     }
   }, [workflowMode, modelId]);
-
-  // --- Campaign update helper ---
-  const updateCampaign = useCallback(
-    (campaignId: string, updater: (c: AdCampaign) => AdCampaign) => {
-      setCampaigns((prev) => prev.map((c) => (c.id === campaignId ? updater(c) : c)));
-    },
-    []
-  );
-
-  const scheduleCampaignUpdate = useCallback(
-    (campaignId: string, updater: (c: AdCampaign) => AdCampaign) => {
-      startTransition(() => {
-        updateCampaign(campaignId, updater);
-      });
-    },
-    [updateCampaign]
-  );
-
-  const appendCampaignLog = useCallback(
-    (campaignId: string, entry: LogEntry) => {
-      scheduleCampaignUpdate(campaignId, (c) => ({
-        ...c,
-        logEntries: trimLiveLogEntries([...c.logEntries, entry]),
-      }));
-    },
-    [scheduleCampaignUpdate]
-  );
 
   // Toggle image selection (scoped to active campaign)
   const toggleSelect = useCallback(
@@ -1538,12 +1484,11 @@ export default function AdStudioPage() {
       }
       setModelOptions(session.modelOptions || {});
 
-      // v2: restore campaigns
-      if (session.campaigns && session.campaigns.length > 0) {
+      // v2: restore campaigns into the shared provider once on initial load
+      if (!sessionCampaignsRestoredRef.current && campaigns.length === 0 && session.campaigns && session.campaigns.length > 0) {
         const restored = session.campaigns.map((sc) => deserializeAdCampaign(sc) as AdCampaign);
-        setCampaigns(restored);
-        setActiveCampaignId(session.activeCampaignId || restored[0]?.id || null);
-        campaignCountRef.current = restored.length;
+        restoreCampaignState(restored, session.activeCampaignId || restored[0]?.id || null);
+        sessionCampaignsRestoredRef.current = true;
         // If there are results, show results tab
         const active = restored.find((c) => c.id === session.activeCampaignId) || restored[0];
         if (active?.images?.length) {
@@ -1574,22 +1519,16 @@ export default function AdStudioPage() {
     }
     // Fill missing productName in campaigns from products list
     if (products.length > 0) {
-      setCampaigns((prev) => {
-        let changed = false;
-        const updated = prev.map((c) => {
-          if (!c.productName && c.productId) {
-            const p = products.find((pr) => pr.id === c.productId);
-            if (p) {
-              changed = true;
-              return { ...c, productName: p.name };
-            }
+      for (const campaign of campaigns) {
+        if (!campaign.productName && campaign.productId) {
+          const product = products.find((item) => item.id === campaign.productId);
+          if (product) {
+            updateCampaign(campaign.id, (current) => ({ ...current, productName: product.name }));
           }
-          return c;
-        });
-        return changed ? updated : prev;
-      });
+        }
+      }
     }
-  }, [products, selectedProduct]);
+  }, [campaigns, products, selectedProduct, updateCampaign]);
 
   // Loaders
   async function loadProducts() {
@@ -1704,195 +1643,10 @@ export default function AdStudioPage() {
     }
   }
 
-  // --- runCampaignSSE (extracted, scoped to a campaign) ---
-  async function runCampaignSSE(campaign: AdCampaign) {
-    const campaignId = campaign.id;
-
-    try {
-      const endpoint = campaign.mode !== "campaign" ? "/api/ads/copy" : "/api/ads/generate";
-      const payload =
-        campaign.mode !== "campaign"
-          ? {
-              modelId: campaign.modelId,
-              quantity: campaign.quantity,
-              aspectRatios: campaign.aspectRatios,
-              workflowMode: campaign.mode,
-              sourceAdUrl: campaign.sourceAdUrl,
-              sourceAdUrls: campaign.sourceAdUrls,
-              adaptationBrief: campaign.adaptationBrief,
-              diversity: campaign.diversity,
-              productId: campaign.productId,
-              profileId: activeProfileId,
-              concurrency: campaign.speed,
-              modelOptions: Object.keys(campaign.modelOptions).length > 0 ? campaign.modelOptions : undefined,
-            }
-          : {
-              modelId: campaign.modelId,
-              quantity: campaign.quantity,
-              theme: campaign.theme,
-              productId: campaign.productId,
-              aspectRatios: campaign.aspectRatios,
-              profileId: activeProfileId,
-              concurrency: campaign.speed,
-              modelOptions: Object.keys(campaign.modelOptions).length > 0 ? campaign.modelOptions : undefined,
-            };
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: campaign.controller?.signal,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: "Unknown error" }));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let sawComplete = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const event = JSON.parse(line.slice(6));
-            switch (event.type) {
-              case "phase":
-                appendCampaignLog(campaignId, {
-                  type: "phase",
-                  phase: event.phase,
-                  message: event.message,
-                  timestamp: Date.now(),
-                });
-                break;
-              case "thought":
-                appendCampaignLog(campaignId, {
-                  type: "thought",
-                  message: event.message,
-                  timestamp: Date.now(),
-                });
-                break;
-              case "action":
-                appendCampaignLog(campaignId, {
-                  type: "action",
-                  message: event.message,
-                  timestamp: Date.now(),
-                });
-                break;
-              case "concept":
-                scheduleCampaignUpdate(campaignId, (c) => ({
-                  ...c,
-                  concepts: [...c.concepts, event.concept],
-                }));
-                break;
-              case "image":
-                scheduleCampaignUpdate(campaignId, (c) => ({
-                  ...c,
-                  images: [...c.images, { conceptIndex: event.conceptIndex, ratio: event.ratio, url: event.url, prompt: event.prompt }],
-                }));
-                break;
-              case "progress":
-                scheduleCampaignUpdate(campaignId, (c) => ({
-                  ...c,
-                  progress: { done: event.done, total: event.total },
-                }));
-                break;
-              case "error":
-                appendCampaignLog(campaignId, {
-                  type: "error",
-                  message: event.message,
-                  timestamp: Date.now(),
-                });
-                break;
-              case "complete":
-                sawComplete = true;
-                scheduleCampaignUpdate(campaignId, (c) => ({
-                  ...c,
-                  status: "done",
-                }));
-                break;
-            }
-          } catch {
-            // Skip malformed events
-          }
-        }
-      }
-
-      // A clean run must emit a complete event. If the stream closes mid-run, surface it as an error instead
-      // of silently marking the campaign done with empty image slots.
-      scheduleCampaignUpdate(campaignId, (c) => {
-        if (c.status !== "running") return c;
-        if (sawComplete) return { ...c, status: "done" };
-        return {
-          ...c,
-          status: "error",
-          logEntries: trimLiveLogEntries([
-            ...c.logEntries,
-            {
-              type: "error" as const,
-              message: c.progress.total > 0 && c.progress.done < c.progress.total
-                ? "Generation stream ended before all images were returned. Retry with fewer ads or lower speed."
-                : "Generation stream ended unexpectedly before completion.",
-              timestamp: Date.now(),
-            },
-          ]),
-        };
-      });
-    } catch (err: any) {
-      if (err.name === "AbortError") {
-        scheduleCampaignUpdate(campaignId, (c) => ({
-          ...c,
-          status: "cancelled",
-          logEntries: trimLiveLogEntries([
-            ...c.logEntries,
-            { type: "phase" as const, phase: "cancelled", message: "Campaign cancelled by user", timestamp: Date.now() },
-          ]),
-        }));
-      } else {
-        scheduleCampaignUpdate(campaignId, (c) => ({
-          ...c,
-          status: "error",
-          logEntries: trimLiveLogEntries([
-            ...c.logEntries,
-            { type: "error" as const, message: err.message || "Unknown error", timestamp: Date.now() },
-          ]),
-        }));
-      }
-    }
-  }
-
-  // Launch campaign
-  function launchCampaign() {
+  function handleLaunchCampaign() {
     if (!canLaunch) return;
-
-    // Auto-evict oldest non-running campaign if at max
-    setCampaigns((prev) => {
-      if (prev.length >= MAX_CAMPAIGNS) {
-        const nonRunning = prev.filter((c) => c.status !== "running");
-        if (nonRunning.length > 0) {
-          const oldest = nonRunning[0];
-          return prev.filter((c) => c.id !== oldest.id);
-        }
-      }
-      return prev;
-    });
-
-    campaignCountRef.current += 1;
-    const ctrl = new AbortController();
-    const isRemixMode = workflowMode !== "campaign";
-    const newCampaign: AdCampaign = {
-      id: crypto.randomUUID(),
-      name: `${isRemixMode ? workflowMode === "bulk-copy" ? "Bulk Copy" : "Ad Copy" : "Campaign"} #${campaignCountRef.current}`,
-      startedAt: Date.now(),
+    setRightTab("activity");
+    launchCampaign({
       mode: workflowMode,
       theme,
       adaptationBrief,
@@ -1900,68 +1654,14 @@ export default function AdStudioPage() {
       quantity,
       speed,
       aspectRatios: [...activeRatios],
+      profileId: activeProfileId!,
       productId: selectedProduct!.id,
       productName: selectedProduct!.name,
       sourceAdUrl: sourceAdUrls[0] || null,
       sourceAdUrls: [...sourceAdUrls],
       diversity,
       modelOptions: { ...modelOptions },
-      status: "running",
-      concepts: [],
-      images: [],
-      logEntries: [],
-      progress: { done: 0, total: 0 },
-      feedbackRatings: {},
-      selectedImages: new Set(),
-      controller: ctrl,
-    };
-
-    setCampaigns((prev) => [...prev, newCampaign]);
-    setActiveCampaignId(newCampaign.id);
-    setRightTab("activity");
-
-    // Non-blocking — run in parallel
-    void runCampaignSSE(newCampaign);
-  }
-
-  // Cancel a specific campaign
-  function cancelCampaign(id: string) {
-    setCampaigns((prev) =>
-      prev.map((c) => {
-        if (c.id === id && c.controller) {
-          c.controller.abort();
-        }
-        return c;
-      })
-    );
-  }
-
-  // Delete a specific campaign
-  function deleteCampaign(id: string) {
-    // Abort if running
-    setCampaigns((prev) => {
-      const target = prev.find((c) => c.id === id);
-      if (target?.controller) target.controller.abort();
-      const remaining = prev.filter((c) => c.id !== id);
-      // Update active if deleted was active
-      if (activeCampaignId === id) {
-        const next = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
-        // Use setTimeout to avoid setState-in-setState
-        setTimeout(() => setActiveCampaignId(next), 0);
-      }
-      return remaining;
     });
-  }
-
-  // Clear all campaigns
-  function clearAllCampaigns() {
-    setCampaigns((prev) => {
-      for (const c of prev) {
-        if (c.controller) c.controller.abort();
-      }
-      return [];
-    });
-    setActiveCampaignId(null);
   }
 
   const handleFeedbackSubmit = useCallback(
@@ -2398,7 +2098,7 @@ export default function AdStudioPage() {
           {/* Launch Button (always available) */}
           <div className="pt-1">
             <button
-              onClick={launchCampaign}
+              onClick={handleLaunchCampaign}
               disabled={!canLaunch}
               className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 disabled:from-slate-300 disabled:to-slate-300 dark:disabled:from-slate-700 dark:disabled:to-slate-700 text-white disabled:text-slate-500 dark:disabled:text-slate-400 font-semibold text-sm transition shadow-sm disabled:cursor-not-allowed"
             >
@@ -2597,7 +2297,7 @@ export default function AdStudioPage() {
                   onImageClick={setExpandedImage}
                   productName={activeCampaign?.productName || selectedProduct?.name || "ad"}
                   productId={activeCampaign?.productId || selectedProduct?.id || ""}
-                  profileId={activeProfileId || ""}
+                  profileId={activeCampaign?.profileId || activeProfileId || ""}
                   theme={
                     activeCampaign?.mode !== "campaign"
                       ? activeCampaign?.adaptationBrief || adaptationBrief

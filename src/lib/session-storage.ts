@@ -280,6 +280,7 @@ export type SerializedAdCampaign = {
   quantity: number;
   speed: number;
   aspectRatios: string[];
+  profileId?: string;
   productId: string;
   productName: string;
   sourceAdUrl?: string | null;
@@ -354,6 +355,7 @@ export function serializeAdCampaign(campaign: any): SerializedAdCampaign {
     quantity: campaign.quantity || 3,
     speed: campaign.speed || 3,
     aspectRatios: campaign.aspectRatios || [],
+    profileId: campaign.profileId || "",
     productId: campaign.productId || "",
     productName: campaign.productName || "",
     sourceAdUrl: campaign.sourceAdUrl || null,
@@ -378,6 +380,7 @@ export function deserializeAdCampaign(data: SerializedAdCampaign): any {
     sourceAdUrl: data.sourceAdUrl || null,
     sourceAdUrls: data.sourceAdUrls || (data.sourceAdUrl ? [data.sourceAdUrl] : []),
     diversity: data.diversity || "balanced",
+    profileId: data.profileId || "",
     selectedImages: new Set(data.selectedImages || []),
     controller: null,
   };

@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { SiteHeader } from "@/components/layout/SiteHeader";
+import { AdStudioProvider } from "@/components/providers/ad-studio-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
@@ -18,8 +19,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           enableSystem
           disableTransitionOnChange
         >
-          <SiteHeader />
-          <main className="min-h-[calc(100vh-4rem)]">{children}</main>
+          <AdStudioProvider>
+            <SiteHeader />
+            <main className="min-h-[calc(100vh-4rem)]">{children}</main>
+          </AdStudioProvider>
         </ThemeProvider>
       </body>
     </html>
