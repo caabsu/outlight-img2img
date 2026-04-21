@@ -1760,8 +1760,26 @@ export default function ImageStudioPage() {
                         placeholder="auto or 1024x1536"
                         list="gpt2-size-suggestions"
                       />
+                      {modelDef.sizeOptions && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {modelDef.sizeOptions.map((size) => (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => setGpt2Size(size)}
+                              className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition ${
+                                gpt2Size === size
+                                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200"
+                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200"
+                              }`}
+                            >
+                              {size === "auto" ? "Auto" : size}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       <datalist id="gpt2-size-suggestions">
-                        {["auto", "1024x1024", "1536x1024", "1024x1536", "2048x2048", "2560x1440", "1440x2560", "3840x2160", "2160x3840", "2880x2880"].map((size) => (
+                        {(modelDef.sizeOptions || []).map((size) => (
                           <option key={size} value={size} />
                         ))}
                       </datalist>
