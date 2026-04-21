@@ -66,6 +66,8 @@ type PostBody = {
     // GPT 1.5 options
     gpt_size?: string;         // "auto"|"1024x1024"|"1536x1024"|"1024x1536"
     gpt_background?: string;   // "auto"|"opaque"|"transparent"
+    // GPT Image 2 options
+    nsfw_checker?: boolean;
     // Nano Banana 2 options
     output_format?: string;    // "jpg"|"png"
     google_search?: boolean;
@@ -724,12 +726,15 @@ export async function POST(req: Request) {
       return { size, quality, background };
     };
 
+    const normalizeNsfwChecker = () => options?.nsfw_checker === true;
+
     /* -------- GPT Image 2 via KIE (auto-switch: text-to-image or image-to-image) -------- */
     if (modelId === "gpt-2") {
       if (!KIE_KEY) return NextResponse.json({ error: "KIE API key missing" }, { status: 500 });
 
       const hasReferences = referenceUrls.length > 0;
       const modeLabel = hasReferences ? "GPT Image 2 Image-to-Image" : "GPT Image 2 Text-to-Image";
+      const nsfw_checker = normalizeNsfwChecker();
 
       if (hasReferences) {
         const badUrl = referenceUrls.find((u) => !/^https?:\/\//i.test(u));
@@ -748,6 +753,7 @@ export async function POST(req: Request) {
             input: {
               prompt,
               input_urls: referenceUrls.slice(0, 16),
+              nsfw_checker,
             },
           }
         : {
@@ -755,7 +761,7 @@ export async function POST(req: Request) {
             callBackUrl: "",
             input: {
               prompt,
-              nsfw_checker: false,
+              nsfw_checker,
             },
           };
 

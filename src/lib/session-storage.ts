@@ -103,6 +103,8 @@ export type ImageStudioSession = {
   gpt15Size: string;
   gpt15Quality: string;
   gpt15Background: string;
+  // GPT Image 2 options
+  gpt2NsfwChecker: boolean;
   // Nano Banana 2 options
   nb2AspectRatio: string;
   nb2Resolution: string;

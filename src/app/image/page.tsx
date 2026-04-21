@@ -564,6 +564,8 @@ export default function ImageStudioPage() {
   const [gpt15Quality, setGpt15Quality] = useState<string>("auto");
   const [gpt15Background, setGpt15Background] = useState<string>("auto");
   const isGpt15 = modelDef.id === "gpt-1.5";
+  const [gpt2NsfwChecker, setGpt2NsfwChecker] = useState<boolean>(false);
+  const isGpt2 = modelDef.id === "gpt-2";
   // Nano Banana 2 options
   const [nb2AspectRatio, setNb2AspectRatio] = useState<string>("auto");
   const [nb2Resolution, setNb2Resolution] = useState<string>("1K");
@@ -710,6 +712,7 @@ export default function ImageStudioPage() {
     if (session.gpt15Size) setGpt15Size(session.gpt15Size);
     if (session.gpt15Quality) setGpt15Quality(session.gpt15Quality);
     if (session.gpt15Background) setGpt15Background(session.gpt15Background);
+    if (typeof session.gpt2NsfwChecker === "boolean") setGpt2NsfwChecker(session.gpt2NsfwChecker);
     if (session.nb2AspectRatio) setNb2AspectRatio(session.nb2AspectRatio);
     if (session.nb2Resolution) setNb2Resolution(session.nb2Resolution);
     if (session.nb2OutputFormat) setNb2OutputFormat(session.nb2OutputFormat);
@@ -752,6 +755,7 @@ export default function ImageStudioPage() {
       gpt15Size,
       gpt15Quality,
       gpt15Background,
+      gpt2NsfwChecker,
       nb2AspectRatio,
       nb2Resolution,
       nb2OutputFormat,
@@ -778,6 +782,7 @@ export default function ImageStudioPage() {
     gpt15Size,
     gpt15Quality,
     gpt15Background,
+    gpt2NsfwChecker,
     nb2AspectRatio,
     nb2Resolution,
     nb2OutputFormat,
@@ -1304,7 +1309,7 @@ export default function ImageStudioPage() {
       }
 
       // Upload data URIs to storage first to avoid 413 (Content Too Large) errors and to provide public URLs for KIE.
-      // This applies to Seedream, Nano Banana, and GPT 1.5 (when using image-to-image via KIE).
+      // This applies to Seedream, Nano Banana, GPT 1.5, and GPT Image 2 (when using image-to-image via KIE).
       const needsUpload =
         run.modelId.startsWith("seedream") ||
         run.modelId.startsWith("nanobanana") ||
@@ -1427,6 +1432,11 @@ export default function ImageStudioPage() {
                         gpt_size: gpt15Size,
                         quality: gpt15Quality,
                         gpt_background: gpt15Background,
+                      };
+                    }
+                    if (runModel.id === "gpt-2") {
+                      return {
+                        nsfw_checker: gpt2NsfwChecker,
                       };
                     }
                     // Seedream 4.5 text-to-image
@@ -1707,6 +1717,21 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {isGpt2 && (
+                <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
+                  <label className="flex items-center justify-between gap-3 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-[11px] font-medium text-slate-900 dark:text-slate-100">
+                    <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
+                      NSFW Filter
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={gpt2NsfwChecker}
+                      onChange={(e) => setGpt2NsfwChecker(e.target.checked)}
+                    />
+                  </label>
                 </div>
               )}
 

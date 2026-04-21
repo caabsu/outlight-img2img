@@ -15,6 +15,12 @@ export type ModelDef = {
   qualityOptions?: readonly string[];  // e.g., ["basic", "high"] for Seedream 4.5
   sizeOptions?: readonly string[];     // e.g., ["1024x1024", "1536x1024"] for GPT 1.5
   backgroundOptions?: readonly string[]; // e.g., ["opaque", "transparent"] for GPT 1.5
+  booleanOptions?: readonly {
+    key: string;
+    label: string;
+    falseLabel?: string;
+    trueLabel?: string;
+  }[];
   // whether the model REQUIRES a reference image
   requiresReference?: boolean;
   // UI capability flags (only Seedream needs these now)
@@ -112,6 +118,14 @@ export const MODEL_LIST: ModelDef[] = [
     version: "v2",
     provider: "kie",
     providerName: "gpt-image-2-text-to-image",
+    booleanOptions: [
+      {
+        key: "nsfw_checker",
+        label: "NSFW Filter",
+        falseLabel: "Off",
+        trueLabel: "On",
+      },
+    ],
     requiresReference: false,
     maxConcurrency: 5,
   },

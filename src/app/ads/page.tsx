@@ -2090,6 +2090,28 @@ export default function AdStudioPage() {
                     ))}
                   </select>
                 )}
+                {selectedModel?.backgroundOptions && (
+                  <select
+                    value={modelOptions.background || selectedModel.backgroundOptions[0]}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, background: e.target.value }))}
+                    className="min-w-[140px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {selectedModel.backgroundOptions.map((background) => (
+                      <option key={background} value={background}>Background: {background}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedModel?.booleanOptions?.map((option) => (
+                  <select
+                    key={option.key}
+                    value={modelOptions[option.key] || "false"}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, [option.key]: e.target.value }))}
+                    className="min-w-[140px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    <option value="false">{option.label}: {option.falseLabel || "Off"}</option>
+                    <option value="true">{option.label}: {option.trueLabel || "On"}</option>
+                  </select>
+                ))}
               </div>
 
               {workflowMode !== "campaign" && (

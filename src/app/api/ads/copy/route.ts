@@ -36,6 +36,8 @@ type AdCopyGenerateRequest = {
     quality?: string;
     resolution?: string;
     size?: string;
+    background?: string;
+    nsfw_checker?: string | boolean;
   };
 };
 
@@ -376,6 +378,7 @@ async function callGenerateAPI({
   if (modelDef.aspectRatioOptions) options.aspect_ratio = aspectRatio;
   if (modelOptions?.quality) options.quality = modelOptions.quality;
   if (modelOptions?.resolution) options.image_size = modelOptions.resolution;
+  if (modelOptions?.background) options.gpt_background = modelOptions.background;
   if (modelOptions?.size) {
     options.gpt_size = modelOptions.size;
   } else if (modelId === "gpt-1.5") {
@@ -385,6 +388,9 @@ async function callGenerateAPI({
       "16:9": "1536x1024",
     };
     options.gpt_size = sizeMap[aspectRatio] || "auto";
+  }
+  if (modelId === "gpt-2") {
+    options.nsfw_checker = modelOptions?.nsfw_checker === true || modelOptions?.nsfw_checker === "true";
   }
 
   const res = await fetch(`${origin}/api/generate`, {
