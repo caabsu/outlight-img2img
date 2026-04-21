@@ -164,6 +164,9 @@ function buildImageOptions(modelId: string) {
   if (modelId === "seedream-4.5") {
     return { aspect_ratio: "9:16", quality: "high" };
   }
+  if (modelId === "gpt-2") {
+    return undefined;
+  }
   if (modelId === "gpt-1.5") {
     return { gpt_size: "1024x1536", quality: "high", gpt_background: "opaque" };
   }

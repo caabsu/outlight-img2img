@@ -1306,7 +1306,10 @@ export default function ImageStudioPage() {
       // Upload data URIs to storage first to avoid 413 (Content Too Large) errors and to provide public URLs for KIE.
       // This applies to Seedream, Nano Banana, and GPT 1.5 (when using image-to-image via KIE).
       const needsUpload =
-        run.modelId.startsWith("seedream") || run.modelId.startsWith("nanobanana") || run.modelId === "gpt-1.5";
+        run.modelId.startsWith("seedream") ||
+        run.modelId.startsWith("nanobanana") ||
+        run.modelId === "gpt-1.5" ||
+        run.modelId === "gpt-2";
       let resolvedRefs = currentRefSources;
 
       if (needsUpload && currentRefSources.length > 0) {

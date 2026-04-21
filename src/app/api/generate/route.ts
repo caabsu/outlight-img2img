@@ -724,6 +724,65 @@ export async function POST(req: Request) {
       return { size, quality, background };
     };
 
+    /* -------- GPT Image 2 via KIE (auto-switch: text-to-image or image-to-image) -------- */
+    if (modelId === "gpt-2") {
+      if (!KIE_KEY) return NextResponse.json({ error: "KIE API key missing" }, { status: 500 });
+
+      const hasReferences = referenceUrls.length > 0;
+      const modeLabel = hasReferences ? "GPT Image 2 Image-to-Image" : "GPT Image 2 Text-to-Image";
+
+      if (hasReferences) {
+        const badUrl = referenceUrls.find((u) => !/^https?:\/\//i.test(u));
+        if (badUrl) {
+          return NextResponse.json(
+            { error: "GPT Image 2 Image-to-Image requires public HTTP/HTTPS URLs for reference images" },
+            { status: 400 }
+          );
+        }
+      }
+
+      const payload = hasReferences
+        ? {
+            model: "gpt-image-2-image-to-image",
+            callBackUrl: "",
+            input: {
+              prompt,
+              input_urls: referenceUrls.slice(0, 16),
+            },
+          }
+        : {
+            model: "gpt-image-2-text-to-image",
+            callBackUrl: "",
+            input: {
+              prompt,
+              nsfw_checker: false,
+            },
+          };
+
+      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
+      if (!taskId) {
+        const msg = createJson?.message || createJson?.msg || `${modeLabel} createTask failed`;
+        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
+      }
+
+      const poll = await kiePollForResultUrl({
+        taskId,
+        signal: req.signal,
+        label: modeLabel,
+        maxMs: 300_000,
+      });
+
+      if (!poll.ok) {
+        return NextResponse.json(
+          { error: poll.error, debug: poll.debug ?? null },
+          { status: poll.status }
+        );
+      }
+
+      await logUsage(profileId, modelId);
+      return NextResponse.json({ imageDataUrl: poll.url });
+    }
+
     /* -------- GPT Image 1.5 via KIE (auto-switch: text-to-image or image-to-image) -------- */
     if (modelId === "gpt-1.5") {
       if (!KIE_KEY) return NextResponse.json({ error: "KIE API key missing" }, { status: 500 });

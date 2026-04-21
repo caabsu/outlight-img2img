@@ -106,6 +106,15 @@ export const MODEL_LIST: ModelDef[] = [
     backgroundOptions: ["auto", "opaque", "transparent"],
     maxConcurrency: 5,
   },
+  {
+    id: "gpt-2",
+    label: "GPT Image 2",
+    version: "v2",
+    provider: "kie",
+    providerName: "gpt-image-2-text-to-image",
+    requiresReference: false,
+    maxConcurrency: 5,
+  },
 ];
 
 export const IMAGE_SIZES = [
