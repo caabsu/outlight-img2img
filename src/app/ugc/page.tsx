@@ -165,7 +165,13 @@ function buildImageOptions(modelId: string) {
     return { aspect_ratio: "9:16", quality: "high" };
   }
   if (modelId === "gpt-2") {
-    return undefined;
+    return {
+      gpt2_size: "1024x1536",
+      quality: "high",
+      gpt_background: "auto",
+      output_format: "png",
+      moderation: "auto",
+    };
   }
   if (modelId === "gpt-1.5") {
     return { gpt_size: "1024x1536", quality: "high", gpt_background: "opaque" };

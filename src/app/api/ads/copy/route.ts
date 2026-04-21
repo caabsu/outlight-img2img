@@ -38,6 +38,9 @@ type AdCopyGenerateRequest = {
     size?: string;
     background?: string;
     nsfw_checker?: string | boolean;
+    outputFormat?: string;
+    outputCompression?: string;
+    moderation?: string;
   };
 };
 
@@ -372,6 +375,28 @@ async function callGenerateAPI({
   modelOptions?: AdCopyGenerateRequest["modelOptions"];
 }): Promise<string> {
   const options: Record<string, any> = {};
+  const mapGpt2SizeFromRatio = (ratio: string, tier: string | undefined): string => {
+    const normalizedTier = tier || "auto";
+    if (normalizedTier === "auto") return "auto";
+    const tables: Record<string, Record<string, string>> = {
+      standard: {
+        "1:1": "1024x1024",
+        "9:16": "1024x1536",
+        "16:9": "1536x1024",
+      },
+      "2k": {
+        "1:1": "2048x2048",
+        "9:16": "1440x2560",
+        "16:9": "2560x1440",
+      },
+      "4k": {
+        "1:1": "2880x2880",
+        "9:16": "2160x3840",
+        "16:9": "3840x2160",
+      },
+    };
+    return tables[normalizedTier]?.[ratio] || "auto";
+  };
   const modelDef = getModelById(modelId);
   if (!modelDef) throw new Error(`Unknown model: ${modelId}`);
 
@@ -390,7 +415,10 @@ async function callGenerateAPI({
     options.gpt_size = sizeMap[aspectRatio] || "auto";
   }
   if (modelId === "gpt-2") {
-    options.nsfw_checker = modelOptions?.nsfw_checker === true || modelOptions?.nsfw_checker === "true";
+    options.gpt2_size = mapGpt2SizeFromRatio(aspectRatio, modelOptions?.resolution);
+    if (modelOptions?.outputFormat) options.output_format = modelOptions.outputFormat;
+    if (modelOptions?.outputCompression) options.output_compression = modelOptions.outputCompression;
+    if (modelOptions?.moderation) options.moderation = modelOptions.moderation;
   }
 
   const res = await fetch(`${origin}/api/generate`, {

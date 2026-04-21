@@ -564,8 +564,13 @@ export default function ImageStudioPage() {
   const [gpt15Quality, setGpt15Quality] = useState<string>("auto");
   const [gpt15Background, setGpt15Background] = useState<string>("auto");
   const isGpt15 = modelDef.id === "gpt-1.5";
-  const [gpt2NsfwChecker, setGpt2NsfwChecker] = useState<boolean>(false);
   const isGpt2 = modelDef.id === "gpt-2";
+  const [gpt2Size, setGpt2Size] = useState<string>("auto");
+  const [gpt2Quality, setGpt2Quality] = useState<string>("auto");
+  const [gpt2Background, setGpt2Background] = useState<string>("auto");
+  const [gpt2OutputFormat, setGpt2OutputFormat] = useState<string>("png");
+  const [gpt2OutputCompression, setGpt2OutputCompression] = useState<number | "">(100);
+  const [gpt2Moderation, setGpt2Moderation] = useState<string>("auto");
   // Nano Banana 2 options
   const [nb2AspectRatio, setNb2AspectRatio] = useState<string>("auto");
   const [nb2Resolution, setNb2Resolution] = useState<string>("1K");
@@ -712,7 +717,15 @@ export default function ImageStudioPage() {
     if (session.gpt15Size) setGpt15Size(session.gpt15Size);
     if (session.gpt15Quality) setGpt15Quality(session.gpt15Quality);
     if (session.gpt15Background) setGpt15Background(session.gpt15Background);
-    if (typeof session.gpt2NsfwChecker === "boolean") setGpt2NsfwChecker(session.gpt2NsfwChecker);
+    if (session.gpt2Size) setGpt2Size(session.gpt2Size);
+    if (session.gpt2Quality) setGpt2Quality(session.gpt2Quality);
+    if (session.gpt2Background) setGpt2Background(session.gpt2Background);
+    if (session.gpt2OutputFormat) setGpt2OutputFormat(session.gpt2OutputFormat);
+    if (session.gpt2OutputCompression !== undefined) setGpt2OutputCompression(session.gpt2OutputCompression);
+    if (session.gpt2Moderation) setGpt2Moderation(session.gpt2Moderation);
+    if (!session.gpt2Moderation && typeof session.gpt2NsfwChecker === "boolean") {
+      setGpt2Moderation(session.gpt2NsfwChecker ? "auto" : "low");
+    }
     if (session.nb2AspectRatio) setNb2AspectRatio(session.nb2AspectRatio);
     if (session.nb2Resolution) setNb2Resolution(session.nb2Resolution);
     if (session.nb2OutputFormat) setNb2OutputFormat(session.nb2OutputFormat);
@@ -755,7 +768,12 @@ export default function ImageStudioPage() {
       gpt15Size,
       gpt15Quality,
       gpt15Background,
-      gpt2NsfwChecker,
+      gpt2Size,
+      gpt2Quality,
+      gpt2Background,
+      gpt2OutputFormat,
+      gpt2OutputCompression,
+      gpt2Moderation,
       nb2AspectRatio,
       nb2Resolution,
       nb2OutputFormat,
@@ -782,7 +800,12 @@ export default function ImageStudioPage() {
     gpt15Size,
     gpt15Quality,
     gpt15Background,
-    gpt2NsfwChecker,
+    gpt2Size,
+    gpt2Quality,
+    gpt2Background,
+    gpt2OutputFormat,
+    gpt2OutputCompression,
+    gpt2Moderation,
     nb2AspectRatio,
     nb2Resolution,
     nb2OutputFormat,
@@ -1436,7 +1459,12 @@ export default function ImageStudioPage() {
                     }
                     if (runModel.id === "gpt-2") {
                       return {
-                        nsfw_checker: gpt2NsfwChecker,
+                        gpt2_size: gpt2Size,
+                        quality: gpt2Quality,
+                        gpt_background: gpt2Background,
+                        output_format: gpt2OutputFormat,
+                        output_compression: gpt2OutputFormat === "png" ? undefined : gpt2OutputCompression,
+                        moderation: gpt2Moderation,
                       };
                     }
                     // Seedream 4.5 text-to-image
@@ -1459,7 +1487,7 @@ export default function ImageStudioPage() {
                       return {
                         aspect_ratio: nb2AspectRatio,
                         image_size: nb2Resolution,
-                        output_format: nb2OutputFormat,
+                        nb_output_format: nb2OutputFormat,
                         google_search: nb2GoogleSearch,
                       };
                     }
@@ -1722,16 +1750,84 @@ export default function ImageStudioPage() {
 
               {isGpt2 && (
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
-                  <label className="flex items-center justify-between gap-3 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-[11px] font-medium text-slate-900 dark:text-slate-100">
-                    <span className="text-[10px] font-semibold uppercase text-slate-500 dark:text-slate-400">
-                      NSFW Filter
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={gpt2NsfwChecker}
-                      onChange={(e) => setGpt2NsfwChecker(e.target.checked)}
-                    />
-                  </label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div className="col-span-2">
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Size</label>
+                      <input
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Size}
+                        onChange={(e) => setGpt2Size(e.target.value)}
+                        placeholder="auto or 1024x1536"
+                        list="gpt2-size-suggestions"
+                      />
+                      <datalist id="gpt2-size-suggestions">
+                        {["auto", "1024x1024", "1536x1024", "1024x1536", "2048x2048", "2560x1440", "1440x2560", "3840x2160", "2160x3840", "2880x2880"].map((size) => (
+                          <option key={size} value={size} />
+                        ))}
+                      </datalist>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Quality}
+                        onChange={(e) => setGpt2Quality(e.target.value)}
+                      >
+                        {["auto", "low", "medium", "high"].map((q) => (
+                          <option key={q} value={q}>{q.charAt(0).toUpperCase() + q.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Background</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Background}
+                        onChange={(e) => setGpt2Background(e.target.value)}
+                      >
+                        {["auto", "opaque"].map((value) => (
+                          <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Format</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2OutputFormat}
+                        onChange={(e) => setGpt2OutputFormat(e.target.value)}
+                      >
+                        {["png", "jpeg", "webp"].map((value) => (
+                          <option key={value} value={value}>{value.toUpperCase()}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Moderation</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Moderation}
+                        onChange={(e) => setGpt2Moderation(e.target.value)}
+                      >
+                        {["auto", "low"].map((value) => (
+                          <option key={value} value={value}>{value.charAt(0).toUpperCase() + value.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {gpt2OutputFormat !== "png" && (
+                      <div className="col-span-2">
+                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Compression</label>
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                          value={gpt2OutputCompression}
+                          onChange={(e) => setGpt2OutputCompression(e.target.value === "" ? "" : Number(e.target.value))}
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

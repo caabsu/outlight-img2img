@@ -15,6 +15,8 @@ export type ModelDef = {
   qualityOptions?: readonly string[];  // e.g., ["basic", "high"] for Seedream 4.5
   sizeOptions?: readonly string[];     // e.g., ["1024x1024", "1536x1024"] for GPT 1.5
   backgroundOptions?: readonly string[]; // e.g., ["opaque", "transparent"] for GPT 1.5
+  formatOptions?: readonly string[];
+  moderationOptions?: readonly string[];
   booleanOptions?: readonly {
     key: string;
     label: string;
@@ -116,16 +118,13 @@ export const MODEL_LIST: ModelDef[] = [
     id: "gpt-2",
     label: "GPT Image 2",
     version: "v2",
-    provider: "kie",
-    providerName: "gpt-image-2-text-to-image",
-    booleanOptions: [
-      {
-        key: "nsfw_checker",
-        label: "NSFW Filter",
-        falseLabel: "Off",
-        trueLabel: "On",
-      },
-    ],
+    provider: "openai",
+    providerName: "gpt-image-2",
+    resolutionOptions: ["auto", "standard", "2k", "4k"],
+    qualityOptions: ["auto", "low", "medium", "high"],
+    backgroundOptions: ["auto", "opaque"],
+    formatOptions: ["png", "jpeg", "webp"],
+    moderationOptions: ["auto", "low"],
     requiresReference: false,
     maxConcurrency: 5,
   },

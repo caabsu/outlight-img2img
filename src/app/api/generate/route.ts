@@ -6,6 +6,7 @@ export const maxDuration = 800;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import OpenAI, { toFile } from "openai";
 import {
   IMAGE_RESOLUTIONS,
   IMAGE_SIZES,
@@ -41,6 +42,7 @@ const NB_AUTH_HEADER = process.env.NANO_BANANA_AUTH_HEADER || "x-goog-api-key";
 // Seedream (KIE)
 const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY;
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 /* ========================= TYPES ========================= */
 type PostBody = {
@@ -67,9 +69,12 @@ type PostBody = {
     gpt_size?: string;         // "auto"|"1024x1024"|"1536x1024"|"1024x1536"
     gpt_background?: string;   // "auto"|"opaque"|"transparent"
     // GPT Image 2 options
-    nsfw_checker?: boolean;
+    gpt2_size?: string;
+    output_format?: string;
+    output_compression?: number | string;
+    moderation?: string;
     // Nano Banana 2 options
-    output_format?: string;    // "jpg"|"png"
+    nb_output_format?: string;    // "jpg"|"png"
     google_search?: boolean;
   };
 };
@@ -90,6 +95,15 @@ type Gpt15Options = {
   size: (typeof GPT15_SIZE_OPTIONS)[number];
   quality: (typeof GPT15_QUALITY_OPTIONS)[number];
   background: (typeof GPT15_BACKGROUND_OPTIONS)[number];
+};
+
+type Gpt2Options = {
+  size: string;
+  quality: "auto" | "low" | "medium" | "high";
+  background: "auto" | "opaque";
+  output_format: "png" | "jpeg" | "webp";
+  output_compression?: number;
+  moderation: "auto" | "low";
 };
 
   const SAFETY_OFF = [
@@ -464,6 +478,45 @@ async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: 
   return { mime, base64: buf.toString("base64") };
 }
 
+function mimeToExtension(mime: string): string {
+  if (mime.includes("png")) return "png";
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("webp")) return "webp";
+  return "png";
+}
+
+function validateGpt2Size(size: string): string | null {
+  if (size === "auto") return null;
+  const match = /^(\d+)x(\d+)$/i.exec(size);
+  if (!match) return 'GPT Image 2 size must be "auto" or in WIDTHxHEIGHT format';
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return "GPT Image 2 size must use positive integer dimensions";
+  }
+  if (Math.max(width, height) > 3840) {
+    return "GPT Image 2 size max edge is 3840px";
+  }
+  if (width % 16 !== 0 || height % 16 !== 0) {
+    return "GPT Image 2 size requires both edges to be multiples of 16";
+  }
+  const ratio = Math.max(width, height) / Math.min(width, height);
+  if (ratio > 3) {
+    return "GPT Image 2 size requires long edge to short edge ratio of 3:1 or less";
+  }
+  const pixels = width * height;
+  if (pixels < 655_360 || pixels > 8_294_400) {
+    return "GPT Image 2 size must be between 655,360 and 8,294,400 total pixels";
+  }
+  return null;
+}
+
+function dataUrlForFormat(format: Gpt2Options["output_format"], b64: string): string {
+  const mime = format === "jpeg" ? "image/jpeg" : `image/${format}`;
+  return `data:${mime};base64,${b64}`;
+}
+
 async function getReferenceUrl(productId: string | null, customUrl: string | null): Promise<string> {
   if (customUrl) return customUrl;
   if (!productId) throw new Error("Reference image URL required");
@@ -726,21 +779,112 @@ export async function POST(req: Request) {
       return { size, quality, background };
     };
 
-    const normalizeNsfwChecker = () => options?.nsfw_checker === true;
+    const normalizeGpt2 = (): Gpt2Options => {
+      const qualitySet = new Set(["auto", "low", "medium", "high"]);
+      const backgroundSet = new Set(["auto", "opaque"]);
+      const formatSet = new Set(["png", "jpeg", "webp"]);
+      const moderationSet = new Set(["auto", "low"]);
 
-    /* -------- GPT Image 2 via KIE (auto-switch: text-to-image or image-to-image) -------- */
+      const size = (options?.gpt2_size || "auto").trim().toLowerCase();
+      const sizeError = validateGpt2Size(size);
+      if (sizeError) throw new Error(sizeError);
+
+      const quality = qualitySet.has(options?.quality || "")
+        ? (options!.quality as Gpt2Options["quality"])
+        : "auto";
+      const background = backgroundSet.has(options?.gpt_background || "")
+        ? (options!.gpt_background as Gpt2Options["background"])
+        : "auto";
+      const output_format = formatSet.has(options?.output_format || "")
+        ? (options!.output_format as Gpt2Options["output_format"])
+        : "png";
+      const moderation = moderationSet.has(options?.moderation || "")
+        ? (options!.moderation as Gpt2Options["moderation"])
+        : "auto";
+
+      const rawCompression = options?.output_compression;
+      const compressionNum =
+        typeof rawCompression === "number"
+          ? rawCompression
+          : typeof rawCompression === "string" && rawCompression.trim() !== ""
+            ? Number(rawCompression)
+            : NaN;
+      const output_compression =
+        output_format !== "png" && Number.isFinite(compressionNum)
+          ? Math.max(0, Math.min(100, Math.round(compressionNum)))
+          : undefined;
+
+      return { size, quality, background, output_format, output_compression, moderation };
+    };
+
+    /* -------- GPT Image 2 via OpenAI (primary) or KIE (fallback) -------- */
     if (modelId === "gpt-2") {
-      if (!KIE_KEY) return NextResponse.json({ error: "KIE API key missing" }, { status: 500 });
+      const gpt2Opts = normalizeGpt2();
+
+      if (OPENAI_API_KEY) {
+        const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        const baseParams = {
+          model: "gpt-image-2",
+          prompt,
+          size: gpt2Opts.size,
+          quality: gpt2Opts.quality,
+          background: gpt2Opts.background,
+          output_format: gpt2Opts.output_format,
+          moderation: gpt2Opts.moderation,
+          user: profileId,
+          ...(typeof gpt2Opts.output_compression === "number"
+            ? { output_compression: gpt2Opts.output_compression }
+            : {}),
+        } as any;
+
+        let imageBase64: string | undefined;
+
+        if (referenceUrls.length > 0) {
+          const uploads = await Promise.all(
+            referenceUrls.map(async (url, index) => {
+              const { mime, base64 } = await fetchImageAsBase64(url);
+              return toFile(
+                Buffer.from(base64, "base64"),
+                `reference-${index + 1}.${mimeToExtension(mime)}`,
+                { type: mime }
+              );
+            })
+          );
+
+          const result = await openai.images.edit({
+            ...baseParams,
+            image: uploads,
+          } as any);
+
+          imageBase64 = result.data?.[0]?.b64_json;
+        } else {
+          const result = await openai.images.generate(baseParams as any);
+          imageBase64 = result.data?.[0]?.b64_json;
+        }
+
+        if (!imageBase64) {
+          return NextResponse.json({ error: "OpenAI returned no image data" }, { status: 502 });
+        }
+
+        await logUsage(profileId, modelId);
+        return NextResponse.json({ imageDataUrl: dataUrlForFormat(gpt2Opts.output_format, imageBase64) });
+      }
+
+      if (!KIE_KEY) {
+        return NextResponse.json(
+          { error: "Neither OPENAI_API_KEY nor KIE_API_KEY is configured for GPT Image 2" },
+          { status: 500 }
+        );
+      }
 
       const hasReferences = referenceUrls.length > 0;
       const modeLabel = hasReferences ? "GPT Image 2 Image-to-Image" : "GPT Image 2 Text-to-Image";
-      const nsfw_checker = normalizeNsfwChecker();
 
       if (hasReferences) {
         const badUrl = referenceUrls.find((u) => !/^https?:\/\//i.test(u));
         if (badUrl) {
           return NextResponse.json(
-            { error: "GPT Image 2 Image-to-Image requires public HTTP/HTTPS URLs for reference images" },
+            { error: "GPT Image 2 Image-to-Image via KIE requires public HTTP/HTTPS URLs for reference images" },
             { status: 400 }
           );
         }
@@ -753,7 +897,7 @@ export async function POST(req: Request) {
             input: {
               prompt,
               input_urls: referenceUrls.slice(0, 16),
-              nsfw_checker,
+              nsfw_checker: gpt2Opts.moderation === "auto",
             },
           }
         : {
@@ -761,7 +905,7 @@ export async function POST(req: Request) {
             callBackUrl: "",
             input: {
               prompt,
-              nsfw_checker,
+              nsfw_checker: gpt2Opts.moderation === "auto",
             },
           };
 
@@ -1013,8 +1157,8 @@ export async function POST(req: Request) {
 
       // Validate output format
       const nb2FmtSet = new Set<string>(NB2_OUTPUT_FORMATS);
-      const output_format = nb2FmtSet.has(options?.output_format || "")
-        ? options!.output_format! : "jpg";
+      const output_format = nb2FmtSet.has(options?.nb_output_format || "")
+        ? options!.nb_output_format! : "jpg";
 
       // Google search toggle
       const google_search = options?.google_search === true;

@@ -2101,6 +2101,28 @@ export default function AdStudioPage() {
                     ))}
                   </select>
                 )}
+                {selectedModel?.formatOptions && (
+                  <select
+                    value={modelOptions.outputFormat || selectedModel.formatOptions[0]}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, outputFormat: e.target.value }))}
+                    className="min-w-[140px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {selectedModel.formatOptions.map((format) => (
+                      <option key={format} value={format}>Format: {format}</option>
+                    ))}
+                  </select>
+                )}
+                {selectedModel?.moderationOptions && (
+                  <select
+                    value={modelOptions.moderation || selectedModel.moderationOptions[0]}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, moderation: e.target.value }))}
+                    className="min-w-[140px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    {selectedModel.moderationOptions.map((moderation) => (
+                      <option key={moderation} value={moderation}>Moderation: {moderation}</option>
+                    ))}
+                  </select>
+                )}
                 {selectedModel?.booleanOptions?.map((option) => (
                   <select
                     key={option.key}
@@ -2112,6 +2134,17 @@ export default function AdStudioPage() {
                     <option value="true">{option.label}: {option.trueLabel || "On"}</option>
                   </select>
                 ))}
+                {selectedModel?.formatOptions && (modelOptions.outputFormat || selectedModel.formatOptions[0]) !== "png" && (
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={modelOptions.outputCompression || "100"}
+                    onChange={(e) => setModelOptions((prev) => ({ ...prev, outputCompression: e.target.value }))}
+                    className="min-w-[140px] flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm text-slate-900 dark:text-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    placeholder="Compression 0-100"
+                  />
+                )}
               </div>
 
               {workflowMode !== "campaign" && (
