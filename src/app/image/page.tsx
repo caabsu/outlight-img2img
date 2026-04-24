@@ -452,6 +452,55 @@ type Run = {
   controller: AbortController | null;
 };
 
+const GPT2_DEFAULT_ASPECT_RATIO = "1:1";
+const GPT2_DEFAULT_RESOLUTION = "standard";
+
+function mapGpt2SizeFromControls(aspectRatio: string, resolution: string): string {
+  const tables: Record<string, Record<string, string>> = {
+    standard: {
+      "1:1": "1024x1024",
+      "9:16": "1024x1536",
+      "16:9": "1536x1024",
+    },
+    "2k": {
+      "1:1": "2048x2048",
+      "9:16": "1440x2560",
+      "16:9": "2560x1440",
+    },
+    "4k": {
+      "1:1": "2880x2880",
+      "9:16": "2160x3840",
+      "16:9": "3840x2160",
+    },
+  };
+
+  return tables[resolution]?.[aspectRatio] || tables[GPT2_DEFAULT_RESOLUTION][GPT2_DEFAULT_ASPECT_RATIO];
+}
+
+function inferGpt2ControlsFromSize(size: string | undefined): { aspectRatio: string; resolution: string } {
+  switch (size) {
+    case "1536x1024":
+      return { aspectRatio: "16:9", resolution: "standard" };
+    case "1024x1536":
+      return { aspectRatio: "9:16", resolution: "standard" };
+    case "2048x2048":
+      return { aspectRatio: "1:1", resolution: "2k" };
+    case "2560x1440":
+      return { aspectRatio: "16:9", resolution: "2k" };
+    case "1440x2560":
+      return { aspectRatio: "9:16", resolution: "2k" };
+    case "2880x2880":
+      return { aspectRatio: "1:1", resolution: "4k" };
+    case "3840x2160":
+      return { aspectRatio: "16:9", resolution: "4k" };
+    case "2160x3840":
+      return { aspectRatio: "9:16", resolution: "4k" };
+    case "1024x1024":
+    default:
+      return { aspectRatio: GPT2_DEFAULT_ASPECT_RATIO, resolution: GPT2_DEFAULT_RESOLUTION };
+  }
+}
+
 const RUN_SPEED_OPTIONS: RunSpeed[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 const MAX_CONCURRENT_RUNS = 20;
 const ADMIN_PASS = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || "gmltn123";
@@ -565,7 +614,8 @@ export default function ImageStudioPage() {
   const [gpt15Background, setGpt15Background] = useState<string>("auto");
   const isGpt15 = modelDef.id === "gpt-1.5";
   const isGpt2 = modelDef.id === "gpt-2";
-  const [gpt2Size, setGpt2Size] = useState<string>("auto");
+  const [gpt2AspectRatio, setGpt2AspectRatio] = useState<string>(GPT2_DEFAULT_ASPECT_RATIO);
+  const [gpt2Resolution, setGpt2Resolution] = useState<string>(GPT2_DEFAULT_RESOLUTION);
   const [gpt2Quality, setGpt2Quality] = useState<string>("auto");
   const [gpt2Background, setGpt2Background] = useState<string>("auto");
   const [gpt2OutputFormat, setGpt2OutputFormat] = useState<string>("png");
@@ -717,12 +767,18 @@ export default function ImageStudioPage() {
     if (session.gpt15Size) setGpt15Size(session.gpt15Size);
     if (session.gpt15Quality) setGpt15Quality(session.gpt15Quality);
     if (session.gpt15Background) setGpt15Background(session.gpt15Background);
-    if (session.gpt2Size) setGpt2Size(session.gpt2Size);
+    if (session.gpt2AspectRatio) setGpt2AspectRatio(session.gpt2AspectRatio);
+    if (session.gpt2Resolution) setGpt2Resolution(session.gpt2Resolution);
     if (session.gpt2Quality) setGpt2Quality(session.gpt2Quality);
     if (session.gpt2Background) setGpt2Background(session.gpt2Background);
     if (session.gpt2OutputFormat) setGpt2OutputFormat(session.gpt2OutputFormat);
     if (session.gpt2OutputCompression !== undefined) setGpt2OutputCompression(session.gpt2OutputCompression);
     if (session.gpt2Moderation) setGpt2Moderation(session.gpt2Moderation);
+    if ((!session.gpt2AspectRatio || !session.gpt2Resolution) && session.gpt2Size) {
+      const inferred = inferGpt2ControlsFromSize(session.gpt2Size);
+      if (!session.gpt2AspectRatio) setGpt2AspectRatio(inferred.aspectRatio);
+      if (!session.gpt2Resolution) setGpt2Resolution(inferred.resolution);
+    }
     if (!session.gpt2Moderation && typeof session.gpt2NsfwChecker === "boolean") {
       setGpt2Moderation(session.gpt2NsfwChecker ? "auto" : "low");
     }
@@ -768,7 +824,8 @@ export default function ImageStudioPage() {
       gpt15Size,
       gpt15Quality,
       gpt15Background,
-      gpt2Size,
+      gpt2AspectRatio,
+      gpt2Resolution,
       gpt2Quality,
       gpt2Background,
       gpt2OutputFormat,
@@ -800,7 +857,8 @@ export default function ImageStudioPage() {
     gpt15Size,
     gpt15Quality,
     gpt15Background,
-    gpt2Size,
+    gpt2AspectRatio,
+    gpt2Resolution,
     gpt2Quality,
     gpt2Background,
     gpt2OutputFormat,
@@ -1459,7 +1517,7 @@ export default function ImageStudioPage() {
                     }
                     if (runModel.id === "gpt-2") {
                       return {
-                        gpt2_size: gpt2Size,
+                        gpt2_size: mapGpt2SizeFromControls(gpt2AspectRatio, gpt2Resolution),
                         quality: gpt2Quality,
                         gpt_background: gpt2Background,
                         output_format: gpt2OutputFormat,
@@ -1751,38 +1809,29 @@ export default function ImageStudioPage() {
               {isGpt2 && (
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-2 gap-1.5">
-                    <div className="col-span-2">
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Size</label>
-                      <input
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
-                        value={gpt2Size}
-                        onChange={(e) => setGpt2Size(e.target.value)}
-                        placeholder="auto or 1024x1536"
-                        list="gpt2-size-suggestions"
-                      />
-                      {modelDef.sizeOptions && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {modelDef.sizeOptions.map((size) => (
-                            <button
-                              key={size}
-                              type="button"
-                              onClick={() => setGpt2Size(size)}
-                              className={`rounded border px-1.5 py-0.5 text-[10px] font-medium transition ${
-                                gpt2Size === size
-                                  ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-500/10 dark:text-indigo-200"
-                                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-700 dark:hover:text-slate-200"
-                              }`}
-                            >
-                              {size === "auto" ? "Auto" : size}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <datalist id="gpt2-size-suggestions">
-                        {(modelDef.sizeOptions || []).map((size) => (
-                          <option key={size} value={size} />
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2AspectRatio}
+                        onChange={(e) => setGpt2AspectRatio(e.target.value)}
+                      >
+                        {(modelDef.aspectRatioOptions || [GPT2_DEFAULT_ASPECT_RATIO]).map((ratio) => (
+                          <option key={ratio} value={ratio}>{ratio}</option>
                         ))}
-                      </datalist>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Resolution}
+                        onChange={(e) => setGpt2Resolution(e.target.value)}
+                      >
+                        {(modelDef.resolutionOptions || [GPT2_DEFAULT_RESOLUTION]).map((resolution) => (
+                          <option key={resolution} value={resolution}>{resolution.toUpperCase()}</option>
+                        ))}
+                      </select>
                     </div>
                     <div>
                       <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>

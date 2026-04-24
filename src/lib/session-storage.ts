@@ -104,13 +104,15 @@ export type ImageStudioSession = {
   gpt15Quality: string;
   gpt15Background: string;
   // GPT Image 2 options
-  gpt2Size: string;
+  gpt2AspectRatio: string;
+  gpt2Resolution: string;
   gpt2Quality: string;
   gpt2Background: string;
   gpt2OutputFormat: string;
   gpt2OutputCompression: number | "";
   gpt2Moderation: string;
   // Legacy GPT Image 2 option
+  gpt2Size?: string;
   gpt2NsfwChecker?: boolean;
   // Nano Banana 2 options
   nb2AspectRatio: string;
