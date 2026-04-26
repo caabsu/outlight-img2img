@@ -459,8 +459,8 @@ function mapGpt2SizeFromControls(aspectRatio: string, resolution: string): strin
   const tables: Record<string, Record<string, string>> = {
     standard: {
       "1:1": "1024x1024",
-      "9:16": "1024x1536",
-      "16:9": "1536x1024",
+      "9:16": "864x1536",
+      "16:9": "1536x864",
     },
     "2k": {
       "1:1": "2048x2048",
@@ -479,6 +479,10 @@ function mapGpt2SizeFromControls(aspectRatio: string, resolution: string): strin
 
 function inferGpt2ControlsFromSize(size: string | undefined): { aspectRatio: string; resolution: string } {
   switch (size) {
+    case "1536x864":
+      return { aspectRatio: "16:9", resolution: "standard" };
+    case "864x1536":
+      return { aspectRatio: "9:16", resolution: "standard" };
     case "1536x1024":
       return { aspectRatio: "16:9", resolution: "standard" };
     case "1024x1536":
@@ -621,6 +625,10 @@ export default function ImageStudioPage() {
   const [gpt2OutputFormat, setGpt2OutputFormat] = useState<string>("png");
   const [gpt2OutputCompression, setGpt2OutputCompression] = useState<number | "">(100);
   const [gpt2Moderation, setGpt2Moderation] = useState<string>("auto");
+  const gpt2ResolvedSize = useMemo(
+    () => mapGpt2SizeFromControls(gpt2AspectRatio, gpt2Resolution),
+    [gpt2AspectRatio, gpt2Resolution]
+  );
   // Nano Banana 2 options
   const [nb2AspectRatio, setNb2AspectRatio] = useState<string>("auto");
   const [nb2Resolution, setNb2Resolution] = useState<string>("1K");
@@ -1517,7 +1525,7 @@ export default function ImageStudioPage() {
                     }
                     if (runModel.id === "gpt-2") {
                       return {
-                        gpt2_size: mapGpt2SizeFromControls(gpt2AspectRatio, gpt2Resolution),
+                        gpt2_size: gpt2ResolvedSize,
                         quality: gpt2Quality,
                         gpt_background: gpt2Background,
                         output_format: gpt2OutputFormat,
@@ -1832,6 +1840,9 @@ export default function ImageStudioPage() {
                           <option key={resolution} value={resolution}>{resolution.toUpperCase()}</option>
                         ))}
                       </select>
+                    </div>
+                    <div className="col-span-2 rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1 text-[10px] font-medium text-slate-600 dark:text-slate-300">
+                      Output size: {gpt2ResolvedSize}
                     </div>
                     <div>
                       <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>

@@ -166,7 +166,7 @@ function buildImageOptions(modelId: string) {
   }
   if (modelId === "gpt-2") {
     return {
-      gpt2_size: "1024x1536",
+      gpt2_size: "864x1536",
       quality: "high",
       gpt_background: "auto",
       output_format: "png",

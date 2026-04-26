@@ -381,8 +381,8 @@ async function callGenerateAPI({
     const tables: Record<string, Record<string, string>> = {
       standard: {
         "1:1": "1024x1024",
-        "9:16": "1024x1536",
-        "16:9": "1536x1024",
+        "9:16": "864x1536",
+        "16:9": "1536x864",
       },
       "2k": {
         "1:1": "2048x2048",
