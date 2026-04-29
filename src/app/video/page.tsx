@@ -730,11 +730,11 @@ export default function VideoStudioPage() {
     return () => window.removeEventListener("keydown", handler);
   }, [referenceUploadPreview, showRefProductModal, expandedVideo, activeVideoRun]);
 
-  async function filesToDataUrls(files: FileList | null) {
+  async function filesToDataUrls(files: FileList | File[] | null) {
     if (!files || files.length === 0) return [];
     const readers: Promise<string>[] = [];
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = (files as ArrayLike<File>)[i];
       readers.push(
         new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -747,7 +747,59 @@ export default function VideoStudioPage() {
     return Promise.all(readers);
   }
 
-  async function handleBatchVideoUpload(files: FileList | null) {
+  // Drag-and-drop state for image upload zones
+  const [refDragging, setRefDragging] = useState(false);
+  const refDragCounterRef = useRef(0);
+  const [batchDragging, setBatchDragging] = useState(false);
+  const batchDragCounterRef = useRef(0);
+  const [veoStartDragging, setVeoStartDragging] = useState(false);
+  const veoStartDragCounterRef = useRef(0);
+  const [veoEndDragging, setVeoEndDragging] = useState(false);
+  const veoEndDragCounterRef = useRef(0);
+
+  function makeDropHandlers(
+    setIsDragging: (v: boolean) => void,
+    counterRef: React.MutableRefObject<number>,
+    onFiles: (files: File[]) => void | Promise<void>
+  ) {
+    return {
+      onDragEnter: (e: React.DragEvent<HTMLElement>) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        counterRef.current += 1;
+        setIsDragging(true);
+      },
+      onDragOver: (e: React.DragEvent<HTMLElement>) => {
+        if (!e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+      },
+      onDragLeave: (e: React.DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        counterRef.current -= 1;
+        if (counterRef.current <= 0) {
+          counterRef.current = 0;
+          setIsDragging(false);
+        }
+      },
+      onDrop: (e: React.DragEvent<HTMLElement>) => {
+        e.preventDefault();
+        e.stopPropagation();
+        counterRef.current = 0;
+        setIsDragging(false);
+        const dropped = e.dataTransfer.files;
+        if (!dropped || dropped.length === 0) return;
+        const imageFiles = Array.from(dropped).filter((f) => f.type.startsWith("image/"));
+        if (imageFiles.length === 0) return;
+        void onFiles(imageFiles);
+      },
+    };
+  }
+
+  async function handleBatchVideoUpload(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     setBatchVideoUploading(true);
     // Clear old images immediately to prevent using stale session data
@@ -775,7 +827,7 @@ export default function VideoStudioPage() {
     }
   }
 
-  async function handleReferenceUpload(files: FileList | null) {
+  async function handleReferenceUpload(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
     try {
       const dataUrls = await filesToDataUrls(files);
@@ -1471,6 +1523,16 @@ export default function VideoStudioPage() {
                                  </button>
                                )}
                              </div>
+                             <div
+                               className={`relative rounded-lg transition ${veoStartDragging ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900" : ""}`}
+                               {...makeDropHandlers(setVeoStartDragging, veoStartDragCounterRef, (files) => {
+                                 if (files[0]) {
+                                   const reader = new FileReader();
+                                   reader.onload = () => setVeoStartFrame(reader.result as string);
+                                   reader.readAsDataURL(files[0]);
+                                 }
+                               })}
+                             >
                              {veoStartFrame ? (
                                <div className="relative group aspect-video rounded-lg overflow-hidden border-2 border-emerald-500 ring-2 ring-emerald-500/20">
                                  <img src={veoStartFrame} alt="Start frame" className="w-full h-full object-cover" />
@@ -1487,7 +1549,7 @@ export default function VideoStudioPage() {
                                  <div className="absolute bottom-1 left-1 bg-emerald-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">START</div>
                                </div>
                              ) : (
-                               <label className="aspect-video flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition">
+                               <label className={`aspect-video flex flex-col items-center justify-center rounded-lg border-2 border-dashed cursor-pointer transition ${veoStartDragging ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10" : "border-slate-300 dark:border-slate-600 hover:border-emerald-400 dark:hover:border-emerald-500 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
                                  <input
                                    type="file"
                                    accept="image/*"
@@ -1505,9 +1567,10 @@ export default function VideoStudioPage() {
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400">
                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                  </svg>
-                                 <span className="text-[10px] text-slate-400 mt-1">Upload</span>
+                                 <span className="text-[10px] text-slate-400 mt-1">{veoStartDragging ? "Drop to set start frame" : "Upload or drop"}</span>
                                </label>
                              )}
+                             </div>
                            </div>
 
                            {/* End Frame */}
@@ -1526,6 +1589,16 @@ export default function VideoStudioPage() {
                                  </button>
                                )}
                              </div>
+                             <div
+                               className={`relative rounded-lg transition ${veoEndDragging ? "ring-2 ring-indigo-500 ring-offset-2 ring-offset-white dark:ring-offset-slate-900" : ""}`}
+                               {...makeDropHandlers(setVeoEndDragging, veoEndDragCounterRef, (files) => {
+                                 if (files[0]) {
+                                   const reader = new FileReader();
+                                   reader.onload = () => setVeoEndFrame(reader.result as string);
+                                   reader.readAsDataURL(files[0]);
+                                 }
+                               })}
+                             >
                              {veoEndFrame ? (
                                <div className="relative group aspect-video rounded-lg overflow-hidden border-2 border-indigo-500 ring-2 ring-indigo-500/20">
                                  <img src={veoEndFrame} alt="End frame" className="w-full h-full object-cover" />
@@ -1542,7 +1615,7 @@ export default function VideoStudioPage() {
                                  <div className="absolute bottom-1 left-1 bg-indigo-500 text-white text-[8px] font-bold px-1.5 py-0.5 rounded">END</div>
                                </div>
                              ) : (
-                               <label className={`aspect-video flex flex-col items-center justify-center rounded-lg border-2 border-dashed ${veoStartFrame ? "border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500" : "border-slate-200 dark:border-slate-700"} hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition`}>
+                               <label className={`aspect-video flex flex-col items-center justify-center rounded-lg border-2 border-dashed cursor-pointer transition ${veoEndDragging ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10" : `${veoStartFrame ? "border-slate-300 dark:border-slate-600 hover:border-indigo-400 dark:hover:border-indigo-500" : "border-slate-200 dark:border-slate-700"} hover:bg-slate-50 dark:hover:bg-slate-800`}`}>
                                  <input
                                    type="file"
                                    accept="image/*"
@@ -1560,9 +1633,10 @@ export default function VideoStudioPage() {
                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6 text-slate-400">
                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                                  </svg>
-                                 <span className="text-[10px] text-slate-400 mt-1">Upload</span>
+                                 <span className="text-[10px] text-slate-400 mt-1">{veoEndDragging ? "Drop to set end frame" : "Upload or drop"}</span>
                                </label>
                              )}
+                             </div>
                            </div>
                          </div>
 
@@ -1579,7 +1653,19 @@ export default function VideoStudioPage() {
                      {/* Kling/Sora: Reference Images Grid */}
                      {!isVeo && (
                        <>
-                         <div className="space-y-2">
+                         <div
+                            className={`relative space-y-2 rounded-lg p-2 -m-2 transition ${refDragging ? "bg-indigo-50 dark:bg-indigo-500/10 ring-2 ring-indigo-500" : ""}`}
+                            {...makeDropHandlers(setRefDragging, refDragCounterRef, async (files) => {
+                              await handleReferenceUpload(files);
+                            })}
+                         >
+                            {refDragging && (
+                              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg">
+                                <div className="rounded-full bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg">
+                                  Drop images to add as references
+                                </div>
+                              </div>
+                            )}
                             <div className="flex items-center justify-between">
                               <label className="text-xs font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
                               <button
@@ -1761,7 +1847,19 @@ export default function VideoStudioPage() {
                                 onChange={(e) => setBatchVideoPrompt(e.target.value)}
                              />
                         </div>
-                        <div className="space-y-2">
+                        <div
+                            className={`relative space-y-2 rounded-lg p-2 -m-2 transition ${batchDragging ? "bg-indigo-50 dark:bg-indigo-500/10 ring-2 ring-indigo-500" : ""}`}
+                            {...makeDropHandlers(setBatchDragging, batchDragCounterRef, async (files) => {
+                              await handleBatchVideoUpload(files);
+                            })}
+                        >
+                            {batchDragging && (
+                              <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg">
+                                <div className="rounded-full bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg">
+                                  Drop images to add to batch
+                                </div>
+                              </div>
+                            )}
                             <label className="text-xs font-bold uppercase text-slate-500 dark:text-slate-400">Images ({batchVideoImages.length})</label>
                             <div className="grid grid-cols-4 gap-2">
                                 <label className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer">

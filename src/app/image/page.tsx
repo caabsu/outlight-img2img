@@ -704,11 +704,11 @@ export default function ImageStudioPage() {
     ? Math.max(1, Math.min(activeRun.speed, maxUiParallel, activeRunMaxConcurrency))
     : 0;
 
-  async function filesToDataUrls(files: FileList | null): Promise<string[]> {
+  async function filesToDataUrls(files: FileList | File[] | null): Promise<string[]> {
     if (!files || files.length === 0) return [];
     const readers: Promise<string>[] = [];
     for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+      const file = (files as ArrayLike<File>)[i];
       readers.push(
         new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -719,6 +719,48 @@ export default function ImageStudioPage() {
       );
     }
     return Promise.all(readers);
+  }
+
+  // Drag-and-drop state for the Reference Images / Context panel
+  const [isDraggingRefs, setIsDraggingRefs] = useState(false);
+  const refsDragCounterRef = useRef(0);
+
+  function handleRefsDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    refsDragCounterRef.current += 1;
+    setIsDraggingRefs(true);
+  }
+
+  function handleRefsDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!e.dataTransfer.types.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleRefsDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    refsDragCounterRef.current -= 1;
+    if (refsDragCounterRef.current <= 0) {
+      refsDragCounterRef.current = 0;
+      setIsDraggingRefs(false);
+    }
+  }
+
+  async function handleRefsDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    refsDragCounterRef.current = 0;
+    setIsDraggingRefs(false);
+    const dropped = e.dataTransfer.files;
+    if (!dropped || dropped.length === 0) return;
+    const imageFiles = Array.from(dropped).filter((f) => f.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+    const urls = await filesToDataUrls(imageFiles);
+    setCustomUploads((prev) => [...prev, ...urls]);
   }
 
   const refSources = useMemo(() => {
@@ -1953,7 +1995,20 @@ export default function ImageStudioPage() {
               )}
              </div>
 
-             <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
+             <div
+                className={`relative rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sm transition ${isDraggingRefs ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50/40 dark:bg-indigo-500/10" : "border-slate-200 dark:border-slate-800"}`}
+                onDragEnter={handleRefsDragEnter}
+                onDragOver={handleRefsDragOver}
+                onDragLeave={handleRefsDragLeave}
+                onDrop={handleRefsDrop}
+             >
+                 {isDraggingRefs && (
+                    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-indigo-500/10 backdrop-blur-[1px]">
+                       <div className="rounded-full bg-indigo-600 px-3 py-1.5 text-[11px] font-semibold text-white shadow-lg">
+                          Drop images to add as references
+                       </div>
+                    </div>
+                 )}
                  <div className="mb-2 flex items-center justify-between">
                     <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Context</h2>
                     {modelRequiresReference && (
