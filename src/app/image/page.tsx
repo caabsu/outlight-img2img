@@ -18,6 +18,10 @@ import {
   GPT15_BACKGROUND_OPTIONS,
   GPT2_ASPECT_RATIOS,
   GPT2_RESOLUTIONS,
+  GPT2_QUALITY_OPTIONS,
+  GPT2_BACKGROUND_OPTIONS,
+  GPT2_OUTPUT_FORMATS,
+  GPT2_MODERATION_OPTIONS,
   NB2_ASPECT_RATIOS,
   NB2_RESOLUTIONS,
   NB2_OUTPUT_FORMATS,
@@ -804,11 +808,11 @@ export default function ImageStudioPage() {
     if (session.gpt15Background) setGpt15Background(session.gpt15Background);
     if (session.gpt2AspectRatio) setGpt2AspectRatio(session.gpt2AspectRatio);
     if (session.gpt2Resolution) setGpt2Resolution(session.gpt2Resolution);
-    if (session.gpt2Quality) setGpt2Quality(session.gpt2Quality);
-    if (session.gpt2Background) setGpt2Background(session.gpt2Background);
-    if (session.gpt2OutputFormat) setGpt2OutputFormat(session.gpt2OutputFormat);
+    if (session.gpt2Quality && (GPT2_QUALITY_OPTIONS as readonly string[]).includes(session.gpt2Quality)) setGpt2Quality(session.gpt2Quality);
+    if (session.gpt2Background && (GPT2_BACKGROUND_OPTIONS as readonly string[]).includes(session.gpt2Background)) setGpt2Background(session.gpt2Background);
+    if (session.gpt2OutputFormat && (GPT2_OUTPUT_FORMATS as readonly string[]).includes(session.gpt2OutputFormat)) setGpt2OutputFormat(session.gpt2OutputFormat);
     if (session.gpt2OutputCompression !== undefined) setGpt2OutputCompression(session.gpt2OutputCompression);
-    if (session.gpt2Moderation) setGpt2Moderation(session.gpt2Moderation);
+    if (session.gpt2Moderation && (GPT2_MODERATION_OPTIONS as readonly string[]).includes(session.gpt2Moderation)) setGpt2Moderation(session.gpt2Moderation);
     if ((!session.gpt2AspectRatio || !session.gpt2Resolution) && session.gpt2Size) {
       const inferred = inferGpt2ControlsFromSize(session.gpt2Size);
       if (!session.gpt2AspectRatio) setGpt2AspectRatio(inferred.aspectRatio);
@@ -1560,6 +1564,13 @@ export default function ImageStudioPage() {
                       return {
                         aspect_ratio: gpt2AspectRatio,
                         image_size: gpt2Resolution,
+                        quality: gpt2Quality,
+                        gpt_background: gpt2Background,
+                        output_format: gpt2OutputFormat,
+                        ...(gpt2OutputFormat !== "png" && gpt2OutputCompression !== ""
+                          ? { output_compression: gpt2OutputCompression }
+                          : {}),
+                        moderation: gpt2Moderation,
                       };
                     }
                     // Seedream 4.5 text-to-image
@@ -1871,6 +1882,75 @@ export default function ImageStudioPage() {
                       </select>
                     </div>
                   </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Quality}
+                        onChange={(e) => setGpt2Quality(e.target.value)}
+                      >
+                        {GPT2_QUALITY_OPTIONS.map((quality) => (
+                          <option key={quality} value={quality}>{quality.charAt(0).toUpperCase() + quality.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">BG</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Background}
+                        onChange={(e) => setGpt2Background(e.target.value)}
+                      >
+                        {GPT2_BACKGROUND_OPTIONS.map((background) => (
+                          <option key={background} value={background}>{background.charAt(0).toUpperCase() + background.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Format</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2OutputFormat}
+                        onChange={(e) => setGpt2OutputFormat(e.target.value)}
+                      >
+                        {GPT2_OUTPUT_FORMATS.map((format) => (
+                          <option key={format} value={format}>{format.toUpperCase()}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Moderation</label>
+                      <select
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2Moderation}
+                        onChange={(e) => setGpt2Moderation(e.target.value)}
+                      >
+                        {GPT2_MODERATION_OPTIONS.map((moderation) => (
+                          <option key={moderation} value={moderation}>{moderation.charAt(0).toUpperCase() + moderation.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  {gpt2OutputFormat !== "png" && (
+                    <div>
+                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Compression</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={100}
+                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        value={gpt2OutputCompression}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          const parsed = Number(raw);
+                          setGpt2OutputCompression(raw === "" || !Number.isFinite(parsed) ? "" : Math.min(100, Math.max(0, parsed)));
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 

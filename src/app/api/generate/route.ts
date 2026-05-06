@@ -17,6 +17,10 @@ import {
   GPT15_BACKGROUND_OPTIONS,
   GPT2_ASPECT_RATIOS,
   GPT2_RESOLUTIONS,
+  GPT2_QUALITY_OPTIONS,
+  GPT2_BACKGROUND_OPTIONS,
+  GPT2_OUTPUT_FORMATS,
+  GPT2_MODERATION_OPTIONS,
   NB2_ASPECT_RATIOS,
   NB2_RESOLUTIONS,
   NB2_OUTPUT_FORMATS,
@@ -64,10 +68,15 @@ type PostBody = {
     // KIE image config
     aspect_ratio?: string;     // shared: GPT Image 2, Nano Banana, Seedream 4.5
     // seedream 4.5 text-to-image
-    quality?: string;          // "basic" or "high" for Seedream, or "auto"|"low"|"medium"|"high" for GPT 1.5
+    quality?: string;          // "basic" or "high" for Seedream, or "auto"|"low"|"medium"|"high" for GPT
     // GPT 1.5 options
     gpt_size?: string;         // "auto"|"1024x1024"|"1536x1024"|"1024x1536"
-    gpt_background?: string;   // "auto"|"opaque"|"transparent"
+    gpt_background?: string;   // "auto"|"opaque"|"transparent" for GPT 1.5, "auto"|"opaque" for GPT Image 2
+    // GPT Image 2 options
+    gpt2_size?: string;        // legacy preset size from ads/UGC flows
+    output_format?: string;    // "png"|"jpeg"|"webp"
+    output_compression?: number | string; // 0-100 for jpeg/webp
+    moderation?: string;       // "auto"|"low"
     // Nano Banana 2 options
     nb_output_format?: string;    // "jpg"|"png"
     google_search?: boolean;
@@ -95,6 +104,11 @@ type Gpt15Options = {
 type Gpt2Options = {
   aspect_ratio: (typeof GPT2_ASPECT_RATIOS)[number];
   resolution: (typeof GPT2_RESOLUTIONS)[number];
+  quality: (typeof GPT2_QUALITY_OPTIONS)[number];
+  background: (typeof GPT2_BACKGROUND_OPTIONS)[number];
+  output_format: (typeof GPT2_OUTPUT_FORMATS)[number];
+  output_compression?: number;
+  moderation: (typeof GPT2_MODERATION_OPTIONS)[number];
 };
 
   const SAFETY_OFF = [
@@ -110,6 +124,40 @@ function envNumber(name: string, fallback: number): number {
   if (!raw) return fallback;
   const n = Number(raw);
   return Number.isFinite(n) ? n : fallback;
+}
+
+function clampPercentage(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(100, Math.max(0, Math.round(n)));
+}
+
+function inferGpt2ControlsFromLegacySize(size: string | undefined): Partial<Gpt2Options> {
+  switch (size) {
+    case "1536x864":
+      return { aspect_ratio: "16:9", resolution: "1K" };
+    case "864x1536":
+      return { aspect_ratio: "9:16", resolution: "1K" };
+    case "1536x1024":
+      return { aspect_ratio: "3:2", resolution: "1K" };
+    case "1024x1536":
+      return { aspect_ratio: "2:3", resolution: "1K" };
+    case "2048x2048":
+      return { aspect_ratio: "1:1", resolution: "2K" };
+    case "2560x1440":
+      return { aspect_ratio: "16:9", resolution: "2K" };
+    case "1440x2560":
+      return { aspect_ratio: "9:16", resolution: "2K" };
+    case "2880x2880":
+      return { aspect_ratio: "1:1", resolution: "2K" };
+    case "3840x2160":
+      return { aspect_ratio: "16:9", resolution: "4K" };
+    case "2160x3840":
+      return { aspect_ratio: "9:16", resolution: "4K" };
+    default:
+      return {};
+  }
 }
 
 type RateLimiter = {
@@ -734,17 +782,39 @@ export async function POST(req: Request) {
     const normalizeGpt2 = (): Gpt2Options => {
       const aspectRatioSet = new Set<string>(GPT2_ASPECT_RATIOS);
       const resolutionSet = new Set<string>(GPT2_RESOLUTIONS);
+      const qualitySet = new Set<string>(GPT2_QUALITY_OPTIONS);
+      const backgroundSet = new Set<string>(GPT2_BACKGROUND_OPTIONS);
+      const formatSet = new Set<string>(GPT2_OUTPUT_FORMATS);
+      const moderationSet = new Set<string>(GPT2_MODERATION_OPTIONS);
+      const inferred = inferGpt2ControlsFromLegacySize(options?.gpt2_size);
       const aspect_ratio = aspectRatioSet.has(options?.aspect_ratio || "")
         ? (options!.aspect_ratio as Gpt2Options["aspect_ratio"])
-        : "auto";
+        : inferred.aspect_ratio || "auto";
       let resolution = resolutionSet.has(options?.image_size || "")
         ? (options!.image_size as Gpt2Options["resolution"])
-        : "1K";
+        : inferred.resolution || "1K";
 
       if (aspect_ratio === "auto") resolution = "1K";
       if (aspect_ratio === "1:1" && resolution === "4K") resolution = "2K";
 
-      return { aspect_ratio, resolution };
+      const quality = qualitySet.has(options?.quality || "")
+        ? (options!.quality as Gpt2Options["quality"])
+        : "auto";
+      const background = backgroundSet.has(options?.gpt_background || "")
+        ? (options!.gpt_background as Gpt2Options["background"])
+        : "auto";
+      const output_format = formatSet.has(options?.output_format || "")
+        ? (options!.output_format as Gpt2Options["output_format"])
+        : "png";
+      const moderation = moderationSet.has(options?.moderation || "")
+        ? (options!.moderation as Gpt2Options["moderation"])
+        : "auto";
+      const output_compression =
+        output_format === "jpeg" || output_format === "webp"
+          ? clampPercentage(options?.output_compression)
+          : undefined;
+
+      return { aspect_ratio, resolution, quality, background, output_format, output_compression, moderation };
     };
 
     /* -------- GPT Image 2 via KIE -------- */
@@ -777,6 +847,13 @@ export async function POST(req: Request) {
               input_urls: referenceUrls.slice(0, 16),
               aspect_ratio: gpt2Opts.aspect_ratio,
               resolution: gpt2Opts.resolution,
+              quality: gpt2Opts.quality,
+              background: gpt2Opts.background,
+              output_format: gpt2Opts.output_format,
+              ...(gpt2Opts.output_compression !== undefined
+                ? { output_compression: gpt2Opts.output_compression }
+                : {}),
+              moderation: gpt2Opts.moderation,
             },
           }
         : {
@@ -786,6 +863,13 @@ export async function POST(req: Request) {
               prompt,
               aspect_ratio: gpt2Opts.aspect_ratio,
               resolution: gpt2Opts.resolution,
+              quality: gpt2Opts.quality,
+              background: gpt2Opts.background,
+              output_format: gpt2Opts.output_format,
+              ...(gpt2Opts.output_compression !== undefined
+                ? { output_compression: gpt2Opts.output_compression }
+                : {}),
+              moderation: gpt2Opts.moderation,
             },
           };
 

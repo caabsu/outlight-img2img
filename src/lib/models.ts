@@ -59,6 +59,14 @@ export const GPT2_ASPECT_RATIOS = [
 
 export const GPT2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
 
+export const GPT2_QUALITY_OPTIONS = ["auto", "low", "medium", "high"] as const;
+
+export const GPT2_BACKGROUND_OPTIONS = ["auto", "opaque"] as const;
+
+export const GPT2_OUTPUT_FORMATS = ["png", "jpeg", "webp"] as const;
+
+export const GPT2_MODERATION_OPTIONS = ["auto", "low"] as const;
+
 export const MODEL_LIST: ModelDef[] = [
   {
     id: "nanobanana-3-pro",
@@ -138,6 +146,10 @@ export const MODEL_LIST: ModelDef[] = [
     providerName: "gpt-image-2",
     aspectRatioOptions: GPT2_ASPECT_RATIOS,
     resolutionOptions: GPT2_RESOLUTIONS,
+    qualityOptions: GPT2_QUALITY_OPTIONS,
+    backgroundOptions: GPT2_BACKGROUND_OPTIONS,
+    formatOptions: GPT2_OUTPUT_FORMATS,
+    moderationOptions: GPT2_MODERATION_OPTIONS,
     requiresReference: false,
     maxConcurrency: 5,
   },
