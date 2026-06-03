@@ -8,48 +8,50 @@
    compose with Tailwind's <alpha-value> (e.g. bg-brand/10).
    ============================================================ */
 :root {
-  --c-canvas:      245 241 234;
-  --c-canvas-2:    236 230 219;
+  /* Graphite + Indigo — light */
+  --c-canvas:      251 251 253;
+  --c-canvas-2:    242 243 246;
   --c-surface:     255 255 255;
-  --c-surface-2:   247 243 236;
-  --c-line:        230 223 210;
-  --c-line-strong: 214 204 186;
-  --c-ink:          33  29  22;
-  --c-ink-2:        92  86  72;
-  --c-ink-3:       148 140 124;
-  --c-brand:        46  92  73;
-  --c-brand-hover:  38  78  62;
-  --c-brand-soft:  228 237 231;
+  --c-surface-2:   246 247 249;
+  --c-line:        230 231 236;
+  --c-line-strong: 211 213 220;
+  --c-ink:          14  14  18;
+  --c-ink-2:        82  82  91;
+  --c-ink-3:       138 138 148;
+  --c-brand:        79  70 229;
+  --c-brand-hover:  67  56 202;
+  --c-brand-soft:  238 240 254;
   --c-on-brand:    255 255 255;
-  --c-accent:      193 135  58;
-  --c-accent-soft: 246 234 212;
-  --c-danger:      188  82  56;
-  --c-danger-soft: 246 226 218;
+  --c-accent:      124  58 237;
+  --c-accent-soft: 243 238 254;
+  --c-danger:      220  38  38;
+  --c-danger-soft: 252 236 236;
 
-  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  --font-display: "Bricolage Grotesque", var(--font-sans);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-sans);
 
   color-scheme: light;
 }
 
 .dark {
-  --c-canvas:       17  16  13;
-  --c-canvas-2:     26  25  20;
-  --c-surface:      33  31  24;
-  --c-surface-2:    43  40  31;
-  --c-line:         58  54  44;
-  --c-line-strong:  78  73  59;
-  --c-ink:         241 237 227;
-  --c-ink-2:       179 172 156;
-  --c-ink-3:       131 124 108;
-  --c-brand:       111 182 143;
-  --c-brand-hover: 130 196 160;
-  --c-brand-soft:   29  43  36;
-  --c-on-brand:     16  35  26;
-  --c-accent:      217 163  90;
-  --c-accent-soft:  44  36  22;
-  --c-danger:      223 129  99;
-  --c-danger-soft:  51  33  27;
+  /* Graphite + Indigo — dark */
+  --c-canvas:       14  14  18;
+  --c-canvas-2:     22  22  27;
+  --c-surface:      23  23  28;
+  --c-surface-2:    31  31  38;
+  --c-line:         38  38  46;
+  --c-line-strong:  56  56  66;
+  --c-ink:         236 236 239;
+  --c-ink-2:       161 161 170;
+  --c-ink-3:       113 113 124;
+  --c-brand:        99 102 241;
+  --c-brand-hover: 129 140 248;
+  --c-brand-soft:   33  33  56;
+  --c-on-brand:    255 255 255;
+  --c-accent:      139  92 246;
+  --c-accent-soft:  39  30  61;
+  --c-danger:      248 113 113;
+  --c-danger-soft:  44  25  26;
 
   color-scheme: dark;
 }

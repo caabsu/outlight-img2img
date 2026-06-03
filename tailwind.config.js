@@ -9,35 +9,35 @@
 // in both light and dark mode. New work should prefer the semantic aliases
 // (`bg-surface`, `text-ink`, `border-line`, `text-brand`, …) defined below.
 //
-// Warm stone neutral scale — replaces stock `slate` everywhere.
+// Cool graphite neutral scale — replaces stock `slate` everywhere.
 const neutral = {
-  50:  '#f6f2eb',
-  100: '#efe8dc',
-  200: '#e6dfd2',
-  300: '#d6ccba',
-  400: '#b3aa98',
-  500: '#948c7c',
-  600: '#6c6557',
-  700: '#4a4538',
-  800: '#312f27',
-  900: '#1e1d17',
-  950: '#141310',
+  50:  '#fbfbfd',
+  100: '#f2f3f6',
+  200: '#e6e7ec',
+  300: '#d3d5dc',
+  400: '#9ca0ac',
+  500: '#71757f',
+  600: '#52555e',
+  700: '#3a3c44',
+  800: '#26262e',
+  900: '#17171c',
+  950: '#0e0e12',
 };
 
-// Evergreen brand/accent scale — replaces every cool/purple accent family
+// Indigo→violet brand/accent scale — replaces every cool/purple accent family
 // (indigo, violet, sky, blue, purple, fuchsia, cyan) so the OS has ONE accent.
 const brand = {
-  50:  '#e9f0eb',
-  100: '#d4e3d9',
-  200: '#a9c7b4',
-  300: '#8fc7a8',
-  400: '#6fb68f',
-  500: '#3f8a63',
-  600: '#2e5c49',
-  700: '#264e3e',
-  800: '#1f3e32',
-  900: '#1a3329',
-  950: '#0f1f18',
+  50:  '#eef0fe',
+  100: '#e0e3fd',
+  200: '#c4c8fb',
+  300: '#a5abf8',
+  400: '#818cf8',
+  500: '#6366f1',
+  600: '#4f46e5',
+  700: '#4338ca',
+  800: '#372fa8',
+  900: '#2e2a83',
+  950: '#1e1b4b',
 };
 
 module.exports = {
@@ -81,9 +81,9 @@ module.exports = {
         'danger-soft':'rgb(var(--c-danger-soft) / <alpha-value>)',
       },
       fontFamily: {
-        sans: ['"Hanken Grotesk"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        display: ['"Bricolage Grotesque"', '"Hanken Grotesk"', 'ui-sans-serif', 'sans-serif'],
-        mono: ['"Spline Sans Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['"Inter"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['"Inter"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       borderRadius: {
         lg: '0.625rem',   // 10px — controls

@@ -1684,7 +1684,7 @@ export default function ImageStudioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-canvas p-3 sm:p-4 lg:p-6 relative">
+    <div className="min-h-screen bg-canvas p-4 sm:p-6 lg:p-8 relative">
       <div className="mx-auto max-w-[1800px]">
         <div className="mb-6 flex items-center justify-between">
            <div className="flex items-center gap-3">
@@ -1701,12 +1701,8 @@ export default function ImageStudioPage() {
            </Link>
         </div>
 
-        {/* Responsive studio grid: stacks on mobile/tablet, 3-column on xl+ with a
-            resizable middle column (driven by the --prompt-col CSS variable). */}
-        <div
-          className="grid gap-4 lg:gap-6 items-start grid-cols-1 xl:[grid-template-columns:320px_var(--prompt-col)_minmax(0,1fr)]"
-          style={{ ["--prompt-col" as any]: `${promptColumnWidth}px` }}
-        >
+        {/* Responsive studio grid: stacks on mobile/tablet, fluid 3-column on xl+. */}
+        <div className="grid gap-5 xl:gap-6 items-start grid-cols-1 xl:grid-cols-[300px_minmax(0,1.35fr)_minmax(0,1fr)]">
           
           {/* Column 1: Configuration */}
           <div className="space-y-4">
@@ -2127,9 +2123,9 @@ export default function ImageStudioPage() {
 
           {/* Column 2: Creation */}
           <div className="relative flex flex-col gap-6 min-h-[520px] xl:h-[calc(100vh-120px)]">
-            {/* Resize Handle — only meaningful in the xl 3-column layout */}
+            {/* Resize Handle — retired in favor of fluid fr columns */}
             <div
-              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 group hidden xl:block"
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 group hidden"
               style={{ transform: "translateX(50%)" }}
               onMouseDown={(e) => {
                 e.preventDefault();
