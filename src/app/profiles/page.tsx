@@ -101,7 +101,7 @@ export default function ProfilesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black flex items-center justify-center p-4">
+    <div className="min-h-screen bg-canvas flex items-center justify-center p-4">
       <div className="w-full max-w-3xl rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>

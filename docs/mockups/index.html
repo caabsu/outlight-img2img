@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Outlight — Choose a Design Direction</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Outfit:wght@300..700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Outfit",system-ui,sans-serif;background:#0c0b0a;color:#f4ede2;min-height:100vh}
+  body::after{content:"";position:fixed;top:-30%;right:-10%;width:60vw;height:60vw;border-radius:50%;
+    background:radial-gradient(circle,rgba(240,169,59,.18),transparent 60%);filter:blur(50px);pointer-events:none;z-index:0}
+  .wrap{position:relative;z-index:1;max-width:1500px;margin:0 auto;padding:48px 28px 60px}
+  header{text-align:center;margin-bottom:44px}
+  .kик{font-family:"JetBrains Mono",monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:#f0a93b;margin-bottom:14px}
+  h1{font-family:"Fraunces";font-weight:600;font-size:42px;letter-spacing:-.02em}
+  h1 em{font-style:italic;color:#f0a93b}
+  .sub{color:#b6aa9a;margin-top:12px;font-size:16px;max-width:640px;margin-left:auto;margin-right:auto}
+  .grid{display:grid;gap:22px;grid-template-columns:repeat(3,1fr)}
+  @media(max-width:1080px){.grid{grid-template-columns:1fr}}
+  .card{background:#151210;border:1px solid #2b2622;border-radius:18px;overflow:hidden;display:flex;flex-direction:column;
+    box-shadow:0 24px 60px -30px #000;transition:.2s}
+  .card:hover{transform:translateY(-4px);border-color:#3a332c}
+  .frame{position:relative;height:300px;overflow:hidden;border-bottom:1px solid #2b2622;background:#000}
+  .frame iframe{position:absolute;top:0;left:0;width:1500px;height:900px;transform:scale(.40);transform-origin:top left;border:0;pointer-events:none}
+  .body{padding:20px}
+  .tag{font-family:"JetBrains Mono",monospace;font-size:11px;color:#7c7264;letter-spacing:.08em;text-transform:uppercase}
+  .name{font-family:"Fraunces";font-size:24px;font-weight:600;margin:6px 0 4px}
+  .name em{font-style:italic;color:#f0a93b}
+  .desc{color:#b6aa9a;font-size:14px;line-height:1.55;min-height:84px}
+  .pal{display:flex;gap:7px;margin:14px 0}
+  .sw{width:26px;height:26px;border-radius:7px;border:1px solid rgba(255,255,255,.1)}
+  .open{display:flex;align-items:center;justify-content:center;gap:9px;text-decoration:none;
+    background:linear-gradient(180deg,#f0a93b,#e8762e);color:#1a1206;font-weight:600;padding:12px;border-radius:11px;transition:.15s}
+  .open:hover{transform:translateY(-1px)}
+  .foot{text-align:center;color:#7c7264;font-size:13px;margin-top:40px;font-family:"JetBrains Mono",monospace}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="kик">Outlight ContentOS · Frontend redesign</div>
+    <h1>Choose a <em>design direction</em></h1>
+    <p class="sub">Three complete Image Studio redesigns. Each has working Light / Dark modes. Click any preview to open it fullscreen and interact with it — then tell me which one (A, B, or C) to build the whole OS around.</p>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <a href="direction-a-aperture.html" target="_blank" class="frame"><iframe src="direction-a-aperture.html" scrolling="no"></iframe></a>
+      <div class="body">
+        <div class="tag">Direction A</div>
+        <div class="name">Aperture <em>· cinematic</em></div>
+        <p class="desc">Dark-first studio control surface. Warm 2700K amber accent (matches your interior-scene content), film-grain depth, editorial serif. The most distinctive, memorable creative-tool identity.</p>
+        <div class="pal"><div class="sw" style="background:#0c0b0a"></div><div class="sw" style="background:#f0a93b"></div><div class="sw" style="background:#e8762e"></div><div class="sw" style="background:#f4ede2"></div><div class="sw" style="background:#2b2622"></div></div>
+        <a href="direction-a-aperture.html" target="_blank" class="open">Open Direction A →</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <a href="direction-b-bench.html" target="_blank" class="frame"><iframe src="direction-b-bench.html" scrolling="no"></iframe></a>
+      <div class="body">
+        <div class="tag">Direction B</div>
+        <div class="name">Bench <em>· precise</em></div>
+        <p class="desc">Swiss workbench / precision instrument. Light-first paper + ink, sharp vermilion, hairline grid, numbered sections, nav rail. The most serious, legible, structured pro tool.</p>
+        <div class="pal"><div class="sw" style="background:#f4f1ea"></div><div class="sw" style="background:#e8482b"></div><div class="sw" style="background:#181613"></div><div class="sw" style="background:#1f7a4d"></div><div class="sw" style="background:#d8d2c5"></div></div>
+        <a href="direction-b-bench.html" target="_blank" class="open">Open Direction B →</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <a href="direction-c-atelier.html" target="_blank" class="frame"><iframe src="direction-c-atelier.html" scrolling="no"></iframe></a>
+      <div class="body">
+        <div class="tag">Direction C</div>
+        <div class="name">Atelier <em>· warm</em></div>
+        <p class="desc">Warm, tactile, premium SaaS. Cream + evergreen + clay, soft rounding & shadows, humanist type. The most approachable and friendly while still reading premium.</p>
+        <div class="pal"><div class="sw" style="background:#f7f3ec"></div><div class="sw" style="background:#2f5d4a"></div><div class="sw" style="background:#c1664a"></div><div class="sw" style="background:#d99a3c"></div><div class="sw" style="background:#e7dfd1"></div></div>
+        <a href="direction-c-atelier.html" target="_blank" class="open">Open Direction C →</a>
+      </div>
+    </div>
+  </div>
+
+  <p class="foot">Served at localhost:8099 · click a card to interact · each has a Light/Dark toggle top-right</p>
+</div>
+</body>
+</html>

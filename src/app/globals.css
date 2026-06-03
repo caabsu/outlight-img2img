@@ -2,8 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   OUTLIGHT DESIGN SYSTEM — "Atelier" (refined)
+   Semantic color tokens as space-separated RGB triplets so they
+   compose with Tailwind's <alpha-value> (e.g. bg-brand/10).
+   ============================================================ */
 :root {
-  font-family: "Inter", "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --c-canvas:      245 241 234;
+  --c-canvas-2:    236 230 219;
+  --c-surface:     255 255 255;
+  --c-surface-2:   247 243 236;
+  --c-line:        230 223 210;
+  --c-line-strong: 214 204 186;
+  --c-ink:          33  29  22;
+  --c-ink-2:        92  86  72;
+  --c-ink-3:       148 140 124;
+  --c-brand:        46  92  73;
+  --c-brand-hover:  38  78  62;
+  --c-brand-soft:  228 237 231;
+  --c-on-brand:    255 255 255;
+  --c-accent:      193 135  58;
+  --c-accent-soft: 246 234 212;
+  --c-danger:      188  82  56;
+  --c-danger-soft: 246 226 218;
+
+  --font-sans: "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Bricolage Grotesque", var(--font-sans);
+
+  color-scheme: light;
+}
+
+.dark {
+  --c-canvas:       20  19  16;
+  --c-canvas-2:     26  25  21;
+  --c-surface:      30  29  23;
+  --c-surface-2:    37  36  29;
+  --c-line:         49  47  39;
+  --c-line-strong:  61  58  48;
+  --c-ink:         241 237 227;
+  --c-ink-2:       179 172 156;
+  --c-ink-3:       131 124 108;
+  --c-brand:       111 182 143;
+  --c-brand-hover: 130 196 160;
+  --c-brand-soft:   29  43  36;
+  --c-on-brand:     16  35  26;
+  --c-accent:      217 163  90;
+  --c-accent-soft:  44  36  22;
+  --c-danger:      223 129  99;
+  --c-danger-soft:  51  33  27;
+
+  color-scheme: dark;
+}
+
+:root {
+  font-family: var(--font-sans);
 }
 
 html,
@@ -12,9 +64,75 @@ body {
 }
 
 body {
-  @apply bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 antialiased;
+  @apply bg-canvas text-ink antialiased;
+  font-feature-settings: "ss01", "cv01";
+}
+
+/* Display type helper (Bricolage) */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 ::selection {
-  @apply bg-indigo-200 dark:bg-indigo-900 text-indigo-900 dark:text-indigo-100;
+  @apply bg-brand/20 text-brand;
 }
+
+/* ---- Focus: consistent, accessible, brand-tinted ---- */
+:where(a, button, [role="button"], input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgb(var(--c-canvas)), 0 0 0 4px rgb(var(--c-brand) / 0.55);
+  border-radius: 6px;
+}
+
+/* ---- Refined scrollbars (warm, unobtrusive) ---- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-line-strong)) transparent;
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-line-strong));
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgb(var(--c-ink-3)); background-clip: content-box; }
+
+/* ---- Native control niceties ---- */
+select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23948c7c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 1.9rem;
+}
+.dark select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23837c6c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+input::placeholder,
+textarea::placeholder {
+  @apply text-ink-3;
+}
+
+/* Smooth, intentional hover/transition defaults for interactive chrome */
+button, a, select, input, textarea {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 150ms;
+  transition-timing-function: cubic-bezier(.2, .7, .3, 1);
+}
+
+/* Shimmer used by loading tiles */
+.shimmer { position: relative; overflow: hidden; }
+.shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(var(--c-accent) / 0.14) 50%, transparent 70%);
+  transform: translateX(-100%);
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer { 100% { transform: translateX(100%); } }

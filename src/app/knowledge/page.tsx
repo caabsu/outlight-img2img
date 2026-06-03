@@ -123,7 +123,7 @@ export default function KnowledgePage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black p-4 lg:p-6">
+    <div className="min-h-screen bg-canvas p-4 lg:p-6">
       <div className="mx-auto max-w-[1600px]">
         <div className="mb-6 flex items-center justify-between">
           <div>

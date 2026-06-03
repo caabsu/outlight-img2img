@@ -210,7 +210,7 @@ export default function ProductsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-black">
+    <div className="min-h-screen bg-canvas">
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">

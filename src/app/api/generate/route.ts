@@ -248,6 +248,55 @@ function isTransientStatus(status: number): boolean {
   return [408, 429, 500, 502, 503, 504].includes(status);
 }
 
+/**
+ * Many upstream (KIE/provider) failures are explicitly retryable even though they
+ * arrive as a "fail" state — e.g. "Internal Error, Please try again later.",
+ * overloads, timeouts and rate limits. Recreating the task usually succeeds.
+ * This classifier decides whether the WHOLE task should be retried.
+ */
+function isTransientFailMessage(message: unknown): boolean {
+  if (typeof message !== "string" || !message) return false;
+  const m = message.toLowerCase();
+  const transientNeedles = [
+    "internal error",
+    "try again",
+    "retry",
+    "timeout",
+    "timed out",
+    "temporar",          // temporary / temporarily
+    "overload",          // overloaded
+    "rate limit",
+    "too many request",
+    "service unavailable",
+    "server error",
+    "bad gateway",
+    "gateway time",
+    "capacity",
+    "busy",
+    "please wait",
+    "unavailable",
+    "502",
+    "503",
+    "504",
+  ];
+  // Some messages are hard failures even if they contain a generic word — never retry these.
+  const hardNeedles = [
+    "file type not supported",
+    "content policy",
+    "safety",
+    "moderation",
+    "nsfw",
+    "invalid",
+    "not allowed",
+    "unsupported",
+    "billing",
+    "insufficient",
+    "quota exceeded",
+  ];
+  if (hardNeedles.some((n) => m.includes(n))) return false;
+  return transientNeedles.some((n) => m.includes(n));
+}
+
 function retryDelayMs(attempt: number, retryAfterHeader: string | null, status?: number): number {
   const retryAfterSeconds = retryAfterHeader ? Number.parseInt(retryAfterHeader, 10) : NaN;
   if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) return retryAfterSeconds * 1000;
@@ -342,7 +391,7 @@ async function kieCreateTaskWithRetry(
 
 type KiePollResult =
   | { ok: true; url: string; polls: number; lastState: string }
-  | { ok: false; status: number; error: string; debug?: unknown; polls: number; lastState: string };
+  | { ok: false; status: number; error: string; debug?: unknown; polls: number; lastState: string; transient: boolean };
 
 async function kieRecordInfo(taskId: string, signal: AbortSignal | undefined) {
   const url = `${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`;
@@ -386,7 +435,7 @@ async function kiePollForResultUrl({
     const jitter = Math.floor(Math.random() * Math.min(500, Math.max(50, pollDelayMs / 4)));
     await sleep(pollDelayMs + jitter, signal);
     if (signal?.aborted) {
-      return { ok: false, status: 499, error: "Request cancelled", polls: pollCount, lastState };
+      return { ok: false, status: 499, error: "Request cancelled", polls: pollCount, lastState, transient: false };
     }
 
     pollCount++;
@@ -405,7 +454,15 @@ async function kiePollForResultUrl({
       }
 
       const msg = json?.message || json?.msg || `${label} query failed`;
-      return { ok: false, status: 502, error: msg, debug: json || null, polls: pollCount, lastState };
+      return {
+        ok: false,
+        status: 502,
+        error: msg,
+        debug: json || null,
+        polls: pollCount,
+        lastState,
+        transient: isTransientFailMessage(msg),
+      };
     }
 
     const { urls, parseError } = extractKieResultUrls(json?.data?.resultJson);
@@ -429,12 +486,21 @@ async function kiePollForResultUrl({
         debug: { taskId, state: lastState },
         polls: pollCount,
         lastState,
+        transient: true, // success state but unparseable payload — a fresh task usually returns clean JSON
       };
     }
 
     if (isKieFailState(lastState)) {
-      const failMsg = json?.data?.failMsg || `${label} reported failure`;
-      return { ok: false, status: 502, error: failMsg, polls: pollCount, lastState };
+      const failMsg = json?.data?.failMsg || json?.data?.failureReason || `${label} reported failure`;
+      return {
+        ok: false,
+        status: 502,
+        error: failMsg,
+        debug: { taskId, state: lastState, failMsg },
+        polls: pollCount,
+        lastState,
+        transient: isTransientFailMessage(failMsg),
+      };
     }
 
     if (pollDelayMs > initialDelayMs) {
@@ -448,7 +514,99 @@ async function kiePollForResultUrl({
     error: `${label} generation timed out (last state: ${lastState})`,
     polls: pollCount,
     lastState,
+    // A stuck task can free up on a fresh submission, but only retry if we still
+    // have wall-clock budget — runKieTask enforces that.
+    transient: true,
   };
+}
+
+type RunKieResult =
+  | { ok: true; url: string }
+  | { ok: false; status: number; error: string; debug?: unknown };
+
+/**
+ * Resilient KIE task runner: creates a task and polls for the result, and on a
+ * TRANSIENT failure (e.g. "Internal Error, Please try again later.", overloads,
+ * malformed payloads, or a stuck task that timed out) it recreates the task and
+ * retries the whole cycle with backoff — bounded by a wall-clock budget so total
+ * time stays safely under the route's maxDuration.
+ *
+ * This is the single point that turns intermittent upstream 502s into successes.
+ */
+async function runKieTask({
+  payload,
+  signal,
+  label,
+  pollMaxMs,
+  maxAttempts = 3,
+  totalBudgetMs = 720_000, // keep under maxDuration (800s) with margin
+  logEvery = 0,
+}: {
+  payload: any;
+  signal: AbortSignal | undefined;
+  label: string;
+  pollMaxMs: number;
+  maxAttempts?: number;
+  totalBudgetMs?: number;
+  logEvery?: number;
+}): Promise<RunKieResult> {
+  const startedAt = Date.now();
+  let last: { status: number; error: string; debug?: unknown } = {
+    status: 502,
+    error: `${label} failed`,
+  };
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (signal?.aborted) return { ok: false, status: 499, error: "Request cancelled" };
+
+    const elapsed = Date.now() - startedAt;
+    const remaining = totalBudgetMs - elapsed;
+    // Need enough headroom to create + poll meaningfully; otherwise stop retrying.
+    if (attempt > 1 && remaining < 20_000) {
+      console.warn(`[${label}] out of retry budget after attempt ${attempt - 1} (remaining=${remaining}ms)`);
+      break;
+    }
+
+    // 1) create task (kieCreateTaskWithRetry already retries transient create errors internally)
+    const create = await kieCreateTaskWithRetry(payload, signal, label);
+    if (!create.taskId) {
+      const msg = create.createJson?.message || create.createJson?.msg || `${label} createTask failed`;
+      last = { status: create.transient ? 503 : 502, error: msg, debug: create.createJson || null };
+      const retryable = create.transient || isTransientFailMessage(msg);
+      if (retryable && attempt < maxAttempts) {
+        const delay = Math.min(8_000, 1_000 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
+        console.warn(`[${label}] create failed (attempt ${attempt}/${maxAttempts}); retrying whole task in ${delay}ms — ${msg}`);
+        await sleep(delay, signal);
+        continue;
+      }
+      return { ok: false, ...last };
+    }
+
+    // 2) poll, capping this attempt's poll window to the remaining wall-clock budget
+    const thisPollMs = Math.max(15_000, Math.min(pollMaxMs, totalBudgetMs - (Date.now() - startedAt) - 5_000));
+    const poll = await kiePollForResultUrl({
+      taskId: create.taskId,
+      signal,
+      label,
+      maxMs: thisPollMs,
+      logEvery,
+    });
+
+    if (poll.ok) return { ok: true, url: poll.url };
+
+    last = { status: poll.status, error: poll.error, debug: poll.debug ?? null };
+    if (poll.transient && attempt < maxAttempts) {
+      const delay = Math.min(8_000, 1_200 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
+      console.warn(
+        `[${label}] task ${create.taskId} failed transiently (attempt ${attempt}/${maxAttempts}); recreating in ${delay}ms — ${poll.error}`
+      );
+      await sleep(delay, signal);
+      continue;
+    }
+    return { ok: false, ...last };
+  }
+
+  return { ok: false, ...last };
 }
 
 async function fetchImageAsBase64(url: string): Promise<{ mime: string; base64: string }> {
@@ -822,7 +980,9 @@ export async function POST(req: Request) {
       const gpt2Opts = normalizeGpt2();
 
       if (OPENAI_API_KEY) {
-        const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+        // maxRetries: the SDK auto-retries 408/409/429/5xx with backoff (covers transient OpenAI errors).
+        // timeout: stay under the route maxDuration so a hung request still returns a clean error.
+        const openai = new OpenAI({ apiKey: OPENAI_API_KEY, maxRetries: 3, timeout: 720_000 });
         const baseParams = {
           model: "gpt-image-2",
           prompt,
@@ -838,28 +998,66 @@ export async function POST(req: Request) {
         } as any;
 
         let imageBase64: string | undefined;
+        let stage: "fetch-refs" | "openai-edit" | "openai-generate" = "openai-generate";
 
-        if (referenceUrls.length > 0) {
-          const uploads = await Promise.all(
-            referenceUrls.map(async (url, index) => {
-              const { mime, base64 } = await fetchImageAsBase64(url);
-              return toFile(
-                Buffer.from(base64, "base64"),
-                `reference-${index + 1}.${mimeToExtension(mime)}`,
-                { type: mime }
-              );
-            })
+        try {
+          if (referenceUrls.length > 0) {
+            stage = "fetch-refs";
+            const uploads = await Promise.all(
+              referenceUrls.map(async (url, index) => {
+                const { mime, base64 } = await fetchImageAsBase64(url);
+                return toFile(
+                  Buffer.from(base64, "base64"),
+                  `reference-${index + 1}.${mimeToExtension(mime)}`,
+                  { type: mime }
+                );
+              })
+            );
+
+            const totalBytes = uploads.reduce((sum, f: any) => sum + (f?.size || 0), 0);
+            console.log(
+              `[GPT Image 2] edit: ${uploads.length} refs, ~${(totalBytes / 1024 / 1024).toFixed(2)} MB total`
+            );
+
+            stage = "openai-edit";
+            const result = await openai.images.edit({
+              ...baseParams,
+              image: uploads,
+            } as any);
+
+            imageBase64 = result.data?.[0]?.b64_json;
+          } else {
+            stage = "openai-generate";
+            const result = await openai.images.generate(baseParams as any);
+            imageBase64 = result.data?.[0]?.b64_json;
+          }
+        } catch (err: any) {
+          const cause = err?.cause;
+          const debug = {
+            stage,
+            name: err?.name,
+            message: err?.message,
+            code: err?.code ?? cause?.code,
+            status: err?.status,
+            type: err?.type,
+            cause: cause
+              ? { name: cause?.name, message: cause?.message, code: cause?.code, errno: cause?.errno }
+              : undefined,
+            openaiError: err?.error ?? undefined,
+            requestId: err?.request_id ?? err?.requestID,
+          };
+          console.error("[GPT Image 2] OpenAI call failed:", JSON.stringify(debug, null, 2));
+          const status =
+            typeof err?.status === "number" && err.status >= 400 && err.status < 600 ? err.status : 502;
+          return NextResponse.json(
+            {
+              error: `[${stage}] ${err?.message || "OpenAI call failed"}${
+                cause?.message ? ` (cause: ${cause.message})` : ""
+              }`,
+              debug,
+            },
+            { status }
           );
-
-          const result = await openai.images.edit({
-            ...baseParams,
-            image: uploads,
-          } as any);
-
-          imageBase64 = result.data?.[0]?.b64_json;
-        } else {
-          const result = await openai.images.generate(baseParams as any);
-          imageBase64 = result.data?.[0]?.b64_json;
         }
 
         if (!imageBase64) {
@@ -909,28 +1107,22 @@ export async function POST(req: Request) {
             },
           };
 
-      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
-      if (!taskId) {
-        const msg = createJson?.message || createJson?.msg || `${modeLabel} createTask failed`;
-        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
-      }
-
-      const poll = await kiePollForResultUrl({
-        taskId,
+      const result = await runKieTask({
+        payload,
         signal: req.signal,
         label: modeLabel,
-        maxMs: 300_000,
+        pollMaxMs: 300_000,
       });
 
-      if (!poll.ok) {
+      if (!result.ok) {
         return NextResponse.json(
-          { error: poll.error, debug: poll.debug ?? null },
-          { status: poll.status }
+          { error: result.error, debug: result.debug ?? null },
+          { status: result.status }
         );
       }
 
       await logUsage(profileId, modelId);
-      return NextResponse.json({ imageDataUrl: poll.url });
+      return NextResponse.json({ imageDataUrl: result.url });
     }
 
     /* -------- GPT Image 1.5 via KIE (auto-switch: text-to-image or image-to-image) -------- */
@@ -985,28 +1177,22 @@ export async function POST(req: Request) {
             },
           };
 
-      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
-      if (!taskId) {
-        const msg = createJson?.message || createJson?.msg || `${modeLabel} createTask failed`;
-        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
-      }
-
-      const poll = await kiePollForResultUrl({
-        taskId,
+      const result = await runKieTask({
+        payload,
         signal: req.signal,
         label: modeLabel,
-        maxMs: 300_000,
+        pollMaxMs: 300_000,
       });
 
-      if (!poll.ok) {
+      if (!result.ok) {
         return NextResponse.json(
-          { error: poll.error, debug: poll.debug ?? null },
-          { status: poll.status }
+          { error: result.error, debug: result.debug ?? null },
+          { status: result.status }
         );
       }
 
       await logUsage(profileId, modelId);
-      return NextResponse.json({ imageDataUrl: poll.url });
+      return NextResponse.json({ imageDataUrl: result.url });
     }
 
     /* -------- Seedream 4.5 (auto-switch: text-to-image or edit) -------- */
@@ -1061,29 +1247,21 @@ export async function POST(req: Request) {
 
       const modeLabel = useEditMode ? "Seedream 4.5 Edit" : "Seedream 4.5";
 
-      // 1) create task
-      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
-      if (!taskId) {
-        const msg = createJson?.message || createJson?.msg || `${modeLabel} createTask failed`;
-        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
-      }
-
-      // 2) poll recordInfo
-      const poll = await kiePollForResultUrl({
-        taskId,
+      const result = await runKieTask({
+        payload,
         signal: req.signal,
         label: modeLabel,
-        maxMs: 300_000,
+        pollMaxMs: 300_000,
       });
 
-      if (!poll.ok) {
+      if (!result.ok) {
         return NextResponse.json(
-          { error: poll.error, debug: poll.debug ?? null },
-          { status: poll.status }
+          { error: result.error, debug: result.debug ?? null },
+          { status: result.status }
         );
       }
       await logUsage(profileId, modelId);
-      return NextResponse.json({ imageDataUrl: poll.url });
+      return NextResponse.json({ imageDataUrl: result.url });
     }
 
     /* -------- Seedream Edit (KIE) -------- */
@@ -1116,29 +1294,21 @@ export async function POST(req: Request) {
         },
       };
 
-      // 1) create task
-      const { taskId, createJson, transient } = await kieCreateTaskWithRetry(payload, req.signal, "Seedream");
-      if (!taskId) {
-        const msg = createJson?.message || createJson?.msg || "Seedream createTask failed";
-        return NextResponse.json({ error: msg, debug: createJson || null }, { status: transient ? 503 : 502 });
-      }
-
-      // 2) poll recordInfo
-      const poll = await kiePollForResultUrl({
-        taskId,
+      const result = await runKieTask({
+        payload,
         signal: req.signal,
         label: "Seedream",
-        maxMs: 300_000,
+        pollMaxMs: 300_000,
       });
 
-      if (!poll.ok) {
+      if (!result.ok) {
         return NextResponse.json(
-          { error: poll.error, debug: poll.debug ?? null },
-          { status: poll.status }
+          { error: result.error, debug: result.debug ?? null },
+          { status: result.status }
         );
       }
       await logUsage(profileId, modelId);
-      return NextResponse.json({ imageDataUrl: poll.url });
+      return NextResponse.json({ imageDataUrl: result.url });
     }
 
     /* -------- Nano Banana 2 via KIE -------- */
@@ -1194,26 +1364,20 @@ export async function POST(req: Request) {
 
       const modeLabel = httpRefs.length > 0 ? "Nano Banana 2 Image-to-Image" : "Nano Banana 2";
 
-      const createResult = await kieCreateTaskWithRetry(payload, req.signal, modeLabel);
-      if (!createResult.taskId) {
-        const msg = createResult.createJson?.message || createResult.createJson?.msg || "Nano Banana 2 createTask failed";
-        return NextResponse.json({ error: msg, debug: createResult.createJson || null }, { status: createResult.transient ? 503 : 502 });
-      }
-
-      const poll = await kiePollForResultUrl({
-        taskId: createResult.taskId,
+      const result = await runKieTask({
+        payload,
         signal: req.signal,
         label: modeLabel,
-        maxMs: 600_000,
+        pollMaxMs: 600_000,
         logEvery: 10,
       });
 
-      if (!poll.ok) {
-        return NextResponse.json({ error: poll.error, debug: poll.debug ?? null }, { status: poll.status });
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error, debug: result.debug ?? null }, { status: result.status });
       }
 
       await logUsage(profileId, modelId);
-      return NextResponse.json({ imageDataUrl: poll.url });
+      return NextResponse.json({ imageDataUrl: result.url });
     }
 
     /* -------- Nano Banana via KIE -------- */
@@ -1297,39 +1461,22 @@ export async function POST(req: Request) {
 
       console.log("[Nano Banana KIE] Final payload:", JSON.stringify(payload, null, 2));
 
-      const createResult = await kieCreateTaskWithRetry(payload, req.signal, "Nano Banana");
-      const createJson = createResult.createJson;
-      console.log("[Nano Banana] createTask response:", JSON.stringify(createJson, null, 2));
-      if (!createResult.taskId) {
-        const msg = createJson?.message || createJson?.msg || "Nano Banana createTask failed";
-        console.error("Nano Banana createTask error", { status: createResult.status, body: createJson });
-        return NextResponse.json({ error: msg, debug: createJson || null }, { status: createResult.transient ? 503 : 502 });
-      }
-      const taskId = createResult.taskId;
-
-      console.log(`[Nano Banana] Task ${taskId} created, starting poll loop`);
-
-      const poll = await kiePollForResultUrl({
-        taskId,
+      const result = await runKieTask({
+        payload,
         signal: req.signal,
         label: "Nano Banana",
-        maxMs: 600_000,
+        pollMaxMs: 600_000,
         logEvery: 10,
       });
 
-      if (!poll.ok) {
-        if (poll.status === 504) {
-          console.error(
-            `[Nano Banana] Task ${taskId} TIMED OUT after ${poll.polls} polls, lastState=${poll.lastState}`
-          );
-        }
+      if (!result.ok) {
         return NextResponse.json(
-          { error: poll.error, debug: poll.debug ?? null },
-          { status: poll.status }
+          { error: result.error, debug: result.debug ?? null },
+          { status: result.status }
         );
       }
       await logUsage(profileId, modelId);
-      return NextResponse.json({ imageDataUrl: poll.url });
+      return NextResponse.json({ imageDataUrl: result.url });
     }
 
     return NextResponse.json({ error: "Unsupported model" }, { status: 400 });

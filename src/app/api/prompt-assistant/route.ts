@@ -3,6 +3,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+// LLM prompt expansion can take 10-30s; the platform default (~10-15s) would cut it off.
+export const maxDuration = 60;
 
 // --- Smart Fallback Logic (Simulates AI when no keys are present) ---
 
@@ -301,7 +304,7 @@ REQUIREMENTS:
     // 2. OpenAI
     if (process.env.OPENAI_API_KEY) {
       try {
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 2, timeout: 50_000 });
         const textPrompt = `You are a professional Prompt Engineer. Generate ${promptCount} distinct, detailed, and descriptive image prompts based on the user's description.
 
 STYLE GUIDE / KNOWLEDGE (apply implicitly):
@@ -444,7 +447,7 @@ async function makeAssistantReply({
 
   if (provider === "openai" && process.env.OPENAI_API_KEY) {
     try {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, maxRetries: 2, timeout: 50_000 });
       const historyText = thread.slice(-6).map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
       const userParts: any[] = [
         { type: "text", text: `Instructions: ${instructions}\nKnowledge: ${knowledge}\nCount: ${prompts.length}\nHistory:\n${historyText || "None"}` },

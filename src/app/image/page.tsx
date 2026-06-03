@@ -1686,15 +1686,15 @@ export default function ImageStudioPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black p-4 lg:p-6 relative">
+    <div className="min-h-screen bg-canvas p-3 sm:p-4 lg:p-6 relative">
       <div className="mx-auto max-w-[1800px]">
         <div className="mb-6 flex items-center justify-between">
            <div className="flex items-center gap-3">
-               <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Image Studio</h1>
-               <div className="h-4 w-px bg-slate-200 dark:bg-slate-800" />
-               <div className="flex gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+               <h1 className="font-display text-2xl font-bold text-ink tracking-tight">Image Studio</h1>
+               <div className="hidden sm:block h-4 w-px bg-line" />
+               <div className="hidden sm:flex gap-1.5 text-xs font-medium text-ink-3">
                    <span>Runs: {runs.length}</span>
-                   <span className="text-slate-300 dark:text-slate-600">|</span>
+                   <span className="text-line-strong">|</span>
                    <span>Active: {runs.filter(r => r.status === "running").length}</span>
                </div>
            </div>
@@ -1703,12 +1703,11 @@ export default function ImageStudioPage() {
            </Link>
         </div>
 
-        {/* Grid Layout Update: Wider Center Column & Prompt Zone */}
+        {/* Responsive studio grid: stacks on mobile/tablet, 3-column on xl+ with a
+            resizable middle column (driven by the --prompt-col CSS variable). */}
         <div
-          className="grid gap-6 items-start grid-cols-1"
-          style={{
-            gridTemplateColumns: `340px ${promptColumnWidth}px minmax(0,1fr)`
-          }}
+          className="grid gap-4 lg:gap-6 items-start grid-cols-1 xl:[grid-template-columns:320px_var(--prompt-col)_minmax(0,1fr)]"
+          style={{ ["--prompt-col" as any]: `${promptColumnWidth}px` }}
         >
           
           {/* Column 1: Configuration */}
@@ -2109,10 +2108,10 @@ export default function ImageStudioPage() {
           </div>
 
           {/* Column 2: Creation */}
-          <div className="relative flex flex-col gap-6 h-[calc(100vh-120px)]">
-            {/* Resize Handle */}
+          <div className="relative flex flex-col gap-6 min-h-[520px] xl:h-[calc(100vh-120px)]">
+            {/* Resize Handle — only meaningful in the xl 3-column layout */}
             <div
-              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 group"
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 group hidden xl:block"
               style={{ transform: "translateX(50%)" }}
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -2187,7 +2186,7 @@ export default function ImageStudioPage() {
                     <button
                         onClick={onGenerateNewRun}
                         disabled={!canStartRun}
-                        className="px-7 py-2.5 bg-slate-900 dark:bg-slate-50 text-white dark:text-slate-900 text-sm font-semibold rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+                        className="px-7 py-2.5 bg-brand text-on-brand text-sm font-semibold rounded-lg hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
                     >
                         Start Generation
                     </button>
@@ -2196,7 +2195,7 @@ export default function ImageStudioPage() {
           </div>
 
           {/* Column 3: Feed / Results */}
-          <div className="flex flex-col gap-4 h-[calc(100vh-120px)]">
+          <div className="flex flex-col gap-4 min-h-[520px] xl:h-[calc(100vh-120px)]">
             {/* Active Run Card */}
             {activeRun ? (
                  <div className="flex flex-col flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">

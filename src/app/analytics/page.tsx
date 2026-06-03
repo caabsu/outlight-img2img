@@ -62,7 +62,7 @@ export default function AnalyticsPage() {
   }, [data]);
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] dark:bg-black">
+    <div className="min-h-screen bg-canvas">
       <div className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-6 flex items-center justify-between">
           <div>

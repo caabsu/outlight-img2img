@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Outlight — Direction C · Atelier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@300..700&display=swap" rel="stylesheet" />
+<style>
+  /* ============ DIRECTION C — "ATELIER" ============
+     Warm, tactile, premium. Cream + clay + evergreen. Soft depth, generous
+     rounding, humanist type. Approachable studio that feels handcrafted. */
+  :root {
+    --bg:      #f7f3ec;
+    --bg-2:    #efe9df;
+    --card:    #fffdf9;
+    --card-2:  #f3eee5;
+    --ink:     #2a2620;
+    --ink-2:   #6f675b;
+    --ink-3:   #a89e8f;
+    --line:    #e7dfd1;
+    --accent:  #2f5d4a;     /* deep evergreen */
+    --accent-2:#3d7a60;
+    --accent-soft:#e2ece5;
+    --clay:    #c1664a;     /* secondary warm */
+    --gold:    #d99a3c;
+    --radius:  20px;
+    --radius-s:13px;
+    --shadow:  0 1px 2px rgba(60,45,25,.04), 0 14px 30px -16px rgba(70,52,28,.18);
+    --shadow-l:0 2px 4px rgba(60,45,25,.05), 0 30px 60px -24px rgba(70,52,28,.28);
+  }
+  [data-theme="dark"] {
+    --bg:      #15161300;
+    --bg:      #141513;
+    --bg-2:    #1c1d19;
+    --card:    #1d1f1a;
+    --card-2:  #232520;
+    --ink:     #f1ede3;
+    --ink-2:   #b3ac9d;
+    --ink-3:   #79736655;
+    --ink-3:   #7d7768;
+    --line:    #2e302a;
+    --accent:  #6fb38f;
+    --accent-2:#82c4a1;
+    --accent-soft:#1f2e26;
+    --clay:    #e08a6a;
+    --shadow:  0 1px 2px rgba(0,0,0,.3), 0 16px 34px -18px rgba(0,0,0,.6);
+    --shadow-l:0 2px 4px rgba(0,0,0,.4), 0 34px 64px -26px rgba(0,0,0,.7);
+  }
+  * { box-sizing: border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Hanken Grotesk", system-ui, sans-serif; font-size: 14px; line-height:1.55;
+    -webkit-font-smoothing: antialiased;
+    background-image: radial-gradient(circle at 12% 8%, color-mix(in srgb,var(--gold) 8%, transparent), transparent 30%),
+                      radial-gradient(circle at 92% 95%, color-mix(in srgb,var(--accent) 9%, transparent), transparent 32%);
+  }
+  .display { font-family:"Bricolage Grotesque", sans-serif; }
+  .app { min-height:100vh; display:flex; flex-direction:column; }
+
+  header { padding: 16px 26px; display:flex; align-items:center; justify-content:space-between; }
+  .brand { display:flex; align-items:center; gap:14px; }
+  .mark { width:40px;height:40px; border-radius:14px; background: linear-gradient(145deg,var(--accent),var(--accent-2));
+    color:#fff; display:grid; place-items:center; font-family:"Bricolage Grotesque"; font-weight:800; font-size:20px; box-shadow: var(--shadow); }
+  .brand-name { font-family:"Bricolage Grotesque"; font-weight:700; font-size:19px; letter-spacing:-.02em; }
+  .navwrap { background: var(--card); border:1px solid var(--line); border-radius:99px; padding:5px; display:flex; gap:2px; box-shadow: var(--shadow); }
+  nav a { text-decoration:none; color: var(--ink-2); font-size:13.5px; font-weight:600; padding:8px 16px; border-radius:99px; transition:.15s; }
+  nav a:hover { color: var(--ink); background: var(--card-2); }
+  nav a.active { color:#fff; background: var(--accent); box-shadow: 0 6px 14px -6px color-mix(in srgb,var(--accent) 60%,transparent); }
+  .hr { display:flex; align-items:center; gap:12px; }
+  .stat { background: var(--card); border:1px solid var(--line); border-radius:99px; padding:8px 15px; font-size:12.5px; color:var(--ink-2); display:flex; gap:8px; align-items:center; box-shadow: var(--shadow); }
+  .dot { width:7px;height:7px;border-radius:50%; background: var(--clay); box-shadow:0 0 0 4px color-mix(in srgb,var(--clay) 20%,transparent); }
+  .tt { background: var(--card); border:1px solid var(--line); border-radius:99px; padding:4px; display:flex; box-shadow:var(--shadow); }
+  .tt button { border:0;background:transparent;border-radius:99px;padding:6px 13px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--ink-2); font-family:inherit;}
+  .tt button.on { background: var(--accent); color:#fff; }
+
+  .studio { flex:1; display:grid; gap:18px; padding: 8px 26px 28px; max-width: 1740px; margin:0 auto; width:100%;
+    grid-template-columns: 320px minmax(0,1fr) 372px; align-items:start; }
+  @media (max-width:1280px){ .studio { grid-template-columns: 300px minmax(0,1fr);} .feed{ grid-column:1/-1;} }
+  @media (max-width:860px){ .studio { grid-template-columns:1fr; padding:8px 16px 24px;} }
+
+  .col { display:flex; flex-direction:column; gap:18px; min-width:0; }
+  .card { background: var(--card); border:1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 20px; }
+  .label { font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color: var(--ink-3); margin-bottom:14px; display:flex; align-items:center; gap:8px;}
+  .label .ic { width:18px;height:18px; border-radius:7px; background: var(--accent-soft); color: var(--accent); display:grid;place-items:center; font-size:11px; }
+
+  .models { display:flex; flex-direction:column; gap:9px; }
+  .model { display:flex; align-items:center; gap:12px; padding:12px 13px; border-radius: var(--radius-s); border:1.5px solid var(--line);
+    cursor:pointer; transition:.15s; }
+  .model:hover { border-color: var(--accent-2); transform: translateY(-1px); box-shadow: var(--shadow); }
+  .model.sel { border-color: var(--accent); background: var(--accent-soft); }
+  .model .av { width:38px;height:38px;border-radius:11px; display:grid;place-items:center; font-family:"Bricolage Grotesque"; font-weight:700; color:#fff; flex-shrink:0; }
+  .av.a{background:linear-gradient(145deg,#2f5d4a,#3d7a60);} .av.b{background:linear-gradient(145deg,#c1664a,#d4825f);}
+  .av.c{background:linear-gradient(145deg,#3a5a86,#4f78ad);} .av.d{background:linear-gradient(145deg,#7a6aa0,#9485bd);}
+  .model .nm { font-weight:700; font-size:14px; }
+  .model .sub { font-size:11.5px; color: var(--ink-2); }
+  .model .ver { margin-left:auto; font-size:11px; font-weight:600; color:var(--ink-3); background: var(--card-2); padding:3px 9px; border-radius:99px; }
+  .model.sel .ver { color: var(--accent); background: color-mix(in srgb,var(--accent) 14%, transparent); }
+
+  .opts { display:grid; grid-template-columns:1fr 1fr; gap:11px; margin-top:16px; padding-top:16px; border-top:1px solid var(--line); }
+  .field label { display:block; font-size:11.5px; font-weight:600; color: var(--ink-2); margin-bottom:6px; }
+  .field select { width:100%; background: var(--card-2); border:1.5px solid var(--line); border-radius: 11px; padding:10px 12px;
+    font-family:inherit; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; }
+  .field select:focus { outline:none; border-color: var(--accent); }
+
+  .drop { border:2px dashed var(--line); border-radius: var(--radius-s); padding:22px; text-align:center; color:var(--ink-2); font-size:13px; cursor:pointer; transition:.15s;}
+  .drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .drop b { color: var(--accent); }
+  .refs { display:flex; gap:10px; margin-top:13px; }
+  .ref { width:58px;height:58px;border-radius:13px; box-shadow: var(--shadow); }
+  .ref.g1{ background:linear-gradient(145deg,#d9a35a,#c1664a);} .ref.g2{ background:linear-gradient(145deg,#3d7a60,#2f5d4a);}
+
+  /* composer */
+  .composer .card { display:flex; flex-direction:column; }
+  .composer-h { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px; gap:14px; flex-wrap:wrap; }
+  .composer-h h2 { font-family:"Bricolage Grotesque"; font-size:24px; font-weight:700; letter-spacing:-.02em; }
+  .composer-h p { color: var(--ink-2); font-size:13px; margin-top:2px; }
+  .tools { display:flex; gap:8px; }
+  .chip { background: var(--card-2); border:1px solid var(--line); border-radius:99px; padding:8px 14px; font-size:12.5px; font-weight:600; color:var(--ink-2); cursor:pointer; transition:.15s; display:flex; gap:7px; align-items:center;}
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip.primary { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+  textarea { width:100%; flex:1; min-height: 330px; resize:none; border:1.5px solid var(--line); background: var(--card-2);
+    border-radius: var(--radius-s); padding:18px; font-family:inherit; font-size:15.5px; line-height:1.65; color:var(--ink); }
+  textarea:focus { outline:none; border-color: var(--accent); background: var(--card); }
+  textarea::placeholder { color: var(--ink-3); }
+  .cfoot { margin-top:18px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  .batch { display:flex; align-items:center; gap:11px; }
+  .batch span { font-size:13px; font-weight:600; color: var(--ink-2); }
+  .stepper { display:flex; align-items:center; background: var(--card-2); border:1.5px solid var(--line); border-radius:99px; }
+  .stepper button { width:38px;height:42px;border:0;background:transparent; color:var(--ink-2); font-size:18px; cursor:pointer; border-radius:99px;}
+  .stepper button:hover { color: var(--accent); }
+  .stepper .v { width:34px; text-align:center; font-weight:700; }
+  .go { flex:1; min-width:220px; border:0; cursor:pointer; border-radius:99px; padding:16px 26px; font-family:"Bricolage Grotesque"; font-weight:700;
+    font-size:16px; color:#fff; background: linear-gradient(145deg,var(--accent),var(--accent-2));
+    box-shadow: 0 14px 30px -12px color-mix(in srgb,var(--accent) 60%,transparent); display:flex; align-items:center; justify-content:center; gap:11px; transition:transform .12s;}
+  .go:hover { transform: translateY(-2px); }
+
+  /* feed */
+  .feed .card { padding:0; overflow:hidden; }
+  .feed-h { padding:18px 20px; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--line); }
+  .feed-h h3 { font-family:"Bricolage Grotesque"; font-size:16px; font-weight:700; display:flex; gap:10px; align-items:center;}
+  .feed-h .seg { display:flex; background: var(--card-2); border-radius:99px; padding:3px; }
+  .feed-h .seg button { border:0;background:transparent;border-radius:99px;padding:6px 13px;font-size:12px;font-weight:600;color:var(--ink-2);cursor:pointer;font-family:inherit;}
+  .feed-h .seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+  .feed-b { padding:18px; display:flex; flex-direction:column; gap:18px; max-height: calc(100vh - 200px); overflow:auto; }
+  .run { border:1px solid var(--line); border-radius: var(--radius-s); overflow:hidden; background: var(--bg); }
+  .run.active { border-color: color-mix(in srgb,var(--accent) 45%,var(--line)); box-shadow: var(--shadow); }
+  .run-h { padding:12px 14px; display:flex; align-items:center; justify-content:space-between; }
+  .run-h .l { font-size:13px; font-weight:700; display:flex; gap:9px; align-items:center;}
+  .run-h .m { font-size:11.5px; color:var(--ink-2); font-weight:600;}
+  .badge { font-size:10.5px; font-weight:700; padding:3px 9px; border-radius:99px; }
+  .badge.run-b { background: color-mix(in srgb,var(--gold) 18%,transparent); color: var(--gold); }
+  .badge.done-b { background: var(--accent-soft); color: var(--accent); }
+  .g2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:0 12px 12px; }
+  .tile { aspect-ratio:1; border-radius:12px; overflow:hidden; position:relative; box-shadow: var(--shadow);}
+  .t1{background:linear-gradient(145deg,#d9a35a,#c1664a 60%,#e0b878);} .t2{background:linear-gradient(145deg,#3d7a60,#2f5d4a);}
+  .t3{background:linear-gradient(145deg,#c1664a,#a04a32);} .t4{background:linear-gradient(145deg,#4f78ad,#3a5a86);}
+  .tile.load{ background: var(--card-2); }
+  .tile.load::after{ content:""; position:absolute; inset:0; background:linear-gradient(100deg,transparent 30%,color-mix(in srgb,var(--accent) 13%,transparent) 50%,transparent 70%); animation:sh 1.5s infinite;}
+  @keyframes sh{ to{ transform:translateX(100%);}}
+  .tile .ov { position:absolute; inset:auto 0 0 0; padding:8px; display:flex; gap:6px; justify-content:flex-end; opacity:0; transition:.15s; background:linear-gradient(transparent,rgba(0,0,0,.35));}
+  .tile:hover .ov { opacity:1; }
+  .tile .ov button { border:0; background:rgba(255,255,255,.85); width:28px;height:28px;border-radius:9px; cursor:pointer; backdrop-filter:blur(4px);}
+  .spin { width:13px;height:13px;border:2px solid color-mix(in srgb,var(--gold) 35%,transparent); border-top-color:var(--gold); border-radius:50%; animation:r 1s linear infinite;}
+  @keyframes r{ to{ transform:rotate(360deg);}}
+  .note { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 99;
+    font-size:11.5px; color: var(--ink-2); background: var(--card); border:1px solid var(--line); padding:8px 16px; border-radius:99px; box-shadow: var(--shadow-l); }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="mark">O</div>
+      <div class="brand-name">Outlight</div>
+      <div class="navwrap">
+        <nav>
+          <a class="active" href="#">Image</a>
+          <a href="#">Video</a>
+          <a href="#">UGC</a>
+          <a href="#">Ads</a>
+          <a href="#">Products</a>
+          <a href="#">Library</a>
+        </nav>
+      </div>
+    </div>
+    <div class="hr">
+      <div class="stat"><span class="dot"></span> 2 generating</div>
+      <div class="tt"><button class="on" onclick="st('light')" id="lt">Light</button><button onclick="st('dark')" id="dk">Dark</button></div>
+    </div>
+  </header>
+
+  <div class="studio">
+    <!-- CONFIG -->
+    <div class="col">
+      <div class="card">
+        <div class="label"><span class="ic">◈</span> Model</div>
+        <div class="models">
+          <div class="model sel"><div class="av a">N</div><div><div class="nm">Nano Banana 2</div><div class="sub">Google · scenes</div></div><span class="ver">v2</span></div>
+          <div class="model"><div class="av b">S</div><div><div class="nm">Seedream 4.5</div><div class="sub">ByteDance · photoreal</div></div><span class="ver">4.5</span></div>
+          <div class="model"><div class="av c">G</div><div><div class="nm">GPT Image 2</div><div class="sub">OpenAI · text & UI</div></div><span class="ver">v2</span></div>
+          <div class="model"><div class="av d">P</div><div><div class="nm">Nano Banana Pro</div><div class="sub">Legacy · Gemini 3</div></div><span class="ver">v3</span></div>
+        </div>
+        <div class="opts">
+          <div class="field"><label>Aspect ratio</label><select><option>Square 1:1</option><option>Portrait 4:5</option><option>Wide 16:9</option></select></div>
+          <div class="field"><label>Resolution</label><select><option>2K</option><option>1K</option><option>4K</option></select></div>
+          <div class="field"><label>Format</label><select><option>JPG</option><option>PNG</option></select></div>
+          <div class="field"><label>Web grounding</label><select><option>Off</option><option>On</option></select></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="label"><span class="ic">⌷</span> Context</div>
+        <div class="drop">Drop images here or <b>browse</b><br><span style="font-size:11.5px;color:var(--ink-3)">Up to 14 references</span></div>
+        <div class="refs"><div class="ref g1"></div><div class="ref g2"></div></div>
+      </div>
+    </div>
+
+    <!-- COMPOSER -->
+    <div class="col composer">
+      <div class="card">
+        <div class="composer-h">
+          <div><h2>Compose</h2><p>Describe the scene you want to create</p></div>
+          <div class="tools"><div class="chip primary">✦ Enhance</div><div class="chip">▦ Templates</div></div>
+        </div>
+        <textarea placeholder="Describe your scene…">A comprehensive yet workstation-focused creative studio desk in soft daytime, framed to include the desk and its intentionally styled nook while keeping the setup central — warm, decorated, aesthetic, with one warm table lamp and gentle subdued daylight keeping everything bright and clear. A single opal-glass mushroom table lamp blooms warm at 2700K beside the monitor, its amber pool layering golden warmth over the cool daylight.</textarea>
+        <div class="cfoot">
+          <div class="batch"><span>Batch</span><div class="stepper"><button>−</button><div class="v">4</div><button>+</button></div></div>
+          <button class="go">✦ Generate</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FEED -->
+    <div class="col feed">
+      <div class="card">
+        <div class="feed-h">
+          <h3><span class="spin"></span> Studio feed</h3>
+          <div class="seg"><button class="on">Runs</button><button>Grid</button></div>
+        </div>
+        <div class="feed-b">
+          <div class="run active">
+            <div class="run-h"><div class="l"><span class="spin"></span> Nano Banana 2</div><span class="badge run-b">Generating</span></div>
+            <div class="g2">
+              <div class="tile t1"><div class="ov"><button>↓</button><button>⤢</button></div></div>
+              <div class="tile load"></div><div class="tile load"></div><div class="tile load"></div>
+            </div>
+          </div>
+          <div class="run">
+            <div class="run-h"><div class="l">Seedream 4.5</div><span class="badge done-b">4 / 4 · 41s</span></div>
+            <div class="g2">
+              <div class="tile t2"><div class="ov"><button>↓</button><button>⤢</button></div></div>
+              <div class="tile t3"><div class="ov"><button>↓</button><button>⤢</button></div></div>
+              <div class="tile t4"><div class="ov"><button>↓</button><button>⤢</button></div></div>
+              <div class="tile t1"><div class="ov"><button>↓</button><button>⤢</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note">Direction C · "Atelier" — warm premium · cream + evergreen + clay · Bricolage Grotesque + Hanken Grotesk · soft depth · toggle Light/Dark ↑</div>
+<script>
+  function st(t){ document.documentElement.dataset.theme=t;
+    document.getElementById('lt').classList.toggle('on',t==='light');
+    document.getElementById('dk').classList.toggle('on',t==='dark'); }
+</script>
+</body>
+</html>
