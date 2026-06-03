@@ -33,12 +33,12 @@
 }
 
 .dark {
-  --c-canvas:       20  19  16;
-  --c-canvas-2:     26  25  21;
-  --c-surface:      30  29  23;
-  --c-surface-2:    37  36  29;
-  --c-line:         49  47  39;
-  --c-line-strong:  61  58  48;
+  --c-canvas:       17  16  13;
+  --c-canvas-2:     26  25  20;
+  --c-surface:      33  31  24;
+  --c-surface-2:    43  40  31;
+  --c-line:         58  54  44;
+  --c-line-strong:  78  73  59;
   --c-ink:         241 237 227;
   --c-ink-2:       179 172 156;
   --c-ink-3:       131 124 108;
@@ -123,6 +123,45 @@ button, a, select, input, textarea {
   transition-property: color, background-color, border-color, box-shadow, transform, opacity;
   transition-duration: 150ms;
   transition-timing-function: cubic-bezier(.2, .7, .3, 1);
+}
+
+/* ============================================================
+   Reusable component classes — applied across the Studio so the
+   redesign is structural, not just recolored.
+   ============================================================ */
+@layer components {
+  .ui-card {
+    @apply bg-surface border border-line rounded-2xl;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 30px -18px rgb(20 14 4 / 0.22);
+  }
+  .dark .ui-card { box-shadow: 0 1px 0 rgb(255 255 255 / 0.03) inset, 0 16px 34px -20px rgb(0 0 0 / 0.7); }
+
+  .ui-eyebrow {
+    @apply flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-ink-3;
+  }
+  .ui-eyebrow-ic {
+    @apply grid h-5 w-5 place-items-center rounded-md bg-brand-soft text-brand text-[11px];
+  }
+
+  .ui-field-label { @apply block text-[11px] font-semibold text-ink-2 mb-1.5; }
+
+  .ui-select {
+    @apply w-full h-9 rounded-lg border border-line bg-surface-2 px-3 text-[13px] font-semibold text-ink cursor-pointer transition;
+  }
+  .ui-select:hover { @apply border-line-strong; }
+  .ui-select:focus { @apply border-brand outline-none; box-shadow: 0 0 0 3px rgb(var(--c-brand) / 0.22); }
+
+  .ui-model {
+    @apply flex items-center gap-3 w-full rounded-xl border border-line bg-surface px-3 py-2.5 text-left transition;
+  }
+  .ui-model:hover { @apply border-line-strong bg-surface-2; }
+  .ui-model[data-selected="true"] {
+    @apply border-brand bg-brand-soft;
+    box-shadow: 0 0 0 1px rgb(var(--c-brand) / 0.5);
+  }
+  .ui-avatar {
+    @apply grid h-9 w-9 shrink-0 place-items-center rounded-lg font-display font-bold text-[15px] text-on-brand bg-brand;
+  }
 }
 
 /* Shimmer used by loading tiles */

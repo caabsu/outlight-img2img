@@ -1709,14 +1709,14 @@ export default function ImageStudioPage() {
         >
           
           {/* Column 1: Configuration */}
-          <div className="space-y-3">
-            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
+          <div className="space-y-4">
+            <div className="ui-card p-4">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <div className="ui-eyebrow"><span className="ui-eyebrow-ic">◈</span> Model</div>
                   {isNanoBananaPro && (
                      <button
                        onClick={() => setShowNanoGuide(true)}
-                       className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
+                       className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
                        title="What's new in Nano Banana?"
                      >
                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
@@ -1724,29 +1724,41 @@ export default function ImageStudioPage() {
                      </button>
                    )}
                  </div>
-                 <div className="space-y-1.5">
-                    {MODEL_LIST.map(model => (
-                        <button
-                          key={model.id}
-                          onClick={() => setModelId(model.id)}
-                          className={`w-full flex items-center justify-between px-2 py-1.5 rounded-md border text-left text-xs transition-all ${modelId === model.id
-                              ? "border-indigo-600 dark:border-indigo-500 ring-1 ring-indigo-600 dark:ring-indigo-500 bg-indigo-50/50 dark:bg-indigo-500/10 text-indigo-900 dark:text-indigo-300"
-                              : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300"
-                          }`}
-                        >
-                            <span className="font-medium">{model.label}</span>
-                            <span className="text-[9px] uppercase text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded">{model.version}</span>
-                        </button>
-                    ))}
+                 <div className="space-y-2">
+                    {MODEL_LIST.map(model => {
+                        const blurb = (({
+                          "nanobanana-3-pro": "Gemini 3 · legacy",
+                          "nanobanana-2": "Google · rich scenes",
+                          "seedream-4.5": "ByteDance · photoreal",
+                          "gpt-1.5": "OpenAI · fast & clean",
+                          "gpt-2": "OpenAI · text & UI",
+                        }) as Record<string, string>)[model.id] || model.provider;
+                        const selected = modelId === model.id;
+                        return (
+                          <button
+                            key={model.id}
+                            data-selected={selected}
+                            onClick={() => setModelId(model.id)}
+                            className="ui-model"
+                          >
+                            <span className="ui-avatar" style={{ opacity: selected ? 1 : 0.55 }}>{model.label.charAt(0)}</span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[13.5px] font-bold leading-tight text-ink truncate">{model.label}</span>
+                              <span className="block text-[11.5px] leading-tight text-ink-3 truncate">{blurb}</span>
+                            </span>
+                            <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${selected ? "bg-brand/15 text-brand" : "bg-canvas-2 text-ink-3"}`}>{model.version}</span>
+                          </button>
+                        );
+                    })}
                  </div>
 
                   {isNanoBananaPro && (
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                        <label className="ui-field-label">Aspect</label>
                         <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={nbAspectRatio}
                             onChange={(e) => setNbAspectRatio(e.target.value)}
                         >
@@ -1756,9 +1768,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                        <label className="ui-field-label">Resolution</label>
                          <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={nbResolution}
                             onChange={(e) => setNbResolution(e.target.value)}
                         >
@@ -1775,9 +1787,9 @@ export default function ImageStudioPage() {
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                        <label className="ui-field-label">Aspect</label>
                         <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={nb2AspectRatio}
                             onChange={(e) => setNb2AspectRatio(e.target.value)}
                         >
@@ -1787,9 +1799,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                        <label className="ui-field-label">Resolution</label>
                          <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={nb2Resolution}
                             onChange={(e) => setNb2Resolution(e.target.value)}
                         >
@@ -1801,9 +1813,9 @@ export default function ImageStudioPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Format</label>
+                        <label className="ui-field-label">Format</label>
                         <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={nb2OutputFormat}
                             onChange={(e) => setNb2OutputFormat(e.target.value)}
                         >
@@ -1826,9 +1838,9 @@ export default function ImageStudioPage() {
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                        <label className="ui-field-label">Aspect</label>
                         <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={sd45AspectRatio}
                             onChange={(e) => setSd45AspectRatio(e.target.value)}
                         >
@@ -1838,9 +1850,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                        <label className="ui-field-label">Quality</label>
                          <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1.5 py-1 text-[11px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={sd45Quality}
                             onChange={(e) => setSd45Quality(e.target.value)}
                         >
@@ -1857,9 +1869,9 @@ export default function ImageStudioPage() {
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-2 gap-1.5">
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                      <label className="ui-field-label">Aspect</label>
                       <select
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2AspectRatio}
                         onChange={(e) => setGpt2AspectRatio(e.target.value)}
                       >
@@ -1869,9 +1881,9 @@ export default function ImageStudioPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                      <label className="ui-field-label">Resolution</label>
                       <select
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2Resolution}
                         onChange={(e) => setGpt2Resolution(e.target.value)}
                       >
@@ -1883,9 +1895,9 @@ export default function ImageStudioPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                      <label className="ui-field-label">Quality</label>
                       <select
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2Quality}
                         onChange={(e) => setGpt2Quality(e.target.value)}
                       >
@@ -1895,9 +1907,9 @@ export default function ImageStudioPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">BG</label>
+                      <label className="ui-field-label">BG</label>
                       <select
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2Background}
                         onChange={(e) => setGpt2Background(e.target.value)}
                       >
@@ -1909,9 +1921,9 @@ export default function ImageStudioPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Format</label>
+                      <label className="ui-field-label">Format</label>
                       <select
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2OutputFormat}
                         onChange={(e) => setGpt2OutputFormat(e.target.value)}
                       >
@@ -1921,9 +1933,9 @@ export default function ImageStudioPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Moderation</label>
+                      <label className="ui-field-label">Moderation</label>
                       <select
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2Moderation}
                         onChange={(e) => setGpt2Moderation(e.target.value)}
                       >
@@ -1935,12 +1947,12 @@ export default function ImageStudioPage() {
                   </div>
                   {gpt2OutputFormat !== "png" && (
                     <div>
-                      <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Compression</label>
+                      <label className="ui-field-label">Compression</label>
                       <input
                         type="number"
                         min={0}
                         max={100}
-                        className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                        className="ui-select"
                         value={gpt2OutputCompression}
                         onChange={(e) => {
                           const raw = e.target.value;
@@ -1957,9 +1969,9 @@ export default function ImageStudioPage() {
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-3 gap-1.5">
                     <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Size</label>
+                        <label className="ui-field-label">Size</label>
                         <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={gpt15Size}
                             onChange={(e) => setGpt15Size(e.target.value)}
                         >
@@ -1969,9 +1981,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                      <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">Quality</label>
+                        <label className="ui-field-label">Quality</label>
                          <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={gpt15Quality}
                             onChange={(e) => setGpt15Quality(e.target.value)}
                         >
@@ -1981,9 +1993,9 @@ export default function ImageStudioPage() {
                         </select>
                     </div>
                     <div>
-                        <label className="text-[9px] font-semibold uppercase text-slate-400 dark:text-slate-500">BG</label>
+                        <label className="ui-field-label">BG</label>
                          <select
-                            className="mt-0.5 w-full rounded border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-1 py-1 text-[10px] font-medium text-slate-900 dark:text-slate-100"
+                            className="ui-select"
                             value={gpt15Background}
                             onChange={(e) => setGpt15Background(e.target.value)}
                         >
@@ -1998,7 +2010,7 @@ export default function ImageStudioPage() {
              </div>
 
              <div
-                className={`relative rounded-lg border bg-white dark:bg-slate-900 p-3 shadow-sm transition ${isDraggingRefs ? "border-indigo-500 ring-2 ring-indigo-500/40 bg-indigo-50/40 dark:bg-indigo-500/10" : "border-slate-200 dark:border-slate-800"}`}
+                className={`relative ui-card p-4 transition ${isDraggingRefs ? "border-brand ring-2 ring-brand/40 bg-brand-soft/50" : ""}`}
                 onDragEnter={handleRefsDragEnter}
                 onDragOver={handleRefsDragOver}
                 onDragLeave={handleRefsDragLeave}
@@ -2011,10 +2023,13 @@ export default function ImageStudioPage() {
                        </div>
                     </div>
                  )}
-                 <div className="mb-2 flex items-center justify-between">
-                    <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Context</h2>
+                 <div className="mb-3 flex items-center justify-between">
+                    <div className="ui-eyebrow"><span className="ui-eyebrow-ic">⌷</span> Context</div>
                     {modelRequiresReference && (
-                        <span className={`h-1.5 w-1.5 rounded-full ${hasRefs ? "bg-emerald-500" : "bg-rose-500"}`} />
+                        <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${hasRefs ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-rose-500/15 text-rose-600 dark:text-rose-400"}`}>
+                          <span className={`h-1.5 w-1.5 rounded-full ${hasRefs ? "bg-emerald-500" : "bg-rose-500"}`} />
+                          {hasRefs ? "Ready" : "Needs ref"}
+                        </span>
                     )}
                  </div>
 
@@ -2023,10 +2038,10 @@ export default function ImageStudioPage() {
 
                      {/* References Section */}
                      <div className="space-y-2">
-                        <label className="block text-[10px] font-medium text-slate-600 dark:text-slate-400">Reference Images</label>
+                        <label className="ui-field-label">Reference Images</label>
 
                              <input
-                                className="w-full rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1.5 text-[11px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                                className="w-full h-9 rounded-lg border border-line bg-surface-2 px-3 text-[13px] text-ink placeholder:text-ink-3 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25"
                                 placeholder="Paste image URL..."
                                 value={customUrl}
                                 onChange={(e) => setCustomUrl(e.target.value)}
@@ -2145,11 +2160,14 @@ export default function ImageStudioPage() {
             >
               <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-transparent group-hover:bg-indigo-400 dark:group-hover:bg-indigo-500 transition-colors rounded-full" />
             </div>
-             <div className="flex-1 flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-950/50 rounded-xl">
-                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Prompt Engineering</h2>
-                     <div className="flex items-center gap-2">
-                        <PromptAssistant 
+             <div className="flex-1 flex flex-col ui-card overflow-hidden">
+                <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
+                     <div className="min-w-0">
+                        <h2 className="font-display text-xl font-bold text-ink leading-none">Compose</h2>
+                        <p className="mt-1 text-xs text-ink-3 truncate">One prompt per line · {modelNameDisplay}</p>
+                     </div>
+                     <div className="flex items-center gap-2 shrink-0">
+                        <PromptAssistant
                             onAccept={(newPrompts, mode) => {
                                 if (mode === "replace") {
                                     setPromptsText(newPrompts.join("\n"));
@@ -2168,9 +2186,9 @@ export default function ImageStudioPage() {
                             productName={productName}
                             requiresReference={modelRequiresReference}
                         />
-                         <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
-                         <select 
-                            className="bg-transparent text-xs font-medium text-slate-600 dark:text-slate-400 focus:outline-none dark:bg-slate-900"
+                         <div className="h-5 w-px bg-line" />
+                         <select
+                            className="h-8 rounded-lg border border-line bg-surface-2 px-2.5 text-xs font-semibold text-ink-2 focus:outline-none focus:border-brand cursor-pointer"
                             value={speed}
                             onChange={(e) => setSpeed(Number(e.target.value) as RunSpeed)}
                         >
@@ -2178,20 +2196,23 @@ export default function ImageStudioPage() {
                         </select>
                      </div>
                 </div>
-                <textarea 
-                    className="flex-1 w-full resize-none p-5 text-base outline-none text-slate-700 dark:text-slate-200 placeholder:text-slate-300 dark:placeholder:text-slate-600 font-mono leading-relaxed bg-white dark:bg-slate-900 rounded-lg"
+                <textarea
+                    className="flex-1 w-full resize-none px-5 py-4 text-[15px] outline-none text-ink placeholder:text-ink-3 font-mono leading-relaxed bg-surface"
                     placeholder={`Describe your image generation tasks here.\nOne prompt per line.\n\nExample:\nplace this exact light source top-left, creating soft shadows on the product.`}
                     value={promptsText}
                     onChange={(e) => setPromptsText(e.target.value)}
                 />
-                <div className="p-4 bg-slate-50 dark:bg-slate-950/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between rounded-b-xl">
-                    <span className="text-sm text-slate-500 dark:text-slate-500 font-medium">{promptLines.length} prompt{promptLines.length !== 1 ? 's' : ''} ready</span>
+                <div className="px-5 py-4 border-t border-line bg-canvas-2/40 flex items-center justify-between gap-3">
+                    <span className="text-sm text-ink-2 font-medium">
+                      <span className="font-bold text-ink">{promptLines.length}</span> prompt{promptLines.length !== 1 ? 's' : ''} ready
+                    </span>
                     <button
                         onClick={onGenerateNewRun}
                         disabled={!canStartRun}
-                        className="px-7 py-2.5 bg-brand text-on-brand text-sm font-semibold rounded-lg hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+                        className="inline-flex items-center gap-2 px-6 h-11 bg-brand text-on-brand text-sm font-bold rounded-xl hover:bg-brand-hover disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
                     >
-                        Start Generation
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4"><path d="M11.3 1.7a.7.7 0 0 1 1.4 0l1.1 4.2a4 4 0 0 0 2.8 2.8l4.2 1.1a.7.7 0 0 1 0 1.4l-4.2 1.1a4 4 0 0 0-2.8 2.8l-1.1 4.2a.7.7 0 0 1-1.4 0l-1.1-4.2a4 4 0 0 0-2.8-2.8l-4.2-1.1a.7.7 0 0 1 0-1.4l4.2-1.1a4 4 0 0 0 2.8-2.8l1.1-4.2Z"/></svg>
+                        Generate
                     </button>
                 </div>
              </div>
@@ -2201,10 +2222,10 @@ export default function ImageStudioPage() {
           <div className="flex flex-col gap-4 min-h-[520px] xl:h-[calc(100vh-120px)]">
             {/* Active Run Card */}
             {activeRun ? (
-                 <div className="flex flex-col flex-1 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-                    <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+                 <div className="flex flex-col flex-1 ui-card overflow-hidden">
+                    <div className="p-4 border-b border-line">
                         <div className="flex items-center justify-between mb-2">
-                             <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">{activeRun.name}</span>
+                             <span className="font-display font-bold text-[15px] text-ink truncate">{activeRun.name}</span>
                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ring-1 ring-inset ${statusColor(activeRun.status)}`}>
                                  {activeRun.status}
                              </span>
@@ -2225,10 +2246,10 @@ export default function ImageStudioPage() {
                             )}
                           </div>
                         )}
-                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                             <div className="h-full bg-slate-900 dark:bg-slate-50 transition-all duration-500" style={{ width: `${overallPct}%` }} />
+                        <div className="h-1.5 w-full bg-canvas-2 rounded-full overflow-hidden">
+                             <div className="h-full bg-brand transition-all duration-500" style={{ width: `${overallPct}%` }} />
                         </div>
-                         <div className="mt-2 flex justify-between text-[10px] text-slate-500 dark:text-slate-400">
+                         <div className="mt-2 flex justify-between text-[10px] text-ink-3">
                              <span>{activeRun.modelNameDisplay}</span>
                              <span>{activeRun.progress.done} / {activeRun.progress.total}</span>
                         </div>
@@ -2350,15 +2371,21 @@ export default function ImageStudioPage() {
                     </div>
                  </div>
             ) : (
-                <div className="flex-1 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-center text-slate-400 text-sm">
-                    No active run
+                <div className="flex-1 ui-card border-dashed flex flex-col items-center justify-center gap-3 text-center px-6">
+                    <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-soft text-brand">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-7 w-7"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" stroke="none"/><path d="m21 15-5-5L5 21"/></svg>
+                    </div>
+                    <div>
+                      <p className="font-display text-base font-bold text-ink">No active run</p>
+                      <p className="mt-1 text-sm text-ink-3 max-w-[260px]">Pick a model, write your prompts, and hit Generate to see results stream in here.</p>
+                    </div>
                 </div>
             )}
             
             {/* Run Queue / History List (Mini) */}
-            <div className="h-36 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-2 overflow-y-auto shadow-sm">
-                <div className="mb-1 flex items-center justify-between">
-                  <h3 className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">History</h3>
+            <div className="h-36 ui-card p-3 overflow-y-auto">
+                <div className="mb-2 flex items-center justify-between">
+                  <h3 className="text-[10px] font-bold uppercase tracking-[0.1em] text-ink-3">History</h3>
                   <button
                     onClick={clearRuns}
                     disabled={runs.length === 0}
