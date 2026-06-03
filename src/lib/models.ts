@@ -43,6 +43,30 @@ export const NB2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
 
 export const NB2_OUTPUT_FORMATS = ["jpg", "png"] as const;
 
+export const GPT2_ASPECT_RATIOS = [
+  "auto",
+  "1:1",
+  "5:4",
+  "9:16",
+  "21:9",
+  "16:9",
+  "4:3",
+  "3:2",
+  "4:5",
+  "3:4",
+  "2:3",
+] as const;
+
+export const GPT2_RESOLUTIONS = ["1K", "2K", "4K"] as const;
+
+export const GPT2_QUALITY_OPTIONS = ["auto", "low", "medium", "high"] as const;
+
+export const GPT2_BACKGROUND_OPTIONS = ["auto", "opaque"] as const;
+
+export const GPT2_OUTPUT_FORMATS = ["png", "jpeg", "webp"] as const;
+
+export const GPT2_MODERATION_OPTIONS = ["auto", "low"] as const;
+
 export const MODEL_LIST: ModelDef[] = [
   {
     id: "nanobanana-3-pro",
@@ -118,14 +142,14 @@ export const MODEL_LIST: ModelDef[] = [
     id: "gpt-2",
     label: "GPT Image 2",
     version: "v2",
-    provider: "openai",
+    provider: "kie",
     providerName: "gpt-image-2",
-    aspectRatioOptions: ["1:1", "16:9", "9:16"],
-    resolutionOptions: ["standard", "2k", "4k"],
-    qualityOptions: ["auto", "low", "medium", "high"],
-    backgroundOptions: ["auto", "opaque"],
-    formatOptions: ["png", "jpeg", "webp"],
-    moderationOptions: ["auto", "low"],
+    aspectRatioOptions: GPT2_ASPECT_RATIOS,
+    resolutionOptions: GPT2_RESOLUTIONS,
+    qualityOptions: GPT2_QUALITY_OPTIONS,
+    backgroundOptions: GPT2_BACKGROUND_OPTIONS,
+    formatOptions: GPT2_OUTPUT_FORMATS,
+    moderationOptions: GPT2_MODERATION_OPTIONS,
     requiresReference: false,
     maxConcurrency: 5,
   },
