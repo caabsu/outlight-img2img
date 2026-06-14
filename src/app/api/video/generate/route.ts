@@ -15,6 +15,11 @@ type PostBody = {
   provider?: VideoProvider;
   model?: string;
   mode?: "kling30";
+  // Async flow: "create" returns a taskId immediately; "status" checks one task.
+  // Absent → legacy synchronous create-and-poll (kept for backward compatibility).
+  action?: "create" | "status";
+  service?: "kie" | "veo";  // which polling backend a taskId belongs to (for action:"status")
+  taskId?: string;          // task to check (for action:"status")
   // shared
   prompt: string;
   duration?: string;              // KIE expects string "3"-"15"
@@ -330,6 +335,72 @@ async function veoPoll(taskId: string, maxMs = 420_000) {
   throw new Error(`Veo generation timed out after ${Math.round((Date.now() - start) / 1000)}s (last flag: ${lastFlag})`);
 }
 
+// ---- Single-shot status checks (for the async action:"status" flow) ----
+// These do exactly one network round-trip and return quickly, so the client
+// can drive the polling loop with short requests instead of holding one long
+// connection open for minutes (which the platform/gateway drops → "Failed to fetch").
+
+type StatusResult = { state: "waiting" | "success" | "fail"; videoUrl?: string; error?: string };
+
+async function kieCheckOnce(taskId: string): Promise<StatusResult> {
+  let res: Response;
+  let json: any;
+  try {
+    res = await fetch(`${KIE_BASE}/api/v1/jobs/recordInfo?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${KIE_KEY}` },
+    });
+    json = await res.json().catch(() => ({}));
+  } catch {
+    return { state: "waiting" }; // transient network blip — keep polling
+  }
+  if (!res.ok || json?.code !== 200) {
+    if (isTransientStatus(res.status) || isTransientStatus(Number(json?.code))) return { state: "waiting" };
+    return { state: "fail", error: json?.message || json?.msg || "KIE query failed" };
+  }
+  const state = (json?.data?.state || "unknown").toLowerCase();
+  if (isKieSuccessState(state)) {
+    try {
+      const parsed = JSON.parse(json?.data?.resultJson || "{}");
+      const urls: string[] = parsed?.resultUrls || [];
+      if (!urls.length) return { state: "fail", error: "KIE returned no resultUrls" };
+      return { state: "success", videoUrl: urls[0] };
+    } catch {
+      return { state: "fail", error: "Malformed KIE resultJson" };
+    }
+  }
+  if (isKieFailState(state)) return { state: "fail", error: json?.data?.failMsg || "KIE reported failure" };
+  return { state: "waiting" };
+}
+
+async function veoCheckOnce(taskId: string): Promise<StatusResult> {
+  let res: Response;
+  let json: any;
+  try {
+    res = await fetch(`${KIE_BASE}/api/v1/veo/record-info?taskId=${encodeURIComponent(taskId)}`, {
+      headers: { Authorization: `Bearer ${KIE_KEY}` },
+    });
+    json = await res.json().catch(() => ({}));
+  } catch {
+    return { state: "waiting" };
+  }
+  if (json?.code && json.code !== 200) {
+    if (json.code === 400 && (json.msg?.includes("processing") || json.msg?.includes("pending"))) return { state: "waiting" };
+    if (json.code === 429 || json.code === 503 || json.code === 500) return { state: "waiting" };
+    return { state: "fail", error: json?.message || json?.msg || `Veo query failed (code: ${json.code})` };
+  }
+  const data = json?.data;
+  const flag = data?.successFlag ?? 0;
+  if (flag === 1) {
+    const urls: string[] = data?.response?.resultUrls || [];
+    if (!urls.length) return { state: "fail", error: "Veo returned no resultUrls" };
+    return { state: "success", videoUrl: urls[0] };
+  }
+  if (flag === 2 || flag === 3) {
+    return { state: "fail", error: data?.errorMessage || data?.response?.errorMessage || data?.failReason || "Veo generation failed" };
+  }
+  return { state: "waiting" };
+}
+
 export async function POST(req: Request) {
   console.log("[Video Generate] Request received");
 
@@ -348,6 +419,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
     }
     const {
+      action,
+      service,
+      taskId: statusTaskId,
       provider = "kling",
       model,
       prompt,
@@ -365,6 +439,13 @@ export async function POST(req: Request) {
       // Sora
       input,
     } = body;
+
+    /* -------- ASYNC: single status check (short request) -------- */
+    if (action === "status") {
+      if (!statusTaskId) return NextResponse.json({ error: "Missing taskId" }, { status: 400 });
+      const result = service === "veo" ? await veoCheckOnce(statusTaskId) : await kieCheckOnce(statusTaskId);
+      return NextResponse.json(result);
+    }
 
     if (!prompt) return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
 
@@ -395,6 +476,7 @@ export async function POST(req: Request) {
       };
 
       const taskId = await kieCreateTask(payload);
+      if (action === "create") return NextResponse.json({ taskId, service: "kie" });
       const { url } = await kiePoll(taskId, 600_000); // 10 minutes max (Pro + long duration)
       return NextResponse.json({ videoUrl: url });
     }
@@ -432,6 +514,7 @@ export async function POST(req: Request) {
 
         console.log("[Video Generate] Veo taskId:", taskId);
 
+        if (action === "create") return NextResponse.json({ taskId, service: "veo" });
         const { url } = await veoPoll(taskId, 420_000); // 7 minutes max for Veo
         console.log("[Video Generate] Veo completed, url:", url);
         return NextResponse.json({ videoUrl: url });
@@ -482,6 +565,7 @@ export async function POST(req: Request) {
       console.log("[Sora] Payload:", JSON.stringify(payload, null, 2));
 
       const taskId = await kieCreateTask(payload, { retryOnPolicy: true });
+      if (action === "create") return NextResponse.json({ taskId, service: "kie" });
       const { url } = await kiePoll(taskId, 720_000); // 12 minutes max for Sora
       return NextResponse.json({ videoUrl: url });
     }

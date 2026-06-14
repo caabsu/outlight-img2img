@@ -380,6 +380,20 @@ type VeoRatio = "16:9" | "9:16";
 
 type VideoItem = { id: string; prompt: string; url: string };
 type RunStatus = "idle" | "running" | "done" | "cancelled" | "error";
+type TaskStatus = "queued" | "running" | "done" | "error";
+// Per-unit-of-work status (one per image in batch mode, one per prompt otherwise).
+// Powers the detailed batch overview and isolates failures so one bad item
+// doesn't fail the whole run.
+type VideoTaskItem = {
+  id: string;
+  index: number;
+  label: string;       // "Image 1" / "Prompt 1"
+  prompt: string;
+  thumbUrl?: string;   // source image (batch mode) for the overview thumbnail
+  status: TaskStatus;
+  videoUrl?: string;
+  error?: string;
+};
 type VideoRun = {
   id: string;
   name: string;
@@ -392,6 +406,7 @@ type VideoRun = {
   status: RunStatus;
   error: string | null;
   videos: VideoItem[];
+  items: VideoTaskItem[];
   activeIdx: number;
   selectedIdx: Set<number>;
   progress: { done: number; total: number };
@@ -459,6 +474,63 @@ function safeName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
 }
 
+// ---- Async video generation (create → poll) ----
+// Each network request is short, so long generations no longer drop the
+// connection ("Failed to fetch"). The client owns the polling loop.
+const VIDEO_POLL_INTERVAL_MS = 4000;
+const VIDEO_MAX_POLL_MS = 12 * 60_000; // client-side hard cap
+
+async function postVideoApi(body: any, signal: AbortSignal, retries = 2): Promise<any> {
+  let lastErr: any;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch("/api/video/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal,
+      });
+      const text = await res.text();
+      let json: any = {};
+      try { json = JSON.parse(text); } catch { json = { _raw: text.slice(0, 300) }; }
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}: ${text.slice(0, 200)}`);
+      return json;
+    } catch (err: any) {
+      if (err?.name === "AbortError") throw err;
+      lastErr = err;
+      // Retry only transient network failures ("Failed to fetch" = TypeError)
+      const transient = err instanceof TypeError || /failed to fetch|network|load failed/i.test(err?.message || "");
+      if (attempt < retries && transient) {
+        await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
+
+// Create a task, then poll its status with short requests until it resolves.
+async function generateVideo(body: any, signal: AbortSignal): Promise<string> {
+  const created = await postVideoApi({ ...body, action: "create" }, signal);
+  const taskId = created?.taskId;
+  const service = created?.service || "kie";
+  // Backward-compat: an older deploy ignores `action` and returns the URL directly.
+  if (!taskId) {
+    if (created?.videoUrl) return created.videoUrl;
+    throw new Error(created?.error || "Failed to create video task");
+  }
+  const deadline = Date.now() + VIDEO_MAX_POLL_MS;
+  while (Date.now() < deadline) {
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+    await new Promise((r) => setTimeout(r, VIDEO_POLL_INTERVAL_MS));
+    const st = await postVideoApi({ action: "status", service, taskId }, signal);
+    if (st?.state === "success" && st?.videoUrl) return st.videoUrl;
+    if (st?.state === "fail") throw new Error(st?.error || "Generation failed");
+  }
+  throw new Error("Generation timed out (12 min)");
+}
+
 function statusColor(status: RunStatus) {
   switch (status) {
     case "running":
@@ -472,6 +544,100 @@ function statusColor(status: RunStatus) {
     default:
       return "text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800 ring-slate-500/10 dark:ring-slate-500/20";
   }
+}
+
+// Per-item detailed overview for batch / multi-prompt runs.
+function BatchOverview({
+  run,
+  onSelectUrl,
+}: {
+  run: VideoRun;
+  onSelectUrl: (url: string) => void;
+}) {
+  const items = run.items || [];
+  const done = items.filter((i) => i.status === "done").length;
+  const failed = items.filter((i) => i.status === "error").length;
+  const running = items.filter((i) => i.status === "running").length;
+  const queued = items.filter((i) => i.status === "queued").length;
+  const total = items.length;
+  const activeUrl = run.videos[run.activeIdx]?.url;
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 shadow-sm">
+      <div className="flex items-center justify-between mb-2.5">
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          {run.isBatch ? "Batch Overview" : "Items"}
+        </h3>
+        <div className="flex items-center gap-2 text-[10px] font-semibold">
+          {done > 0 && <span className="text-emerald-600 dark:text-emerald-400">✓ {done}</span>}
+          {running > 0 && <span className="text-indigo-600 dark:text-indigo-400">● {running}</span>}
+          {queued > 0 && <span className="text-slate-400 dark:text-slate-500">◷ {queued}</span>}
+          {failed > 0 && <span className="text-rose-600 dark:text-rose-400">✕ {failed}</span>}
+          <span className="text-slate-400 dark:text-slate-600">/ {total}</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+        {items.map((item) => {
+          const isActive = !!item.videoUrl && item.videoUrl === activeUrl;
+          const clickable = item.status === "done" && !!item.videoUrl;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              disabled={!clickable}
+              onClick={() => clickable && onSelectUrl(item.videoUrl!)}
+              title={item.status === "error" ? item.error || "Failed" : item.label}
+              className={`relative aspect-video overflow-hidden rounded-lg border-2 bg-slate-100 dark:bg-slate-800 transition ${
+                isActive
+                  ? "border-indigo-500 ring-2 ring-indigo-500/40"
+                  : item.status === "error"
+                  ? "border-rose-300 dark:border-rose-800"
+                  : "border-slate-200 dark:border-slate-700"
+              } ${clickable ? "cursor-pointer hover:border-indigo-400" : "cursor-default"}`}
+            >
+              {/* Source thumbnail (batch) or generated frame */}
+              {item.videoUrl ? (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video src={item.videoUrl} className="h-full w-full object-cover pointer-events-none" />
+              ) : item.thumbUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={item.thumbUrl} alt="" className="h-full w-full object-cover opacity-50" />
+              ) : null}
+
+              {/* Status overlay */}
+              {item.status !== "done" && (
+                <div
+                  className={`absolute inset-0 flex flex-col items-center justify-center gap-1 ${
+                    item.status === "error" ? "bg-rose-500/15" : "bg-black/35"
+                  }`}
+                >
+                  {item.status === "running" && (
+                    <div className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                  )}
+                  {item.status === "queued" && (
+                    <span className="text-white/80 text-sm leading-none">◷</span>
+                  )}
+                  {item.status === "error" && (
+                    <span className="text-white text-sm leading-none">✕</span>
+                  )}
+                </div>
+              )}
+              {item.status === "done" && (
+                <span className="absolute top-1 left-1 grid h-4 w-4 place-items-center rounded-full bg-emerald-500 text-white text-[9px] font-bold">✓</span>
+              )}
+
+              <span className="absolute bottom-0.5 right-1 text-[9px] font-bold text-white drop-shadow">{item.index + 1}</span>
+            </button>
+          );
+        })}
+      </div>
+      {failed > 0 && (
+        <p className="mt-2 text-[10px] text-rose-600 dark:text-rose-400">
+          {failed} item{failed > 1 ? "s" : ""} failed — hover a red tile for details. Successful videos are shown below.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export default function VideoStudioPage() {
@@ -991,6 +1157,13 @@ export default function VideoStudioPage() {
       status: "running",
       error: null,
       videos: [],
+      items: videoPromptLines.map((line, i) => ({
+        id: crypto.randomUUID(),
+        index: i,
+        label: `Prompt ${i + 1}`,
+        prompt: line,
+        status: "queued" as TaskStatus,
+      })),
       activeIdx: 0,
       selectedIdx: new Set(),
       progress: { done: 0, total: videoPromptLines.length },
@@ -1031,6 +1204,14 @@ export default function VideoStudioPage() {
       status: "running",
       error: null,
       videos: [],
+      items: batchVideoImages.map((imageUrl, i) => ({
+        id: crypto.randomUUID(),
+        index: i,
+        label: `Image ${i + 1}`,
+        prompt: batchVideoPrompt.trim(),
+        thumbUrl: batchVideoPreviews[i] || imageUrl,
+        status: "queued" as TaskStatus,
+      })),
       activeIdx: 0,
       selectedIdx: new Set(),
       progress: { done: 0, total: batchVideoImages.length },
@@ -1084,6 +1265,15 @@ export default function VideoStudioPage() {
       );
     };
 
+    const updateItem = (index: number, patch: Partial<VideoTaskItem>) => {
+      setVideoRuns((prev) =>
+        prev.map((r) => {
+          if (r.id !== run.id) return r;
+          return { ...r, items: r.items.map((it) => (it.index === index ? { ...it, ...patch } : it)) };
+        })
+      );
+    };
+
     const setError = (message: string) => {
       setVideoRuns((prev) =>
         prev.map((item) => {
@@ -1094,12 +1284,17 @@ export default function VideoStudioPage() {
     };
 
     const tasks: Array<() => Promise<void>> = [];
+    let succeeded = 0;
+    let failed = 0;
+    let firstError = "";
 
     if (run.isBatch) {
         // Batch mode: one prompt with multiple images
         const prompt = run.prompts[0];
       (context.batchImages || []).forEach((imageUrl, index) => {
         tasks.push(async () => {
+          updateItem(index, { status: "running" });
+          try {
           let provider: VideoProvider = "kling";
           let body: any = {};
           if (runIsKling) {
@@ -1177,27 +1372,24 @@ export default function VideoStudioPage() {
             };
           }
 
-          console.log("[VideoRun][batch] Sora request body:", JSON.stringify(body, null, 2));
-          const res = await fetch("/api/video/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          });
-          const rawText = await res.text();
-          let json: any = {};
-          try { json = JSON.parse(rawText); } catch { json = { _raw: rawText.slice(0, 300) }; }
-          if (!res.ok) {
-            console.error("[VideoRun][batch] Error response:", res.status, rawText.slice(0, 500));
-            throw new Error(json.error || `HTTP ${res.status}: ${rawText.slice(0, 200)}`);
+          const url = await generateVideo(body, controller.signal);
+          updateItem(index, { status: "done", videoUrl: url });
+          pushVideo({ id: crypto.randomUUID(), prompt: `${prompt} [img ${index + 1}]`, url });
+          succeeded++;
+          } catch (err: any) {
+            const aborted = err?.name === "AbortError";
+            updateItem(index, { status: "error", error: aborted ? "Cancelled" : (err?.message || "Failed") });
+            if (!aborted) { failed++; if (!firstError) firstError = err?.message || "Generation failed"; }
+          } finally {
+            incProgress();
           }
-          pushVideo({ id: crypto.randomUUID(), prompt: `${prompt} [img ${index + 1}]`, url: json.videoUrl });
-          incProgress();
         });
       });
     } else {
       run.prompts.forEach((line, index) => {
         tasks.push(async () => {
+          updateItem(index, { status: "running" });
+          try {
            let provider: VideoProvider = "kling";
           let body: any = {};
           if (runIsKling) {
@@ -1295,22 +1487,17 @@ export default function VideoStudioPage() {
             };
           }
 
-          console.log("[VideoRun] Sora request body:", JSON.stringify(body, null, 2));
-          const res = await fetch("/api/video/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-          });
-          const rawText = await res.text();
-          let json: any = {};
-          try { json = JSON.parse(rawText); } catch { json = { _raw: rawText.slice(0, 300) }; }
-          if (!res.ok) {
-            console.error("[VideoRun] Error response:", res.status, rawText.slice(0, 500));
-            throw new Error(json.error || `HTTP ${res.status}: ${rawText.slice(0, 200)}`);
+          const url = await generateVideo(body, controller.signal);
+          updateItem(index, { status: "done", videoUrl: url });
+          pushVideo({ id: crypto.randomUUID(), prompt: line, url });
+          succeeded++;
+          } catch (err: any) {
+            const aborted = err?.name === "AbortError";
+            updateItem(index, { status: "error", error: aborted ? "Cancelled" : (err?.message || "Failed") });
+            if (!aborted) { failed++; if (!firstError) firstError = err?.message || "Generation failed"; }
+          } finally {
+            incProgress();
           }
-          pushVideo({ id: crypto.randomUUID(), prompt: line, url: json.videoUrl });
-          incProgress();
         });
       });
     }
@@ -1318,15 +1505,27 @@ export default function VideoStudioPage() {
     try {
       // Veo API has rate limits - force sequential execution to avoid errors
       const effectiveSpeed = runIsVeo ? 1 : Math.max(1, Math.min(run.speed, MAX_CONCURRENT_REQUESTS));
+      // Tasks isolate their own failures, so runWithLimit resolves even when
+      // some items fail. Compute the final run status from the tallies.
       await runWithLimit(effectiveSpeed, tasks);
       setVideoRuns((prev) =>
         prev.map((item) => {
           if (item.id !== run.id) return item;
-          if (item.status === "running") return { ...item, status: "done" as RunStatus };
-          return item;
+          // Respect a user cancellation that happened mid-run.
+          if (item.status === "cancelled") return item;
+          const total = tasks.length;
+          const allFailed = failed > 0 && succeeded === 0;
+          const status: RunStatus = allFailed ? "error" : "done";
+          const error = allFailed
+            ? (firstError || "All generations failed")
+            : failed > 0
+            ? `${failed} of ${total} failed`
+            : null;
+          return { ...item, status, error, controller: null };
         })
       );
     } catch (error: any) {
+      // Defensive: tasks shouldn't throw, but never leave the run stuck.
       const msg = error?.name === "AbortError" ? "Run cancelled" : error?.message || "Request failed";
       setError(msg);
     }
@@ -1958,14 +2157,41 @@ export default function VideoStudioPage() {
                         <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                              <div className="h-full bg-slate-900 dark:bg-slate-50 transition-all duration-500" style={{ width: `${activeVideoRun.progress.total > 0 ? Math.round((activeVideoRun.progress.done / activeVideoRun.progress.total) * 100) : 0}%` }} />
                         </div>
-                        {activeVideoRun.status === "error" && activeVideoRun.error && (
-                          <div className="mt-2 p-2 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800">
-                            <p className="text-xs text-rose-700 dark:text-rose-300 font-mono break-all">{activeVideoRun.error}</p>
+                        <div className="mt-1.5 flex items-center justify-between text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                          <span>{activeVideoRun.progress.done} / {activeVideoRun.progress.total} processed</span>
+                          {activeVideoRun.status === "running" && <span className="text-indigo-500 dark:text-indigo-400">Generating…</span>}
+                        </div>
+                        {activeVideoRun.error && (
+                          <div className={`mt-2 p-2 rounded-lg border ${
+                            activeVideoRun.status === "error"
+                              ? "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800"
+                              : "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+                          }`}>
+                            <p className={`text-xs font-mono break-all ${
+                              activeVideoRun.status === "error"
+                                ? "text-rose-700 dark:text-rose-300"
+                                : "text-amber-700 dark:text-amber-300"
+                            }`}>{activeVideoRun.error}</p>
                           </div>
                         )}
                       </div>
 
                       <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30 dark:bg-slate-950/30">
+                          {/* Detailed per-item overview for batch / multi-prompt runs */}
+                          {activeVideoRun.items.length > 1 && (
+                            <BatchOverview
+                              run={activeVideoRun}
+                              onSelectUrl={(url) => {
+                                setVideoRuns((prev) =>
+                                  prev.map((r) => {
+                                    if (r.id !== activeVideoRun.id) return r;
+                                    const idx = r.videos.findIndex((v) => v.url === url);
+                                    return idx >= 0 ? { ...r, activeIdx: idx } : r;
+                                  })
+                                );
+                              }}
+                            />
+                          )}
                           {activeVideoRun.videos.length > 0 ? (
                               <div className="space-y-3">
                                   <div className="relative rounded-lg overflow-hidden bg-black shadow-lg group">
@@ -2031,6 +2257,11 @@ export default function VideoStudioPage() {
                                      ))}
                                  </div>
                               </div>
+                          ) : activeVideoRun.items.length > 1 ? (
+                              // Overview above already shows per-item progress for batch runs
+                              activeVideoRun.status === "running" ? (
+                                <p className="text-center text-xs text-slate-400 py-2">Generating {activeVideoRun.items.length} videos… results appear here as they finish.</p>
+                              ) : null
                           ) : (
                               <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-2">
                                  <div className="h-8 w-8 border-2 border-slate-200 dark:border-slate-700 border-t-slate-400 dark:border-t-slate-500 rounded-full animate-spin" />

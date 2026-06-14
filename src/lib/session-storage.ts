@@ -191,6 +191,16 @@ export type SerializedVideoRun = {
   status: "idle" | "done" | "cancelled" | "error";
   error: string | null;
   videos: Array<{ id: string; prompt: string; url: string }>;
+  items?: Array<{
+    id: string;
+    index: number;
+    label: string;
+    prompt: string;
+    thumbUrl?: string;
+    status: "queued" | "running" | "done" | "error";
+    videoUrl?: string;
+    error?: string;
+  }>;
   activeIdx: number;
   selectedIdx: number[];
   progress: { done: number; total: number };
@@ -237,6 +247,12 @@ export function serializeVideoRun(run: any): SerializedVideoRun {
     status: run.status === "running" ? "cancelled" : run.status,
     error: run.error,
     videos: run.videos || [],
+    // Persist per-item overview; mark any still-running items as cancelled on reload.
+    items: (run.items || []).map((it: any) => ({
+      ...it,
+      status: it.status === "running" || it.status === "queued" ? "error" : it.status,
+      error: it.status === "running" || it.status === "queued" ? "Interrupted" : it.error,
+    })),
     activeIdx: run.activeIdx,
     selectedIdx: Array.from(run.selectedIdx || []),
     progress: run.progress,
@@ -257,6 +273,7 @@ export function deserializeVideoRun(data: SerializedVideoRun): any {
     status: data.status,
     error: data.error,
     videos: data.videos || [],
+    items: data.items || [],
     activeIdx: data.activeIdx,
     selectedIdx: new Set(data.selectedIdx || []),
     progress: data.progress,
