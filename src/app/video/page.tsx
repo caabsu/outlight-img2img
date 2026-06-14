@@ -428,6 +428,8 @@ type VideoRunContext = {
     aspect: "16:9" | "9:16" | "1:1";
     sound: boolean;
     mode: "std" | "pro" | "4K";
+    multiShot: boolean;
+    shots: Array<{ prompt: string; duration: number }>;
   };
   veo: {
     aspect: VeoRatio;
@@ -472,6 +474,22 @@ const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> 
 
 function safeName(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9-_]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+}
+
+// Parse Kling 3.0 multi-shot lines ("duration|prompt" or plain "prompt") into
+// the kie.ai multi_prompt array. Max 5 shots, each 1-12s (default 3s).
+const KLING_MAX_SHOTS = 5;
+function parseKlingShots(lines: string[]): Array<{ prompt: string; duration: number }> {
+  return lines
+    .map((line) => {
+      const m = /^(\d+)\s*\|\s*(.*)$/.exec(line.trim());
+      if (m) {
+        return { prompt: m[2].trim(), duration: Math.max(1, Math.min(12, Number(m[1]) || 3)) };
+      }
+      return { prompt: line.trim(), duration: 3 };
+    })
+    .filter((s) => s.prompt.length > 0)
+    .slice(0, KLING_MAX_SHOTS);
 }
 
 // ---- Async video generation (create → poll) ----
@@ -709,6 +727,7 @@ export default function VideoStudioPage() {
   const resolvedVideoReferenceUrl = selectedRefs[0] || "";
 
   const isKling = videoModelDef.provider === "kling";
+  const isKling30 = videoModelDef.kind === "kling30";
   const isVeo = videoModelDef.provider === "veo";
   const isSora = videoModelDef.provider === "sora";
 
@@ -717,6 +736,12 @@ export default function VideoStudioPage() {
   const [kling30Aspect, setKling30Aspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [kling30Sound, setKling30Sound] = useState<boolean>(false);
   const [kling30Mode, setKling30Mode] = useState<"std" | "pro" | "4K">("pro");
+  const [kling30MultiShot, setKling30MultiShot] = useState<boolean>(false);
+  // In multi-shot mode each Director line is a shot of ONE video (not N videos).
+  const kling30Shots = useMemo(
+    () => parseKlingShots(videoPromptLines),
+    [videoPromptLines]
+  );
 
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
   const [veoSeed, setVeoSeed] = useState("");
@@ -804,6 +829,7 @@ export default function VideoStudioPage() {
     if (session.kling30Aspect) setKling30Aspect(session.kling30Aspect as any);
     if (typeof session.kling30Sound === "boolean") setKling30Sound(session.kling30Sound);
     if (session.kling30Mode) setKling30Mode(session.kling30Mode as any);
+    if (typeof session.kling30MultiShot === "boolean") setKling30MultiShot(session.kling30MultiShot);
     if (session.veoAspect) setVeoAspect(session.veoAspect as any);
     if (session.soraFrames) setSoraFrames(session.soraFrames as any);
     if (session.soraAspect) setSoraAspect(session.soraAspect as any);
@@ -838,6 +864,7 @@ export default function VideoStudioPage() {
       kling30Aspect,
       kling30Sound,
       kling30Mode,
+      kling30MultiShot,
       veoAspect,
       soraFrames,
       soraAspect,
@@ -858,6 +885,7 @@ export default function VideoStudioPage() {
     kling30Aspect,
     kling30Sound,
     kling30Mode,
+    kling30MultiShot,
     veoAspect,
     soraFrames,
     soraAspect,
@@ -1145,28 +1173,39 @@ export default function VideoStudioPage() {
     }
     // Note: addRun() handles removing oldest run if at capacity
 
+    // Multi-shot: every Director line becomes a shot of ONE video.
+    const useMultiShot = isKling30 && kling30MultiShot && kling30Shots.length > 0;
+
     const run: VideoRun = {
       id: crypto.randomUUID(),
-      name: `${videoModelDef.label} - ${new Date().toLocaleTimeString()}`,
+      name: `${videoModelDef.label}${useMultiShot ? " Multi-shot" : ""} - ${new Date().toLocaleTimeString()}`,
       productName: "Custom",
       startedAt: Date.now(),
       modelId: videoModel,
       modelLabel: videoModelDef.label,
       isBatch: false,
-      prompts: [...videoPromptLines],
+      prompts: useMultiShot ? [kling30Shots.map((s) => s.prompt).join(" → ")] : [...videoPromptLines],
       status: "running",
       error: null,
       videos: [],
-      items: videoPromptLines.map((line, i) => ({
-        id: crypto.randomUUID(),
-        index: i,
-        label: `Prompt ${i + 1}`,
-        prompt: line,
-        status: "queued" as TaskStatus,
-      })),
+      items: useMultiShot
+        ? [{
+            id: crypto.randomUUID(),
+            index: 0,
+            label: `${kling30Shots.length}-shot video`,
+            prompt: kling30Shots.map((s, i) => `${i + 1}. (${s.duration}s) ${s.prompt}`).join("\n"),
+            status: "queued" as TaskStatus,
+          }]
+        : videoPromptLines.map((line, i) => ({
+            id: crypto.randomUUID(),
+            index: i,
+            label: `Prompt ${i + 1}`,
+            prompt: line,
+            status: "queued" as TaskStatus,
+          })),
       activeIdx: 0,
       selectedIdx: new Set(),
-      progress: { done: 0, total: videoPromptLines.length },
+      progress: { done: 0, total: useMultiShot ? 1 : videoPromptLines.length },
       speed: videoParallel,
       controller: new AbortController(),
     };
@@ -1176,7 +1215,7 @@ export default function VideoStudioPage() {
       customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
-      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode },
+      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode, multiShot: useMultiShot, shots: kling30Shots },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
     };
@@ -1224,7 +1263,7 @@ export default function VideoStudioPage() {
       customUrl: finalReferenceUrl || null,
       referenceUrl: finalReferenceUrl || null,
       referenceUrls: [...selectedRefs],
-      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode },
+      kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode, multiShot: false, shots: [] },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
       batchImages: [...batchVideoImages],
@@ -1402,15 +1441,17 @@ export default function VideoStudioPage() {
               imageUrls = await Promise.all(imageUrls.map((url) => uploadToStorage(url)));
             }
 
+            const multiShot = context.kling30.multiShot && context.kling30.shots.length > 0;
             body = {
               provider,
               model: "kling-3.0/video",
               mode: "kling30",
-              prompt: line,
+              prompt: multiShot ? context.kling30.shots[0].prompt : line,
               duration: context.kling30.duration,
               aspect_ratio: context.kling30.aspect,
               sound: context.kling30.sound,
               kling_mode: context.kling30.mode,
+              ...(multiShot ? { multi_shots: true, multi_prompt: context.kling30.shots } : {}),
               ...(imageUrls.length > 0 ? { image_urls: imageUrls } : {}),
             };
           } else if (runIsVeo) {
@@ -1629,13 +1670,24 @@ export default function VideoStudioPage() {
                                     </select>
                                 </div>
                             </div>
-                            <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                                <input type="checkbox" checked={kling30Sound} onChange={e => setKling30Sound(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
-                                Generate with Sound
+                            <label className={`flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 select-none ${kling30MultiShot ? "opacity-40" : "cursor-pointer"}`}>
+                                <input type="checkbox" checked={kling30MultiShot ? true : kling30Sound} disabled={kling30MultiShot} onChange={e => setKling30Sound(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
+                                Generate with Sound{kling30MultiShot && <span className="text-[9px]">(forced on)</span>}
                             </label>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
-                                {finalReferenceUrl ? "Image provided: using Image-to-Video" : "No image: using Text-to-Video"}
-                            </p>
+                            <label className={`flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 select-none ${batchVideoMode ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}>
+                                <input type="checkbox" checked={kling30MultiShot} disabled={batchVideoMode} onChange={e => setKling30MultiShot(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
+                                Multi-shot
+                                <span className="text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">up to 5 shots</span>
+                            </label>
+                            {kling30MultiShot ? (
+                                <p className="text-[10px] text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded leading-relaxed">
+                                    Each Director line is one shot — format <code className="font-mono">seconds|prompt</code> (e.g. <code className="font-mono">3|woman turns to camera</code>). Generates ONE video.
+                                </p>
+                            ) : (
+                                <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                                    {finalReferenceUrl ? "Image provided: using Image-to-Video" : "No image: using Text-to-Video"}
+                                </p>
+                            )}
                          </div>
                      )}
                      {/* Veo 3.1 Params */}
@@ -2058,6 +2110,8 @@ export default function VideoStudioPage() {
                          <div className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
                           {isVeo ? (
                             <span className="text-xs text-slate-400 dark:text-slate-500" title="Veo API requires sequential execution">Sequential</span>
+                          ) : isKling30 && kling30MultiShot && !batchVideoMode ? (
+                            <span className="text-xs text-indigo-500 dark:text-indigo-400" title="Multi-shot generates one video from all lines">Multi-shot</span>
                           ) : (
                             <select
                               className="bg-transparent text-xs font-medium text-slate-600 dark:text-slate-400 focus:outline-none dark:bg-slate-900"
@@ -2114,8 +2168,25 @@ export default function VideoStudioPage() {
                             </div>
                         </div>
                     </div>
+                ) : isKling30 && kling30MultiShot ? (
+                    <div className="flex-1 flex flex-col min-h-0">
+                        <div className="m-3 mb-0 p-3 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800">
+                            <h3 className="text-sm font-bold text-indigo-900 dark:text-indigo-300 mb-1">Multi-shot — one video</h3>
+                            <p className="text-xs text-indigo-700 dark:text-indigo-400">Each line is a shot: <code className="font-mono">seconds|prompt</code>. Up to 5 shots.</p>
+                        </div>
+                        <textarea
+                            className="flex-1 w-full resize-none p-4 text-sm outline-none text-slate-700 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-slate-600 font-mono leading-relaxed bg-white dark:bg-slate-900"
+                            placeholder={"3|Establishing wide shot of the scene\n2|Cut to a close-up, slow push-in\n3|Subject turns toward camera"}
+                            value={videoPrompts}
+                            onChange={(e) => setVideoPrompts(e.target.value)}
+                        />
+                        <div className="px-4 pb-2 text-[10px] text-slate-400 dark:text-slate-500">
+                            {kling30Shots.length} shot{kling30Shots.length === 1 ? "" : "s"} · {kling30Shots.reduce((a, s) => a + s.duration, 0)}s total
+                            {videoPromptLines.length > KLING_MAX_SHOTS && <span className="text-amber-600 dark:text-amber-400"> · only first {KLING_MAX_SHOTS} lines used</span>}
+                        </div>
+                    </div>
                 ) : (
-                    <textarea 
+                    <textarea
                         className="flex-1 w-full resize-none p-4 text-sm outline-none text-slate-700 dark:text-slate-300 placeholder:text-slate-300 dark:placeholder:text-slate-600 font-mono leading-relaxed bg-white dark:bg-slate-900"
                         placeholder="One video prompt per line..."
                         value={videoPrompts}

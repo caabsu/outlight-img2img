@@ -217,6 +217,7 @@ export type VideoStudioSession = {
   kling30Aspect?: string;
   kling30Sound?: boolean;
   kling30Mode?: string;
+  kling30MultiShot?: boolean;
   // Model options - Veo
   veoAspect: string;
   // Model options - Sora

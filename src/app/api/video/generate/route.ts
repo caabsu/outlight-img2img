@@ -29,6 +29,8 @@ type PostBody = {
   image_urls?: string[];          // Reference images (first/last frame)
   sound?: boolean;                // Generate with sound
   kling_mode?: "std" | "pro" | "4K";    // Standard / Pro / 4K quality (per kie.ai docs)
+  multi_shots?: boolean;                // Kling 3.0 multi-shot mode (one video, multiple shots)
+  multi_prompt?: Array<{ prompt: string; duration: number }>; // per-shot prompt + duration (1-12s, max 5)
 
   // Veo-specific
   aspectRatio?: "16:9" | "9:16" | "Auto";
@@ -431,6 +433,8 @@ export async function POST(req: Request) {
       image_urls,
       sound,
       kling_mode,
+      multi_shots,
+      multi_prompt,
       // Veo
       aspectRatio,
       generationType,
@@ -451,22 +455,34 @@ export async function POST(req: Request) {
 
     /* -------- KLING 3.0 -------- */
     if (provider === "kling") {
+      // Multi-shot: one video composed of up to 5 shots, each with its own
+      // prompt + duration (1-12s). Top-level prompt is ignored, sound is forced
+      // on, and only the first reference image is used (per kie.ai spec).
+      const isMultiShot = !!multi_shots && Array.isArray(multi_prompt) && multi_prompt.length > 0;
+
       const klingInput: Record<string, any> = {
         prompt,
-        sound: sound ?? false,
+        sound: isMultiShot ? true : (sound ?? false),
         duration: String(Math.max(3, Math.min(15, Number(duration) || 7))),
         mode: kling_mode || "pro",
-        multi_shots: false,
+        multi_shots: isMultiShot,
       };
+
+      if (isMultiShot) {
+        klingInput.multi_prompt = multi_prompt!.slice(0, 5).map((s) => ({
+          prompt: String(s?.prompt || "").slice(0, 500),
+          duration: Math.max(1, Math.min(12, Math.round(Number(s?.duration) || 3))),
+        }));
+      }
 
       // Aspect ratio
       if (aspect_ratio) {
         klingInput.aspect_ratio = aspect_ratio;
       }
 
-      // Reference images (first/last frame)
+      // Reference images (multi-shot supports only the first frame)
       if (image_urls && image_urls.length > 0) {
-        klingInput.image_urls = image_urls;
+        klingInput.image_urls = isMultiShot ? image_urls.slice(0, 1) : image_urls;
       }
 
       const payload = {
