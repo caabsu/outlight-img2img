@@ -469,10 +469,24 @@ export async function POST(req: Request) {
       };
 
       if (isMultiShot) {
-        klingInput.multi_prompt = multi_prompt!.slice(0, 5).map((s) => ({
+        const raw = multi_prompt!.slice(0, 5).map((s) => ({
           prompt: String(s?.prompt || "").slice(0, 500),
           duration: Math.max(1, Math.min(12, Math.round(Number(s?.duration) || 3))),
         }));
+        // Total video length is the SUM of the shot durations (Kling caps the
+        // total at 15s). The top-level `duration` must match this total — using
+        // the dropdown value here would truncate the shots, so derive it.
+        const shots: typeof raw = [];
+        let total = 0;
+        for (const s of raw) {
+          if (total >= 15) break;
+          const dur = Math.min(s.duration, 15 - total);
+          if (dur < 1) break;
+          shots.push({ ...s, duration: dur });
+          total += dur;
+        }
+        klingInput.multi_prompt = shots;
+        klingInput.duration = String(Math.max(3, total));
       }
 
       // Aspect ratio

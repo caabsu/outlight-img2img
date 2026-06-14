@@ -1644,6 +1644,12 @@ export default function VideoStudioPage() {
                             <div className="grid grid-cols-3 gap-2">
                                 <div>
                                     <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Duration</label>
+                                    {kling30MultiShot ? (
+                                        <div className="w-full mt-1 flex items-center justify-between rounded-md border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400" title="Total length is the sum of your shot durations">
+                                            <span>{Math.min(15, kling30Shots.reduce((a, s) => a + s.duration, 0)) || 0}s</span>
+                                            <span className="text-[9px] uppercase tracking-wide">auto</span>
+                                        </div>
+                                    ) : (
                                     <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={kling30Duration} onChange={e => setKling30Duration(e.target.value)}>
                                         <option value="3">3s</option>
                                         <option value="5">5s</option>
@@ -1652,6 +1658,7 @@ export default function VideoStudioPage() {
                                         <option value="12">12s</option>
                                         <option value="15">15s</option>
                                     </select>
+                                    )}
                                 </div>
                                 <div>
                                     <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
@@ -2183,6 +2190,7 @@ export default function VideoStudioPage() {
                         <div className="px-4 pb-2 text-[10px] text-slate-400 dark:text-slate-500">
                             {kling30Shots.length} shot{kling30Shots.length === 1 ? "" : "s"} · {kling30Shots.reduce((a, s) => a + s.duration, 0)}s total
                             {videoPromptLines.length > KLING_MAX_SHOTS && <span className="text-amber-600 dark:text-amber-400"> · only first {KLING_MAX_SHOTS} lines used</span>}
+                            {kling30Shots.reduce((a, s) => a + s.duration, 0) > 15 && <span className="text-amber-600 dark:text-amber-400"> · capped at 15s total</span>}
                         </div>
                     </div>
                 ) : (
