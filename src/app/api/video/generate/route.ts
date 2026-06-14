@@ -23,7 +23,7 @@ type PostBody = {
   // Kling 3.0 specific
   image_urls?: string[];          // Reference images (first/last frame)
   sound?: boolean;                // Generate with sound
-  kling_mode?: "std" | "pro";    // Standard vs Pro quality
+  kling_mode?: "std" | "pro" | "4K";    // Standard / Pro / 4K quality (per kie.ai docs)
 
   // Veo-specific
   aspectRatio?: "16:9" | "9:16" | "Auto";

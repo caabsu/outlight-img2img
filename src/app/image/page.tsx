@@ -28,6 +28,12 @@ import {
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
+import {
+  useStudioColumns,
+  ColumnResizeHandle,
+  CollapseToggle,
+  CollapsedRail,
+} from "@/components/layout/StudioColumns";
 
 import {
   loadImageStudioSession,
@@ -624,9 +630,14 @@ export default function ImageStudioPage() {
   const [nb2OutputFormat, setNb2OutputFormat] = useState<string>("jpg");
   const [nb2GoogleSearch, setNb2GoogleSearch] = useState<boolean>(false);
   const isNanoBanana2 = modelDef.id === "nanobanana-2";
-  // Prompt column width (resizable)
-  const [promptColumnWidth, setPromptColumnWidth] = useState<number>(700);
-  const isResizingRef = useRef(false);
+  // Resizable / collapsible column layout (persisted, independent of run session)
+  const layout = useStudioColumns("ol_image_layout", {
+    configWidth: 290,
+    promptWidth: 540,
+    configRange: [240, 460],
+    promptRange: [400, 1200],
+    breakpoint: 1280,
+  });
   const [speed, setSpeed] = useState<RunSpeed>(1);
   const [promptsText, setPromptsText] = useState("");
   const promptLines = useMemo(
@@ -825,9 +836,7 @@ export default function ImageStudioPage() {
     if (session.nb2Resolution) setNb2Resolution(session.nb2Resolution);
     if (session.nb2OutputFormat) setNb2OutputFormat(session.nb2OutputFormat);
     if (typeof session.nb2GoogleSearch === "boolean") setNb2GoogleSearch(session.nb2GoogleSearch);
-    if (typeof session.promptColumnWidth === "number" && session.promptColumnWidth >= 400 && session.promptColumnWidth <= 1200) {
-      setPromptColumnWidth(session.promptColumnWidth);
-    }
+    // Column layout is now persisted independently by useStudioColumns.
     if (typeof session.speed === "number") setSpeed(session.speed as any);
     if (session.customUrls?.length) setCustomUrls(session.customUrls);
 
@@ -874,7 +883,7 @@ export default function ImageStudioPage() {
       nb2Resolution,
       nb2OutputFormat,
       nb2GoogleSearch,
-      promptColumnWidth,
+      promptColumnWidth: layout.promptWidth,
       speed,
       customUrls: customUrls.filter((u) => u && !u.startsWith("data:")), // Don't save large data URIs
       runs: runs.map(serializeImageRun),
@@ -907,7 +916,7 @@ export default function ImageStudioPage() {
     nb2Resolution,
     nb2OutputFormat,
     nb2GoogleSearch,
-    promptColumnWidth,
+    layout.promptWidth,
     speed,
     customUrls,
     runs,
@@ -1696,19 +1705,38 @@ export default function ImageStudioPage() {
                    <span>Active: {runs.filter(r => r.status === "running").length}</span>
                </div>
            </div>
-           <Link href="/library" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
-             View Library &rarr;
-           </Link>
+           <div className="flex items-center gap-4">
+             <button
+               onClick={layout.reset}
+               className="hidden text-xs font-medium text-ink-3 hover:text-ink xl:inline"
+               title="Reset column widths and expand all"
+             >
+               Reset layout
+             </button>
+             <Link href="/library" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
+               View Library &rarr;
+             </Link>
+           </div>
         </div>
 
-        {/* Responsive studio grid: stacks on mobile/tablet, fluid 3-column on xl+. */}
-        <div className="grid gap-5 xl:gap-6 items-start grid-cols-1 xl:grid-cols-[300px_minmax(0,1.35fr)_minmax(0,1fr)]">
-          
+        {/* Responsive studio grid: stacks on mobile/tablet, collapsible + resizable 3-column on xl+. */}
+        <div
+          className="grid gap-5 xl:gap-6 items-start grid-cols-1"
+          style={{ gridTemplateColumns: layout.gridTemplateColumns }}
+        >
+
           {/* Column 1: Configuration */}
-          <div className="space-y-4">
+          {layout.configCollapsed ? (
+            <CollapsedRail label="Config" onExpand={layout.toggleConfig} />
+          ) : (
+          <div className="relative space-y-4">
+            <ColumnResizeHandle onMouseDown={(e) => layout.startResize("config", e)} title="Drag to resize config" breakpointClass="xl:block" />
             <div className="ui-card p-4">
                 <div className="mb-3 flex items-center justify-between gap-2">
-                  <div className="ui-eyebrow"><span className="ui-eyebrow-ic">◈</span> Model</div>
+                  <div className="flex items-center gap-1">
+                    <CollapseToggle onClick={layout.toggleConfig} title="Collapse config" breakpointClass="xl:inline-flex" />
+                    <div className="ui-eyebrow"><span className="ui-eyebrow-ic">◈</span> Model</div>
+                  </div>
                   {isNanoBananaPro && (
                      <button
                        onClick={() => setShowNanoGuide(true)}
@@ -2120,47 +2148,22 @@ export default function ImageStudioPage() {
                  </div>
              </div>
           </div>
+          )}
 
           {/* Column 2: Creation */}
+          {layout.promptCollapsed ? (
+            <CollapsedRail label="Compose" onExpand={layout.togglePrompt} heightClass="min-h-[520px] xl:h-[calc(100vh-120px)]" />
+          ) : (
           <div className="relative flex flex-col gap-6 min-h-[520px] xl:h-[calc(100vh-120px)]">
-            {/* Resize Handle — retired in favor of fluid fr columns */}
-            <div
-              className="absolute right-0 top-0 bottom-0 w-2 cursor-col-resize z-10 group hidden"
-              style={{ transform: "translateX(50%)" }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                isResizingRef.current = true;
-                const startX = e.clientX;
-                const startWidth = promptColumnWidth;
-
-                const onMouseMove = (moveEvent: MouseEvent) => {
-                  if (!isResizingRef.current) return;
-                  const delta = moveEvent.clientX - startX;
-                  const newWidth = Math.max(400, Math.min(1200, startWidth + delta));
-                  setPromptColumnWidth(newWidth);
-                };
-
-                const onMouseUp = () => {
-                  isResizingRef.current = false;
-                  document.removeEventListener("mousemove", onMouseMove);
-                  document.removeEventListener("mouseup", onMouseUp);
-                  document.body.style.cursor = "";
-                  document.body.style.userSelect = "";
-                };
-
-                document.addEventListener("mousemove", onMouseMove);
-                document.addEventListener("mouseup", onMouseUp);
-                document.body.style.cursor = "col-resize";
-                document.body.style.userSelect = "none";
-              }}
-            >
-              <div className="absolute inset-y-0 left-1/2 w-1 -translate-x-1/2 bg-transparent group-hover:bg-indigo-400 dark:group-hover:bg-indigo-500 transition-colors rounded-full" />
-            </div>
+            <ColumnResizeHandle onMouseDown={(e) => layout.startResize("prompt", e)} title="Drag to resize prompt" breakpointClass="xl:block" />
              <div className="flex-1 flex flex-col ui-card overflow-hidden">
                 <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-line">
+                     <div className="flex items-center gap-2 min-w-0">
+                       <CollapseToggle onClick={layout.togglePrompt} title="Collapse prompt" breakpointClass="xl:inline-flex" />
                      <div className="min-w-0">
                         <h2 className="font-display text-xl font-bold text-ink leading-none">Compose</h2>
                         <p className="mt-1 text-xs text-ink-3 truncate">One prompt per line · {modelNameDisplay}</p>
+                     </div>
                      </div>
                      <div className="flex items-center gap-2 shrink-0">
                         <PromptAssistant
@@ -2213,6 +2216,7 @@ export default function ImageStudioPage() {
                 </div>
              </div>
           </div>
+          )}
 
           {/* Column 3: Feed / Results */}
           <div className="flex flex-col gap-4 min-h-[520px] xl:h-[calc(100vh-120px)]">

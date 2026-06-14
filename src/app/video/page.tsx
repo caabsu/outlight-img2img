@@ -6,6 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 import { MODEL_LIST } from "@/lib/models";
 import { PromptAssistant } from "@/components/PromptAssistant";
 import {
+  useStudioColumns,
+  ColumnResizeHandle,
+  CollapseToggle,
+  CollapsedRail,
+} from "@/components/layout/StudioColumns";
+import {
   loadVideoStudioSession,
   debouncedSaveVideoSession,
   serializeVideoRun,
@@ -406,7 +412,7 @@ type VideoRunContext = {
     duration: string;
     aspect: "16:9" | "9:16" | "1:1";
     sound: boolean;
-    mode: "std" | "pro";
+    mode: "std" | "pro" | "4K";
   };
   veo: {
     aspect: VeoRatio;
@@ -500,6 +506,15 @@ export default function VideoStudioPage() {
   const [batchVideoUploading, setBatchVideoUploading] = useState(false);
   const [expandedVideo, setExpandedVideo] = useState(false);
 
+  // Resizable / collapsible column layout (persisted, independent of run session)
+  const layout = useStudioColumns("ol_video_layout", {
+    configWidth: 290,
+    promptWidth: 500,
+    configRange: [220, 440],
+    promptRange: [380, 920],
+    breakpoint: 1024,
+  });
+
   // Computed ref sources (all unique images from uploads and URLs)
   const refSources = useMemo(() => {
     const list = [
@@ -535,7 +550,7 @@ export default function VideoStudioPage() {
   const [kling30Duration, setKling30Duration] = useState<string>("5");
   const [kling30Aspect, setKling30Aspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [kling30Sound, setKling30Sound] = useState<boolean>(false);
-  const [kling30Mode, setKling30Mode] = useState<"std" | "pro">("pro");
+  const [kling30Mode, setKling30Mode] = useState<"std" | "pro" | "4K">("pro");
 
   const [veoAspect, setVeoAspect] = useState<VeoRatio>("16:9");
   const [veoSeed, setVeoSeed] = useState("");
@@ -1330,18 +1345,34 @@ export default function VideoStudioPage() {
                    <span>Active: {videoRuns.filter(r => r.status === "running").length}</span>
                </div>
            </div>
-           <Link href="/library" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
-             View Library &rarr;
-           </Link>
+           <div className="flex items-center gap-4">
+             <button
+               onClick={layout.reset}
+               className="hidden text-xs font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 lg:inline"
+               title="Reset column widths and expand all"
+             >
+               Reset layout
+             </button>
+             <Link href="/library" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300">
+               View Library &rarr;
+             </Link>
+           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[320px_640px_minmax(0,1fr)] items-start">
-          
+        <div className="grid gap-5 grid-cols-1 items-start" style={{ gridTemplateColumns: layout.gridTemplateColumns }}>
+
           {/* Column 1: Configuration */}
-          <div className="space-y-6">
+          {layout.configCollapsed ? (
+            <CollapsedRail label="Config" onExpand={layout.toggleConfig} />
+          ) : (
+          <div className="relative space-y-6">
+             <ColumnResizeHandle onMouseDown={(e) => layout.startResize("config", e)} title="Drag to resize config" />
              {/* Model Select */}
              <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 shadow-sm">
-                 <h2 className="mb-4 text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
+                 <div className="mb-4 flex items-center justify-between">
+                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Model</h2>
+                   <CollapseToggle onClick={layout.toggleConfig} title="Collapse config" />
+                 </div>
                  <div className="space-y-4">
                      {VIDEO_MODEL_GROUPS.map(group => (
                          <div key={group.label}>
@@ -1393,8 +1424,9 @@ export default function VideoStudioPage() {
                                 <div>
                                     <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Quality</label>
                                     <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={kling30Mode} onChange={e => setKling30Mode(e.target.value as any)}>
-                                        <option value="pro">Pro</option>
                                         <option value="std">Standard</option>
+                                        <option value="pro">Pro</option>
+                                        <option value="4K">4K</option>
                                     </select>
                                 </div>
                             </div>
@@ -1797,12 +1829,20 @@ export default function VideoStudioPage() {
                  </div>
              </div>
           </div>
+          )}
 
           {/* Column 2: Creation */}
-          <div className="flex flex-col gap-6 h-[calc(100vh-120px)]">
+          {layout.promptCollapsed ? (
+            <CollapsedRail label="Director" onExpand={layout.togglePrompt} />
+          ) : (
+          <div className="relative flex flex-col gap-6 h-[calc(100vh-120px)]">
+             <ColumnResizeHandle onMouseDown={(e) => layout.startResize("prompt", e)} title="Drag to resize prompt" />
              <div className="flex-1 flex flex-col rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-1 shadow-sm overflow-hidden">
                  <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
-                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Director</h2>
+                     <div className="flex items-center gap-1.5">
+                       <CollapseToggle onClick={layout.togglePrompt} title="Collapse prompt" />
+                       <h2 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Director</h2>
+                     </div>
                      <div className="flex items-center gap-2">
                         <PromptAssistant 
                             onAccept={(newPrompts, mode) => {
@@ -1901,6 +1941,7 @@ export default function VideoStudioPage() {
                 </div>
              </div>
           </div>
+          )}
 
           {/* Column 3: Feed */}
           <div className="flex flex-col gap-4 h-[calc(100vh-120px)]">
