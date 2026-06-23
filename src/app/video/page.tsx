@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { MODEL_LIST } from "@/lib/models";
 import { PromptAssistant } from "@/components/PromptAssistant";
+import { ProxiedVideo, proxiedVideoSrc } from "@/components/ProxiedVideo";
 import {
   useStudioColumns,
   ColumnResizeHandle,
@@ -365,8 +366,11 @@ function ProductSelectorModal({
   );
 }
 
-type VideoProvider = "kling" | "veo" | "sora";
-type VideoModelKind = "veo" | "storyboard" | "sora-t2v" | "sora-i2v" | "kling30";
+type VideoProvider = "kling" | "veo" | "sora" | "seedance";
+type VideoModelKind = "veo" | "storyboard" | "sora-t2v" | "sora-i2v" | "kling30" | "seedance";
+
+type SeedanceResolution = "480p" | "720p" | "1080p";
+type SeedanceAspect = "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "21:9";
 
 type VideoModelOption = {
   id: string;
@@ -445,6 +449,14 @@ type VideoRunContext = {
     shots: string;
     imageUrl: string;
   };
+  seedance: {
+    resolution: SeedanceResolution;
+    aspect: SeedanceAspect;
+    duration: number;
+    generateAudio: boolean;
+    webSearch: boolean;
+    refVideos: string[]; // uploaded public HTTP URLs
+  };
   batchImages?: string[];
 };
 
@@ -453,6 +465,12 @@ const VIDEO_MODEL_GROUPS: Array<{ label: string; options: VideoModelOption[] }> 
     label: "Kling (KIE)",
     options: [
       { id: "kling-3.0", provider: "kling", label: "Kling 3.0 (Auto I2V/T2V)", kind: "kling30" },
+    ],
+  },
+  {
+    label: "Seedance (ByteDance)",
+    options: [
+      { id: "seedance-2", provider: "seedance", label: "Seedance 2", kind: "seedance" },
     ],
   },
   {
@@ -615,8 +633,7 @@ function BatchOverview({
             >
               {/* Source thumbnail (batch) or generated frame */}
               {item.videoUrl ? (
-                // eslint-disable-next-line jsx-a11y/media-has-caption
-                <video src={item.videoUrl} className="h-full w-full object-cover pointer-events-none" />
+                <ProxiedVideo src={item.videoUrl} className="h-full w-full object-cover pointer-events-none" />
               ) : item.thumbUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.thumbUrl} alt="" className="h-full w-full object-cover opacity-50" />
@@ -730,6 +747,7 @@ export default function VideoStudioPage() {
   const isKling30 = videoModelDef.kind === "kling30";
   const isVeo = videoModelDef.provider === "veo";
   const isSora = videoModelDef.provider === "sora";
+  const isSeedance = videoModelDef.provider === "seedance";
 
   // Kling 3.0 states
   const [kling30Duration, setKling30Duration] = useState<string>("5");
@@ -757,6 +775,17 @@ export default function VideoStudioPage() {
     `5|Establishing shot of the scene\n10|Add detail or talent`
   );
   const [soraImageUrl, setSoraImageUrl] = useState("");
+
+  // Seedance 2 options
+  const [seedanceResolution, setSeedanceResolution] = useState<SeedanceResolution>("720p");
+  const [seedanceAspect, setSeedanceAspect] = useState<SeedanceAspect>("16:9");
+  const [seedanceDuration, setSeedanceDuration] = useState<number>(15);
+  const [seedanceGenerateAudio, setSeedanceGenerateAudio] = useState<boolean>(true);
+  const [seedanceWebSearch, setSeedanceWebSearch] = useState<boolean>(false);
+  // Reference videos: stored as uploaded public HTTP URLs (never data URIs, to
+  // avoid bloating localStorage). Each entry is { url, name } for display.
+  const [seedanceRefVideos, setSeedanceRefVideos] = useState<Array<{ url: string; name: string }>>([]);
+  const [seedanceVideoUploading, setSeedanceVideoUploading] = useState(false);
 
   const isSoraT2V = videoModelDef.kind === "sora-t2v";
   const isSoraI2V = videoModelDef.kind === "sora-i2v";
@@ -835,6 +864,12 @@ export default function VideoStudioPage() {
     if (session.soraAspect) setSoraAspect(session.soraAspect as any);
     if (session.soraSize) setSoraSize(session.soraSize as any);
     if (typeof session.soraRemoveWatermark === "boolean") setSoraRemoveWatermark(session.soraRemoveWatermark);
+    if (session.seedanceResolution) setSeedanceResolution(session.seedanceResolution as any);
+    if (session.seedanceAspect) setSeedanceAspect(session.seedanceAspect as any);
+    if (typeof session.seedanceDuration === "number") setSeedanceDuration(session.seedanceDuration);
+    if (typeof session.seedanceGenerateAudio === "boolean") setSeedanceGenerateAudio(session.seedanceGenerateAudio);
+    if (typeof session.seedanceWebSearch === "boolean") setSeedanceWebSearch(session.seedanceWebSearch);
+    if (Array.isArray(session.seedanceRefVideos)) setSeedanceRefVideos(session.seedanceRefVideos);
     if (typeof session.videoParallel === "number") setVideoParallel(session.videoParallel);
     if (session.customUrl) setCustomVideoUrl(session.customUrl);
     if (session.batchVideoImages?.length) setBatchVideoImages(session.batchVideoImages);
@@ -870,6 +905,12 @@ export default function VideoStudioPage() {
       soraAspect,
       soraSize,
       soraRemoveWatermark,
+      seedanceResolution,
+      seedanceAspect,
+      seedanceDuration,
+      seedanceGenerateAudio,
+      seedanceWebSearch,
+      seedanceRefVideos,
       videoParallel,
       customUrl: customVideoUrl,
       batchVideoImages: batchVideoImages.filter((u) => !u.startsWith("data:")), // Don't save large data URIs
@@ -891,6 +932,12 @@ export default function VideoStudioPage() {
     soraAspect,
     soraSize,
     soraRemoveWatermark,
+    seedanceResolution,
+    seedanceAspect,
+    seedanceDuration,
+    seedanceGenerateAudio,
+    seedanceWebSearch,
+    seedanceRefVideos,
     videoParallel,
     customVideoUrl,
     batchVideoImages,
@@ -1108,6 +1155,52 @@ export default function VideoStudioPage() {
     return urlData.publicUrl;
   }
 
+  // Upload a raw File (e.g. a reference video) directly to Supabase storage.
+  // Videos can be large, so we upload the File blob as-is rather than routing
+  // through a base64 data URL.
+  async function uploadFileToStorage(file: File): Promise<string> {
+    const safeExt = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+    const filePath = `uploads/${crypto.randomUUID()}.${safeExt}`;
+    const { error: uploadError } = await getSupabaseClient().storage
+      .from("reference-images")
+      .upload(filePath, file, {
+        contentType: file.type || "video/mp4",
+        upsert: false,
+      });
+    if (uploadError) throw new Error(uploadError.message || "Upload failed");
+    const { data: urlData } = getSupabaseClient().storage.from("reference-images").getPublicUrl(filePath);
+    if (!urlData?.publicUrl) throw new Error("Failed to get public URL");
+    return urlData.publicUrl;
+  }
+
+  async function handleSeedanceVideoUpload(files: FileList | File[] | null) {
+    if (!files || files.length === 0) return;
+    const vids = Array.from(files as ArrayLike<File>).filter((f) => f.type.startsWith("video/"));
+    if (vids.length === 0) {
+      setSaveToast({ message: "Please choose a video file", type: "error" });
+      return;
+    }
+    setSeedanceVideoUploading(true);
+    try {
+      const uploaded: Array<{ url: string; name: string }> = [];
+      for (const file of vids) {
+        const url = await uploadFileToStorage(file);
+        uploaded.push({ url, name: file.name });
+      }
+      // Seedance accepts at most 3 reference videos.
+      setSeedanceRefVideos((prev) => [...prev, ...uploaded].slice(0, 3));
+      setSaveToast({ message: `${uploaded.length} video${uploaded.length > 1 ? "s" : ""} added`, type: "success" });
+    } catch (error: any) {
+      setSaveToast({ message: error?.message || "Video upload failed", type: "error" });
+    } finally {
+      setSeedanceVideoUploading(false);
+    }
+  }
+
+  function removeSeedanceVideo(url: string) {
+    setSeedanceRefVideos((prev) => prev.filter((v) => v.url !== url));
+  }
+
   function setActiveVideoRun(runId: string) {
     setActiveVideoRunId(runId);
   }
@@ -1218,6 +1311,7 @@ export default function VideoStudioPage() {
       kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode, multiShot: useMultiShot, shots: kling30Shots },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
+      seedance: { resolution: seedanceResolution, aspect: seedanceAspect, duration: seedanceDuration, generateAudio: seedanceGenerateAudio, webSearch: seedanceWebSearch, refVideos: seedanceRefVideos.map((v) => v.url) },
     };
 
     addRun(run);
@@ -1266,6 +1360,7 @@ export default function VideoStudioPage() {
       kling30: { duration: kling30Duration, aspect: kling30Aspect, sound: kling30Sound, mode: kling30Mode, multiShot: false, shots: [] },
       veo: { aspect: veoAspect, seed: veoSeed, startFrame: veoStartFrame, endFrame: veoEndFrame },
       sora: { frames: soraFrames, aspect: soraAspect, size: soraSize, removeWatermark: soraRemoveWatermark, shots: soraShotsText, imageUrl: trimmedSoraImageUrl },
+      seedance: { resolution: seedanceResolution, aspect: seedanceAspect, duration: seedanceDuration, generateAudio: seedanceGenerateAudio, webSearch: seedanceWebSearch, refVideos: seedanceRefVideos.map((v) => v.url) },
       batchImages: [...batchVideoImages],
     };
 
@@ -1282,6 +1377,7 @@ export default function VideoStudioPage() {
     const runIsKling = modelOption.provider === "kling";
     const runIsVeo = modelOption.provider === "veo";
     const runIsSora = modelOption.provider === "sora";
+    const runIsSeedance = modelOption.provider === "seedance";
 
     const pushVideo = (video: VideoItem) => {
       setVideoRuns((prev) =>
@@ -1526,6 +1622,28 @@ export default function VideoStudioPage() {
               prompt: line,
               input: soraInput,
             };
+          } else if (runIsSeedance) {
+            provider = "seedance";
+            // Reference images come from the shared reference pool; upload any
+            // data URIs so Seedance receives public HTTP URLs.
+            let refImgs = context.referenceUrls?.length > 0 ? context.referenceUrls : [];
+            if (refImgs.some((url) => url.startsWith("data:"))) {
+              refImgs = await Promise.all(refImgs.map((url) => uploadToStorage(url)));
+            }
+            body = {
+              provider,
+              model: "bytedance/seedance-2",
+              prompt: line,
+              seedance: {
+                reference_image_urls: refImgs,
+                reference_video_urls: context.seedance.refVideos,
+                generate_audio: context.seedance.generateAudio,
+                resolution: context.seedance.resolution,
+                aspect_ratio: context.seedance.aspect,
+                duration: context.seedance.duration,
+                web_search: context.seedance.webSearch,
+              },
+            };
           }
 
           const url = await generateVideo(body, controller.signal);
@@ -1751,6 +1869,47 @@ export default function VideoStudioPage() {
                                 {isSoraT2V && "Text-to-Video mode (prompt only, no image)"}
                                 {isSoraI2V && "Image-to-Video mode (prompt + reference image)"}
                                 {isSoraStoryboard && "Storyboard mode (prompt + image + shot timeline)"}
+                            </p>
+                        </div>
+                     )}
+                     {/* Seedance 2 Params */}
+                     {isSeedance && (
+                        <div className="space-y-3">
+                            <div className="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Resolution</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={seedanceResolution} onChange={e => setSeedanceResolution(e.target.value as SeedanceResolution)}>
+                                        <option value="480p">480p</option>
+                                        <option value="720p">720p</option>
+                                        <option value="1080p">1080p</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Aspect</label>
+                                    <select className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={seedanceAspect} onChange={e => setSeedanceAspect(e.target.value as SeedanceAspect)}>
+                                        <option value="16:9">16:9</option>
+                                        <option value="4:3">4:3</option>
+                                        <option value="1:1">1:1</option>
+                                        <option value="3:4">3:4</option>
+                                        <option value="9:16">9:16</option>
+                                        <option value="21:9">21:9</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-slate-400 dark:text-slate-500">Duration (s)</label>
+                                    <input type="number" min={4} max={15} step={1} className="w-full mt-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5 text-xs text-slate-900 dark:text-slate-100" value={seedanceDuration} onChange={e => setSeedanceDuration(Math.max(4, Math.min(15, Math.round(Number(e.target.value) || 4))))} />
+                                </div>
+                            </div>
+                            <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 select-none cursor-pointer">
+                                <input type="checkbox" checked={seedanceGenerateAudio} onChange={e => setSeedanceGenerateAudio(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
+                                Generate audio
+                            </label>
+                            <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400 select-none cursor-pointer">
+                                <input type="checkbox" checked={seedanceWebSearch} onChange={e => setSeedanceWebSearch(e.target.checked)} className="rounded border-slate-300 dark:border-slate-700 text-indigo-600 focus:ring-indigo-500" />
+                                Web search
+                            </label>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">
+                                Reference-driven: upload reference images (and optional videos) below, then describe the action in your prompt (e.g. reference @Image1 for the character).
                             </p>
                         </div>
                      )}
@@ -2084,6 +2243,44 @@ export default function VideoStudioPage() {
                          )}
                        </>
                      )}
+
+                     {/* Seedance 2: Reference Videos (optional, up to 3) */}
+                     {isSeedance && (
+                       <div className="mt-3 space-y-2">
+                         <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                           Reference Videos <span className="text-[10px] text-slate-400 dark:text-slate-500">(optional, up to 3)</span>
+                         </label>
+                         <label className={`flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-200 dark:border-slate-700 px-3 py-3 text-xs transition hover:border-indigo-400 dark:hover:border-indigo-500 hover:bg-slate-50 dark:hover:bg-slate-800 ${seedanceVideoUploading || seedanceRefVideos.length >= 3 ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}>
+                           <input
+                             type="file"
+                             accept="video/*"
+                             multiple
+                             className="hidden"
+                             disabled={seedanceVideoUploading || seedanceRefVideos.length >= 3}
+                             onChange={(e) => { void handleSeedanceVideoUpload(e.target.files); e.currentTarget.value = ""; }}
+                           />
+                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4 text-slate-400">
+                             <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                           </svg>
+                           <span className="text-slate-500 dark:text-slate-400">{seedanceVideoUploading ? "Uploading…" : "Upload reference video"}</span>
+                         </label>
+                         {seedanceRefVideos.length > 0 && (
+                           <div className="space-y-1.5">
+                             {seedanceRefVideos.map((v) => (
+                               <div key={v.url} className="flex items-center justify-between gap-2 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 px-2 py-1.5">
+                                 <span className="truncate text-[11px] text-slate-600 dark:text-slate-300" title={v.name}>{v.name}</span>
+                                 <button onClick={() => removeSeedanceVideo(v.url)} className="flex-none text-rose-500 hover:text-rose-600" title="Remove">
+                                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                                     <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                   </svg>
+                                 </button>
+                               </div>
+                             ))}
+                           </div>
+                         )}
+                         <p className="text-[10px] text-slate-400 dark:text-slate-500 italic">Combined length must stay under 15s.</p>
+                       </div>
+                     )}
                  </div>
              </div>
           </div>
@@ -2274,8 +2471,7 @@ export default function VideoStudioPage() {
                           {activeVideoRun.videos.length > 0 ? (
                               <div className="space-y-3">
                                   <div className="relative rounded-lg overflow-hidden bg-black shadow-lg group">
-                                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                                      <video
+                                      <ProxiedVideo
                                         src={activeVideoRun.videos[activeVideoRun.activeIdx].url}
                                         controls
                                         playsInline
@@ -2306,7 +2502,7 @@ export default function VideoStudioPage() {
                                             const current = activeVideoRun.videos[activeVideoRun.activeIdx];
                                             const base = safeName(activeVideoRun.productName || "video");
                                             const a = document.createElement("a");
-                                            a.href = current.url;
+                                            a.href = proxiedVideoSrc(current.url);
                                             a.download = `${base}_${safeName(activeVideoRun.modelLabel)}_${activeVideoRun.activeIdx + 1}.mp4`;
                                             document.body.appendChild(a);
                                             a.click();
@@ -2327,8 +2523,7 @@ export default function VideoStudioPage() {
                                             }}
                                             className={`relative aspect-video rounded-lg overflow-hidden border-2 bg-black transition ${activeVideoRun.activeIdx === idx ? 'border-indigo-500 ring-2 ring-indigo-500/50' : 'border-slate-200 dark:border-slate-700 opacity-80 hover:opacity-100 hover:border-slate-400 dark:hover:border-slate-500'}`}
                                          >
-                                             {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                                             <video src={vid.url} className="h-full w-full object-cover pointer-events-none" />
+                                             <ProxiedVideo src={vid.url} className="h-full w-full object-cover pointer-events-none" />
                                              <span className="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] font-bold bg-black/70 text-white rounded">
                                                {idx + 1}
                                              </span>
@@ -2460,8 +2655,7 @@ export default function VideoStudioPage() {
 
             {/* Video player */}
             <div className="relative w-full rounded-xl overflow-hidden bg-black shadow-2xl">
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video
+              <ProxiedVideo
                 src={activeVideoRun.videos[activeVideoRun.activeIdx].url}
                 controls
                 autoPlay

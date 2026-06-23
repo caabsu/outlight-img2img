@@ -9,7 +9,7 @@ const KIE_BASE = process.env.KIE_API_BASE || "https://api.kie.ai";
 const KIE_KEY = process.env.KIE_API_KEY!;
 
 // ---- TYPES from your UI ----
-type VideoProvider = "kling" | "veo" | "sora";
+type VideoProvider = "kling" | "veo" | "sora" | "seedance";
 
 type PostBody = {
   provider?: VideoProvider;
@@ -45,6 +45,18 @@ type PostBody = {
     aspect_ratio?: "portrait" | "landscape";
     size?: "standard" | "high";
     shots?: Array<{ duration: number; scene: string }>;
+  };
+
+  // Seedance 2 (ByteDance via KIE) — reference-driven, no first/last frame
+  seedance?: {
+    reference_image_urls?: string[];
+    reference_video_urls?: string[];
+    generate_audio?: boolean;
+    resolution?: "480p" | "720p" | "1080p";
+    aspect_ratio?: "16:9" | "4:3" | "1:1" | "3:4" | "9:16" | "21:9";
+    duration?: number;
+    web_search?: boolean;
+    nsfw_checker?: boolean;
   };
 };
 
@@ -442,6 +454,8 @@ export async function POST(req: Request) {
       seeds,
       // Sora
       input,
+      // Seedance 2
+      seedance,
     } = body;
 
     /* -------- ASYNC: single status check (short request) -------- */
@@ -597,6 +611,42 @@ export async function POST(req: Request) {
       const taskId = await kieCreateTask(payload, { retryOnPolicy: true });
       if (action === "create") return NextResponse.json({ taskId, service: "kie" });
       const { url } = await kiePoll(taskId, 720_000); // 12 minutes max for Sora
+      return NextResponse.json({ videoUrl: url });
+    }
+
+    /* -------- SEEDANCE 2 (ByteDance via KIE) -------- */
+    if (provider === "seedance") {
+      const sd = seedance || {};
+
+      const seedanceInput: Record<string, any> = {
+        prompt,
+        generate_audio: sd.generate_audio ?? true,
+        resolution: sd.resolution || "720p",
+        aspect_ratio: sd.aspect_ratio || "16:9",
+        // Seedance accepts 4–15s (integer step).
+        duration: Math.max(4, Math.min(15, Math.round(Number(sd.duration) || 15))),
+        web_search: sd.web_search ?? false,
+        nsfw_checker: sd.nsfw_checker ?? true,
+      };
+
+      // Reference images/videos must be public HTTP(S) URLs.
+      const refImgs = (sd.reference_image_urls || []).filter((u) => /^https?:\/\//i.test(u));
+      if (refImgs.length > 0) seedanceInput.reference_image_urls = refImgs.slice(0, 10);
+      // KIE caps reference videos at 3 (combined length ≤ 15s).
+      const refVids = (sd.reference_video_urls || []).filter((u) => /^https?:\/\//i.test(u));
+      if (refVids.length > 0) seedanceInput.reference_video_urls = refVids.slice(0, 3);
+
+      const payload = {
+        model: "bytedance/seedance-2",
+        callBackUrl: "",
+        input: seedanceInput,
+      };
+
+      console.log("[Seedance] Payload:", JSON.stringify(payload, null, 2));
+
+      const taskId = await kieCreateTask(payload, { retryOnPolicy: true });
+      if (action === "create") return NextResponse.json({ taskId, service: "kie" });
+      const { url } = await kiePoll(taskId, 720_000); // 12 minutes max
       return NextResponse.json({ videoUrl: url });
     }
 

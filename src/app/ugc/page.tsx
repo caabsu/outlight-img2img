@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "
 import { IBM_Plex_Sans, Manrope } from "next/font/google";
 import { MODEL_LIST } from "@/lib/models";
 import { ProxiedImg } from "@/components/ProxiedImg";
+import { ProxiedVideo } from "@/components/ProxiedVideo";
 import {
   DEFAULT_UGC_PROMPT_PACK,
   DEFAULT_UGC_WORKFLOW_SETTINGS,
@@ -712,7 +713,7 @@ function VideoRenderCard({
     )}>
       <div className="aspect-[9/16] bg-slate-900">
         {render.url ? (
-          <video src={render.url} controls className="h-full w-full object-cover" />
+          <ProxiedVideo src={render.url} controls className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
             {render.status === "running" ? (

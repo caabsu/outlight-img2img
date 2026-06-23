@@ -225,6 +225,13 @@ export type VideoStudioSession = {
   soraAspect: string;
   soraSize?: string;
   soraRemoveWatermark?: boolean;
+  // Model options - Seedance 2
+  seedanceResolution?: string;
+  seedanceAspect?: string;
+  seedanceDuration?: number;
+  seedanceGenerateAudio?: boolean;
+  seedanceWebSearch?: boolean;
+  seedanceRefVideos?: Array<{ url: string; name: string }>;
   // General
   videoParallel: number;
   // References
