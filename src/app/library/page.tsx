@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MODEL_LIST } from "@/lib/models";
 import { pushStudioIntent } from "@/lib/studio-intent";
+import { ProxiedImg, proxiedImageSrc } from "@/components/ProxiedImg";
 
 type Product = { id: string; name: string };
 type LibraryItem = {
@@ -264,8 +265,7 @@ export default function LibraryPage() {
                 {images.map((image) => (
                   <div key={image.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-sm text-slate-600 dark:text-slate-300 shadow-sm">
                     <div className="overflow-hidden rounded-lg border border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={image.image_data} alt={image.prompt} className="h-40 w-full object-cover" />
+                      <ProxiedImg src={image.image_data} alt={image.prompt} className="h-40 w-full object-cover" />
                     </div>
                     <p className="mt-3 text-slate-900 dark:text-slate-100 line-clamp-2" title={image.prompt}>
                       {image.prompt}
@@ -290,7 +290,7 @@ export default function LibraryPage() {
                         className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                         onClick={() => {
                           const a = document.createElement("a");
-                          a.href = image.image_data;
+                          a.href = proxiedImageSrc(image.image_data);
                           a.download = `library_${image.id}.png`;
                           document.body.appendChild(a);
                           a.click();

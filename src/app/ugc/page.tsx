@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useState, type ReactNode } from "react";
 import { IBM_Plex_Sans, Manrope } from "next/font/google";
 import { MODEL_LIST } from "@/lib/models";
+import { ProxiedImg } from "@/components/ProxiedImg";
 import {
   DEFAULT_UGC_PROMPT_PACK,
   DEFAULT_UGC_WORKFLOW_SETTINGS,
@@ -635,8 +636,7 @@ function ImageRenderCard({
     >
       <div className="aspect-[9/16] bg-slate-900">
         {render.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={render.url} alt={render.title} className="h-full w-full object-cover" />
+          <ProxiedImg src={render.url} alt={render.title} className="h-full w-full object-cover" />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-slate-500">
             {render.status === "running" ? (

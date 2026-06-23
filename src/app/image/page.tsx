@@ -28,6 +28,7 @@ import {
 } from "@/lib/models";
 import { consumeStudioIntent, StudioIntent } from "@/lib/studio-intent";
 import { PromptAssistant } from "@/components/PromptAssistant";
+import { ProxiedImg } from "@/components/ProxiedImg";
 import {
   useStudioColumns,
   ColumnResizeHandle,
@@ -2274,8 +2275,7 @@ export default function ImageStudioPage() {
                                     ? "border-indigo-500 ring-2 ring-indigo-500/50"
                                     : "border-slate-200 dark:border-slate-700 opacity-80 hover:opacity-100 hover:border-slate-400 dark:hover:border-slate-500"}`}
                                 >
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img src={img.imageDataUrl} className="h-full w-full object-cover" alt="" />
+                                  <ProxiedImg src={img.imageDataUrl} className="h-full w-full object-cover" />
                                   <span className="absolute bottom-1 right-1 px-1.5 py-0.5 text-[10px] font-bold bg-black/70 text-white rounded">
                                     {idx + 1}
                                   </span>
@@ -2302,8 +2302,7 @@ export default function ImageStudioPage() {
                                     <span className="text-sm leading-none">→</span>
                                   </button>
                                 </div>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" alt="" />
+                                <ProxiedImg src={activeRun.images[activeRun.activeIdx].imageDataUrl} className="h-full w-full object-contain" />
                                 <div className="absolute top-3 right-3 flex flex-wrap gap-2">
                                   <button
                                     onClick={() => setExpandedImage(true)}
@@ -2528,10 +2527,8 @@ export default function ImageStudioPage() {
 
             {/* Image display */}
             <div className="relative w-full flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <ProxiedImg
                 src={activeRun.images[activeRun.activeIdx].imageDataUrl}
-                alt=""
                 className="max-h-[80vh] max-w-full object-contain rounded-xl shadow-2xl"
               />
             </div>

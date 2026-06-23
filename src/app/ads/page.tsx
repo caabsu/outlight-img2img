@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { useAdStudio } from "@/components/providers/ad-studio-provider";
 import type { AdCampaign, AgentStatus } from "@/lib/ad-campaign-types";
 import { MODEL_LIST, getModelById } from "@/lib/models";
+import { ProxiedImg } from "@/components/ProxiedImg";
 import {
   loadAdStudioSession,
   debouncedSaveAdSession,
@@ -734,7 +735,7 @@ function ResultsGrid({
                           onClick={() => img && onImageClick(img)}
                         >
                           {img ? (
-                            <img
+                            <ProxiedImg
                               src={img.url}
                               alt={`${concept.name} ${ratio}`}
                               className={isAdCopy ? "w-full h-full object-contain bg-white dark:bg-slate-900" : "w-full h-full object-cover"}
@@ -865,7 +866,7 @@ function ImageModal({
           </div>
         </div>
         <div className="rounded-xl overflow-hidden bg-slate-900">
-          <img src={image.url} alt={`${conceptName} ${image.ratio}`} className="w-full object-contain mx-auto" />
+          <ProxiedImg src={image.url} alt={`${conceptName} ${image.ratio}`} className="w-full object-contain mx-auto" />
         </div>
         <div className="mt-3 p-3 rounded-lg bg-white/5 border border-white/10 max-h-24 overflow-y-auto">
           <p className="text-xs text-white/60 leading-relaxed">{image.prompt}</p>
