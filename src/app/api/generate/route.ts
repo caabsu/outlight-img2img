@@ -577,7 +577,10 @@ async function runKieTask({
   signal,
   label,
   pollMaxMs,
-  maxAttempts = 3,
+  // Retry the whole create+poll cycle up to 5x: a transient upstream outage
+  // (e.g. gpt-image-2 "Internal Error") can outlast 2-3 attempts. The
+  // totalBudgetMs guard below caps total wall-clock regardless of this count.
+  maxAttempts = 5,
   totalBudgetMs = 720_000, // keep under maxDuration (800s) with margin
   logEvery = 0,
 }: {
@@ -635,7 +638,9 @@ async function runKieTask({
 
     last = { status: poll.status, error: poll.error, debug: poll.debug ?? null };
     if (poll.transient && attempt < maxAttempts) {
-      const delay = Math.min(8_000, 1_200 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
+      // Longer backoff (cap 15s) gives a wobbling upstream more time to recover
+      // between full task recreations than the default create-retry backoff.
+      const delay = Math.min(15_000, 2_000 * 2 ** (attempt - 1)) + Math.floor(Math.random() * 400);
       console.warn(
         `[${label}] task ${create.taskId} failed transiently (attempt ${attempt}/${maxAttempts}); recreating in ${delay}ms — ${poll.error}`
       );
@@ -1287,6 +1292,58 @@ export async function POST(req: Request) {
       };
 
       const modeLabel = httpRefs.length > 0 ? "Nano Banana 2 Image-to-Image" : "Nano Banana 2";
+
+      const result = await runKieTask({
+        payload,
+        signal: req.signal,
+        label: modeLabel,
+        pollMaxMs: 600_000,
+        logEvery: 10,
+      });
+
+      if (!result.ok) {
+        return NextResponse.json({ error: result.error, debug: result.debug ?? null }, { status: result.status });
+      }
+
+      await logUsage(profileId, modelId);
+      return NextResponse.json({ imageDataUrl: result.url });
+    }
+
+    /* -------- Nano Banana 2 Lite via KIE -------- */
+    if (modelId === "nanobanana-2-lite") {
+      if (!KIE_KEY) return NextResponse.json({ error: "KIE API key missing" }, { status: 500 });
+
+      // Validate aspect ratio (same set as Nano Banana 2)
+      const liteArSet = new Set<string>(NB2_ASPECT_RATIOS);
+      const aspect_ratio = liteArSet.has(options?.aspect_ratio || "")
+        ? options!.aspect_ratio! : "auto";
+
+      const inputPayload: Record<string, any> = {
+        prompt,
+        aspect_ratio,
+      };
+
+      // Reference images (up to 10, must be HTTP URLs)
+      const httpRefs = referenceUrls.filter((u) => /^https?:\/\//i.test(u));
+      if (httpRefs.length > 0) {
+        inputPayload.image_urls = httpRefs.slice(0, 10);
+      }
+
+      // Reject data: URIs
+      if (referenceUrls.length > httpRefs.length) {
+        return NextResponse.json(
+          { error: "Nano Banana 2 Lite requires public HTTP/HTTPS URLs for reference images" },
+          { status: 400 }
+        );
+      }
+
+      const payload = {
+        model: "nano-banana-2-lite",
+        callBackUrl: "",
+        input: inputPayload,
+      };
+
+      const modeLabel = httpRefs.length > 0 ? "Nano Banana 2 Lite Image-to-Image" : "Nano Banana 2 Lite";
 
       const result = await runKieTask({
         payload,

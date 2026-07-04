@@ -32,6 +32,8 @@ export type ModelDef = {
   supportsSeed?: boolean;
   // Max concurrent requests (for APIs with rate limits like KIE)
   maxConcurrency?: number;
+  // Per-image cost as listed on KIE.ai (display string)
+  pricing?: string;
 };
 
 export const NB2_ASPECT_RATIOS = [
@@ -69,26 +71,15 @@ export const GPT2_MODERATION_OPTIONS = ["auto", "low"] as const;
 
 export const MODEL_LIST: ModelDef[] = [
   {
-    id: "nanobanana-3-pro",
-    label: "Nano Banana Pro (Legacy)",
-    version: "v3-pro",
-    provider: "nanobanana",
-    providerName: "gemini-3-pro-image-preview",
+    id: "nanobanana-2-lite",
+    label: "Nano Banana 2 Lite",
+    version: "v2-lite",
+    provider: "kie",
+    providerName: "nano-banana-2-lite",
     requiresReference: false,
-    aspectRatioOptions: [
-      "1:1",
-      "2:3",
-      "3:2",
-      "3:4",
-      "4:3",
-      "4:5",
-      "5:4",
-      "9:16",
-      "16:9",
-      "21:9",
-    ],
-    resolutionOptions: ["1K", "2K", "4K"],
+    aspectRatioOptions: NB2_ASPECT_RATIOS,
     maxConcurrency: 5,
+    pricing: "$0.02 / image",
   },
   {
     id: "nanobanana-2",
@@ -100,6 +91,7 @@ export const MODEL_LIST: ModelDef[] = [
     aspectRatioOptions: NB2_ASPECT_RATIOS,
     resolutionOptions: NB2_RESOLUTIONS,
     maxConcurrency: 5,
+    pricing: "$0.04–$0.09 / image (1K–4K)",
   },
   {
     id: "seedream-4.5",
@@ -120,6 +112,7 @@ export const MODEL_LIST: ModelDef[] = [
     ],
     qualityOptions: ["basic", "high"],
     maxConcurrency: 5,  // Allow concurrent requests for faster batch generation
+    pricing: "$0.0325 / image",
   },
   {
     id: "gpt-1.5",
@@ -137,6 +130,7 @@ export const MODEL_LIST: ModelDef[] = [
     qualityOptions: ["auto", "low", "medium", "high"],
     backgroundOptions: ["auto", "opaque", "transparent"],
     maxConcurrency: 5,
+    pricing: "$0.02 med · $0.11 high",
   },
   {
     id: "gpt-2",
@@ -152,6 +146,7 @@ export const MODEL_LIST: ModelDef[] = [
     moderationOptions: GPT2_MODERATION_OPTIONS,
     requiresReference: false,
     maxConcurrency: 5,
+    pricing: "$0.03–$0.08 / image (1K–4K)",
   },
 ];
 

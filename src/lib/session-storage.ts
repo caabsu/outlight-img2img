@@ -91,8 +91,11 @@ export type ImageStudioSession = {
   promptsText: string;
   modelId: string;
   // Model options
-  nbAspectRatio: string;
-  nbResolution: string;
+  // Legacy Nano Banana Pro options (no longer written)
+  nbAspectRatio?: string;
+  nbResolution?: string;
+  // Nano Banana 2 Lite options
+  nb2LiteAspectRatio?: string;
   sd45AspectRatio: string;
   sd45Quality: string;
   sdSize: string;

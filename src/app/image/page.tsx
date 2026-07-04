@@ -10,8 +10,6 @@ import {
   getModelById,
   IMAGE_RESOLUTIONS,
   IMAGE_SIZES,
-  NANOBANANA_ASPECT_RATIOS,
-  NANOBANANA_RESOLUTIONS,
   SEEDREAM_QUALITY_OPTIONS,
   GPT15_SIZE_OPTIONS,
   GPT15_QUALITY_OPTIONS,
@@ -597,12 +595,6 @@ export default function ImageStudioPage() {
   const [modelId, setModelId] = useState<string>("nanobanana-2");
   const modelDef = useMemo(() => getModelById(modelId)!, [modelId]);
   const modelNameDisplay = `${modelDef.label}`;
-  const [nbAspectRatio, setNbAspectRatio] = useState<string>(
-    modelDef.aspectRatioOptions?.[0] || NANOBANANA_ASPECT_RATIOS[0]
-  );
-  const [nbResolution, setNbResolution] = useState<string>(
-    modelDef.resolutionOptions?.[0] || NANOBANANA_RESOLUTIONS[0]
-  );
   const [sdSize, setSdSize] = useState<(typeof IMAGE_SIZES)[number]>("square");
   const [sdRes, setSdRes] = useState<(typeof IMAGE_RESOLUTIONS)[number]>("1K");
   const [sdMax, setSdMax] = useState(1);
@@ -631,6 +623,9 @@ export default function ImageStudioPage() {
   const [nb2OutputFormat, setNb2OutputFormat] = useState<string>("jpg");
   const [nb2GoogleSearch, setNb2GoogleSearch] = useState<boolean>(false);
   const isNanoBanana2 = modelDef.id === "nanobanana-2";
+  // Nano Banana 2 Lite options
+  const [nb2LiteAspectRatio, setNb2LiteAspectRatio] = useState<string>("auto");
+  const isNanoBanana2Lite = modelDef.id === "nanobanana-2-lite";
   // Resizable / collapsible column layout (persisted, independent of run session)
   const layout = useStudioColumns("ol_image_layout", {
     configWidth: 290,
@@ -651,7 +646,6 @@ export default function ImageStudioPage() {
   const [saveToast, setSaveToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [refPreviewUrl, setRefPreviewUrl] = useState<string | null>(null);
   const [expandedImage, setExpandedImage] = useState(false);
-  const [showNanoGuide, setShowNanoGuide] = useState(false);
   const [clientId, setClientId] = useState<string>("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilesLoading, setProfilesLoading] = useState(false);
@@ -684,10 +678,6 @@ export default function ImageStudioPage() {
   // const productName = "Custom"; // Simplified
   // const referenceUrl = customUrl.trim(); // Simplified
   const modelRequiresReference = modelDef.requiresReference !== false;
-  const isNanoBanana = modelDef.provider === "nanobanana";
-  const isNanoBananaPro = modelDef.id === "nanobanana-3-pro";
-  const nanoAspectOptions = modelDef.aspectRatioOptions || Array.from(NANOBANANA_ASPECT_RATIOS);
-  const nanoResolutionOptions = modelDef.resolutionOptions || Array.from(NANOBANANA_RESOLUTIONS);
   const [selectedRefs, setSelectedRefs] = useState<string[]>([]);
   const hasRefs = selectedRefs.length > 0 || customUrl.trim().length > 0 || customUploads.length > 0 || customUrls.some((url) => (url || "").trim().length > 0);
   const canStartRun =
@@ -807,8 +797,7 @@ export default function ImageStudioPage() {
     if (session.modelId && MODEL_LIST.some((m) => m.id === session.modelId)) {
       setModelId(session.modelId);
     }
-    if (session.nbAspectRatio) setNbAspectRatio(session.nbAspectRatio);
-    if (session.nbResolution) setNbResolution(session.nbResolution);
+    if (session.nb2LiteAspectRatio) setNb2LiteAspectRatio(session.nb2LiteAspectRatio);
     if (session.sd45AspectRatio) setSd45AspectRatio(session.sd45AspectRatio);
     if (session.sd45Quality) setSd45Quality(session.sd45Quality);
     if (session.sdSize) setSdSize(session.sdSize as any);
@@ -862,8 +851,7 @@ export default function ImageStudioPage() {
       savedAt: Date.now(),
       promptsText,
       modelId,
-      nbAspectRatio,
-      nbResolution,
+      nb2LiteAspectRatio,
       sd45AspectRatio,
       sd45Quality,
       sdSize,
@@ -895,8 +883,7 @@ export default function ImageStudioPage() {
   }, [
     promptsText,
     modelId,
-    nbAspectRatio,
-    nbResolution,
+    nb2LiteAspectRatio,
     sd45AspectRatio,
     sd45Quality,
     sdSize,
@@ -923,21 +910,6 @@ export default function ImageStudioPage() {
     runs,
     activeRunId,
   ]);
-
-  useEffect(() => {
-    if (modelDef.aspectRatioOptions?.length) {
-      const fallback = modelDef.aspectRatioOptions[0];
-      setNbAspectRatio((prev) =>
-        modelDef.aspectRatioOptions && modelDef.aspectRatioOptions.includes(prev) ? prev : fallback
-      );
-    }
-    if (modelDef.resolutionOptions?.length) {
-      const fallback = modelDef.resolutionOptions[0];
-      setNbResolution((prev) =>
-        modelDef.resolutionOptions && modelDef.resolutionOptions.includes(prev) ? prev : fallback
-      );
-    }
-  }, [modelDef]);
 
   useEffect(() => {
     if (!gpt2ResolutionOptions.includes(gpt2Resolution)) {
@@ -1607,10 +1579,9 @@ export default function ImageStudioPage() {
                         google_search: nb2GoogleSearch,
                       };
                     }
-                    if (runModel.id === "nanobanana-3-pro") {
+                    if (runModel.id === "nanobanana-2-lite") {
                       return {
-                        aspect_ratio: nbAspectRatio,
-                        image_size: nbResolution,
+                        aspect_ratio: nb2LiteAspectRatio,
                       };
                     }
                     return undefined;
@@ -1738,21 +1709,11 @@ export default function ImageStudioPage() {
                     <CollapseToggle onClick={layout.toggleConfig} title="Collapse config" breakpointClass="xl:inline-flex" />
                     <div className="ui-eyebrow"><span className="ui-eyebrow-ic">◈</span> Model</div>
                   </div>
-                  {isNanoBananaPro && (
-                     <button
-                       onClick={() => setShowNanoGuide(true)}
-                       className="group relative flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 shadow-sm hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200"
-                       title="What's new in Nano Banana?"
-                     >
-                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" aria-hidden />
-                       <span>Guide</span>
-                     </button>
-                   )}
                  </div>
                  <div className="space-y-2">
                     {MODEL_LIST.map(model => {
                         const blurb = (({
-                          "nanobanana-3-pro": "Gemini 3 · legacy",
+                          "nanobanana-2-lite": "Google · fast & budget",
                           "nanobanana-2": "Google · rich scenes",
                           "seedream-4.5": "ByteDance · photoreal",
                           "gpt-1.5": "OpenAI · fast & clean",
@@ -1770,6 +1731,9 @@ export default function ImageStudioPage() {
                             <span className="min-w-0 flex-1">
                               <span className="block text-[13.5px] font-bold leading-tight text-ink truncate">{model.label}</span>
                               <span className="block text-[11.5px] leading-tight text-ink-3 truncate">{blurb}</span>
+                              {model.pricing && (
+                                <span className="block text-[10.5px] font-semibold leading-tight text-ink-3 truncate">{model.pricing}</span>
+                              )}
                             </span>
                             <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${selected ? "bg-brand/15 text-brand" : "bg-canvas-2 text-ink-3"}`}>{model.version}</span>
                           </button>
@@ -1777,30 +1741,18 @@ export default function ImageStudioPage() {
                     })}
                  </div>
 
-                  {isNanoBananaPro && (
+                  {isNanoBanana2Lite && (
                 <div className="mt-2 space-y-2 border-t border-slate-100 dark:border-slate-800 pt-2">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                         <label className="ui-field-label">Aspect</label>
                         <select
                             className="ui-select"
-                            value={nbAspectRatio}
-                            onChange={(e) => setNbAspectRatio(e.target.value)}
+                            value={nb2LiteAspectRatio}
+                            onChange={(e) => setNb2LiteAspectRatio(e.target.value)}
                         >
-                            {nanoAspectOptions.map((ratio) => (
-                              <option key={ratio} value={ratio}>{ratio}</option>
-                            ))}
-                        </select>
-                    </div>
-                     <div>
-                        <label className="ui-field-label">Resolution</label>
-                         <select
-                            className="ui-select"
-                            value={nbResolution}
-                            onChange={(e) => setNbResolution(e.target.value)}
-                        >
-                            {nanoResolutionOptions.map((res) => (
-                              <option key={res} value={res}>{res}</option>
+                            {NB2_ASPECT_RATIOS.map((ar) => (
+                              <option key={ar} value={ar}>{ar === "auto" ? "Auto" : ar}</option>
                             ))}
                         </select>
                     </div>
@@ -2422,48 +2374,6 @@ export default function ImageStudioPage() {
         </div>
       </div>
       
-      {showNanoGuide && isNanoBananaPro && (
-        <div
-          className="fixed inset-0 z-[60] flex items-start justify-end bg-black/30 p-4 backdrop-blur-sm"
-          onClick={() => setShowNanoGuide(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-emerald-100 bg-white shadow-2xl ring-1 ring-emerald-400/20 dark:border-emerald-500/30 dark:bg-slate-900 dark:ring-emerald-400/10"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3 border-b border-emerald-100/60 px-4 py-3 dark:border-emerald-500/20">
-              <div>
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">Nano Banana quick guide</p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">Tap options to match Gemini image controls.</p>
-              </div>
-              <button
-                onClick={() => setShowNanoGuide(false)}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800"
-                aria-label="Close Nano guide"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 6l12 12M6 18L18 6" />
-                </svg>
-              </button>
-            </div>
-            <div className="space-y-3 px-4 py-3 text-xs text-slate-700 dark:text-slate-300">
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 h-2 w-2 rounded-full bg-emerald-500" />
-                <p><span className="font-semibold">Aspect ratios:</span> 1:1, 4:3, 3:2, 4:5, 9:16, 16:9, 21:9 and more. Pick one before you generate.</p>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 h-2 w-2 rounded-full bg-indigo-500" />
-                <p><span className="font-semibold">Resolution:</span> Flash stays at 1K (1024px). Pro unlocks 2K & 4K; stick to uppercase "K".</p>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="mt-0.5 h-2 w-2 rounded-full bg-slate-400" />
-                <p><span className="font-semibold">Best prompts:</span> describe the scene, lighting, and intent; mention text you want rendered. References are optional for Nano Banana.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Product Creation Modal */}
       {/* Removed Product Creation Modal */}
 

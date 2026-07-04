@@ -1249,7 +1249,7 @@ export default function AdStudioPage() {
   const [sourceAdUploading, setSourceAdUploading] = useState(false);
   const [sourceAdError, setSourceAdError] = useState<string | null>(null);
   const [diversity, setDiversity] = useState<"tight" | "balanced" | "exploratory">("balanced");
-  const [modelId, setModelId] = useState("nanobanana-3-pro");
+  const [modelId, setModelId] = useState("nanobanana-2-lite");
   const [quantity, setQuantity] = useState(3);
   const [speed, setSpeed] = useState(3);
   const [includeBothRatios, setIncludeBothRatios] = useState(true);
@@ -1310,13 +1310,14 @@ export default function AdStudioPage() {
     setDownloadError(null);
   }, [activeCampaignId, selectedImages.size]);
 
+  // Reset to a valid model if a restored session references a removed model (e.g. nanobanana-3-pro)
   useEffect(() => {
-    if ((workflowMode === "ad-copy" || workflowMode === "bulk-copy") && modelId === "nanobanana-3-pro") {
-      setModelId("nanobanana-2");
+    if (!getModelById(modelId)) {
+      setModelId("nanobanana-2-lite");
       setModelOptions({});
-      setSpeed((current) => Math.min(current, getModelById("nanobanana-2")?.maxConcurrency || 5));
+      setSpeed((current) => Math.min(current, getModelById("nanobanana-2-lite")?.maxConcurrency || 5));
     }
-  }, [workflowMode, modelId]);
+  }, [modelId]);
 
   // Toggle image selection (scoped to active campaign)
   const toggleSelect = useCallback(
@@ -1540,7 +1541,7 @@ export default function AdStudioPage() {
             : []
       );
       setDiversity(session.diversity || "balanced");
-      setModelId(session.modelId || "nanobanana-3-pro");
+      setModelId(session.modelId && getModelById(session.modelId) ? session.modelId : "nanobanana-2-lite");
       setQuantity(session.quantity || 3);
       setSpeed(session.speed || 3);
       setIncludeBothRatios(session.includeBothRatios ?? true);
@@ -2051,7 +2052,7 @@ export default function AdStudioPage() {
               >
                 {MODEL_LIST.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.label} ({m.version})
+                    {m.label} ({m.version}){m.pricing ? ` — ${m.pricing}` : ""}
                   </option>
                 ))}
               </select>

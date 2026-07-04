@@ -178,8 +178,8 @@ function buildImageOptions(modelId: string) {
   if (modelId === "gpt-1.5") {
     return { gpt_size: "1024x1536", quality: "high", gpt_background: "opaque" };
   }
-  if (modelId === "nanobanana-3-pro") {
-    return { aspect_ratio: "9:16", image_size: "2K", output_format: "png" };
+  if (modelId === "nanobanana-2-lite") {
+    return { aspect_ratio: "9:16" };
   }
   return { aspect_ratio: "9:16", image_size: "2K", output_format: "png" };
 }
@@ -918,7 +918,7 @@ export default function UgcStudioPage() {
   const [autoGenerateScenes, setAutoGenerateScenes] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
 
-  const imageModelOptions = useMemo(() => MODEL_LIST.filter((model) => model.id !== "nanobanana-3-pro"), []);
+  const imageModelOptions = useMemo(() => MODEL_LIST, []);
   const selectedScene = useMemo(
     () => sceneRenders.find((render) => render.id === selectedSceneId) || null,
     [sceneRenders, selectedSceneId]
@@ -2106,7 +2106,9 @@ export default function UgcStudioPage() {
                         className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-white outline-none focus:border-slate-600"
                       >
                         {imageModelOptions.map((model) => (
-                          <option key={model.id} value={model.id}>{model.label}</option>
+                          <option key={model.id} value={model.id}>
+                            {model.label}{model.pricing ? ` — ${model.pricing}` : ""}
+                          </option>
                         ))}
                       </select>
                     </div>
